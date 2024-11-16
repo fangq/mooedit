@@ -16,14 +16,14 @@
 
 import os
 import moo
-import gtk
+from gi.repository import Gtk as gtk
 import gobject
-import pango
+from gi.repository import Pango as pango
 from moo import _
 from moo import D_
 
 try:
-    import vte
+    from gi.repository import Vte as vte
 except ImportError:
     moo._cancel_plugin_loading()
 
