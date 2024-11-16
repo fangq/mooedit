@@ -24,7 +24,7 @@ done
 relpath() {
   from=`cd $1 && pwd`
   to=`cd $2 && pwd`
-  $PYTHON -c 'import sys; import os; print os.path.relpath(sys.argv[2], sys.argv[1])' $from $to
+  $PYTHON -c 'import sys; import os; print(os.path.relpath(sys.argv[2], sys.argv[1]))' $from $to
 }
 
 if $uninstalled; then
