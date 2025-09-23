@@ -1,5 +1,4 @@
 # -*- Mode: Python; py-indent-offset: 4 -*-
-import string
 import keyword
 import struct
 
@@ -30,11 +29,13 @@ class VarList:
             ret.append('    ')
             ret.append(type)
             ret.append(' ')
-            ret.append(string.join(self.vars[type], ', '))
+            # Python 3: string.join(self.vars[type], ', ') -> ', '.join(self.vars[type])
+            ret.append(', '.join(self.vars[type]))
             ret.append(';\n')
         if ret:
             ret.append('\n')
-            return string.join(ret, '')
+            # Python 3: string.join(ret, '') -> ''.join(ret)
+            return ''.join(ret)
         return ''
 
 class WrapperInfo:
@@ -50,18 +51,23 @@ class WrapperInfo:
         self.arglist = []
         self.kwlist = []
     def get_parselist(self):
-        return string.join(self.parselist, ', ')
+        # Python 3: string.join(self.parselist, ', ') -> ', '.join(self.parselist)
+        return ', '.join(self.parselist)
     def get_codebefore(self):
-        return string.join(self.codebefore, '')
+        # Python 3: string.join(self.codebefore, '') -> ''.join(self.codebefore)
+        return ''.join(self.codebefore)
     def get_codeafter(self):
-        return string.join(self.codeafter, '')
+        # Python 3: string.join(self.codeafter, '') -> ''.join(self.codeafter)
+        return ''.join(self.codeafter)
     def get_arglist(self):
-        return string.join(self.arglist, ', ')
+        # Python 3: string.join(self.arglist, ', ') -> ', '.join(self.arglist)
+        return ', '.join(self.arglist)
     def get_varlist(self):
         return str(self.varlist)
     def get_kwlist(self):
+        # Python 3: string.join(self.kwlist + [ 'NULL' ], ', ') -> ', '.join(self.kwlist + [ 'NULL' ])
         ret = '    static char *kwlist[] = { %s };\n' % \
-              string.join(self.kwlist + [ 'NULL' ], ', ')
+              ', '.join(self.kwlist + [ 'NULL' ])
         if not self.get_varlist():
             ret = ret + '\n'
         return ret
@@ -109,8 +115,9 @@ class StringArg(ArgType):
         if ownsreturn:
             # have to free result ...
             info.varlist.add('gchar', '*ret')
+            # Python 3: PyString_FromString -> PyUnicode_FromString
             info.codeafter.append('    if (ret) {\n' +
-                                  '        PyObject *py_ret = PyString_FromString(ret);\n' +
+                                  '        PyObject *py_ret = PyUnicode_FromString(ret);\n' +
                                   '        g_free(ret);\n' +
                                   '        return py_ret;\n' +
                                   '    }\n' +
@@ -118,8 +125,9 @@ class StringArg(ArgType):
                                   '    return Py_None;')
         else:
             info.varlist.add('const gchar', '*ret')
+            # Python 3: PyString_FromString -> PyUnicode_FromString
             info.codeafter.append('    if (ret)\n' +
-                                  '        return PyString_FromString(ret);\n'+
+                                  '        return PyUnicode_FromString(ret);\n'+
                                   '    Py_INCREF(Py_None);\n' +
                                   '    return Py_None;')
 
@@ -138,8 +146,9 @@ class GstrArg(ArgType):
     def write_return(self, ptype, ownsreturn, info):
         # have to free result ...
         info.varlist.add('gstr', 'ret')
+        # Python 3: PyString_FromString -> PyUnicode_FromString
         info.codeafter.append('    if (!ret.is_null()) {\n' +
-                                '        PyObject *py_ret = PyString_FromString(ret.get());\n' +
+                                '        PyObject *py_ret = PyUnicode_FromString(ret.get());\n' +
                                 '        return py_ret;\n' +
                                 '    }\n' +
                                 '    Py_INCREF(Py_None);\n' +
@@ -174,7 +183,9 @@ class CharArg(ArgType):
         info.add_parselist('c', ['&' + pname], [pname])
     def write_return(self, ptype, ownsreturn, info):
         info.varlist.add('gchar', 'ret')
-        info.codeafter.append('    return PyString_FromStringAndSize(&ret, 1);')
+        # Python 3: PyString_FromStringAndSize -> PyUnicode_FromStringAndSize
+        info.codeafter.append('    return PyUnicode_FromStringAndSize(&ret, 1);')
+
 class GUniCharArg(ArgType):
     ret_tmpl = ('#if !defined(Py_UNICODE_SIZE) || Py_UNICODE_SIZE == 2\n'
                 '    if (ret > 0xffff) {\n'
@@ -207,25 +218,24 @@ class IntArg(ArgType):
         info.add_parselist('i', ['&' + pname], [pname])
     def write_return(self, ptype, ownsreturn, info):
         info.varlist.add('int', 'ret')
-        info.codeafter.append('    return PyInt_FromLong(ret);')
+        # Python 3: PyInt_FromLong -> PyLong_FromLong (int/long unified)
+        info.codeafter.append('    return PyLong_FromLong(ret);')
 
 class UIntArg(ArgType):
     dflt = ('    if (py_%(name)s) {\n'
             '        if (PyLong_Check(py_%(name)s))\n'
             '            %(name)s = PyLong_AsUnsignedLong(py_%(name)s);\n'
-            '        else if (PyInt_Check(py_%(name)s))\n'
-            '            %(name)s = PyInt_AsLong(py_%(name)s);\n'
+            # Python 3: Remove PyInt_Check - everything is PyLong in Python 3
             '        else\n'
-            '            PyErr_SetString(PyExc_TypeError, "Parameter \'%(name)s\' must be an int or a long");\n'
+            '            PyErr_SetString(PyExc_TypeError, "Parameter \'%(name)s\' must be an int");\n'
             '        if (PyErr_Occurred())\n'
             '            return NULL;\n'
             '    }\n')
     before = ('    if (PyLong_Check(py_%(name)s))\n'
               '        %(name)s = PyLong_AsUnsignedLong(py_%(name)s);\n'
-              '    else if (PyInt_Check(py_%(name)s))\n'
-              '        %(name)s = PyInt_AsLong(py_%(name)s);\n'
+              # Python 3: Remove PyInt_Check - everything is PyLong in Python 3
               '    else\n'
-              '        PyErr_SetString(PyExc_TypeError, "Parameter \'%(name)s\' must be an int or a long");\n'
+              '        PyErr_SetString(PyExc_TypeError, "Parameter \'%(name)s\' must be an int");\n'
               '    if (PyErr_Occurred())\n'
               '        return NULL;\n')
     def write_param(self, ptype, pname, pdflt, pnull, info):
@@ -299,7 +309,8 @@ class LongArg(ArgType):
         info.add_parselist('l', ['&' + pname], [pname])
     def write_return(self, ptype, ownsreturn, info):
         info.varlist.add(ptype, 'ret')
-        info.codeafter.append('    return PyInt_FromLong(ret);\n')
+        # Python 3: PyInt_FromLong -> PyLong_FromLong
+        info.codeafter.append('    return PyLong_FromLong(ret);\n')
 
 class BoolArg(IntArg):
     def write_return(self, ptype, ownsreturn, info):
@@ -316,7 +327,8 @@ class TimeTArg(ArgType):
         info.add_parselist('i', ['&' + pname], [pname])
     def write_return(self, ptype, ownsreturn, info):
         info.varlist.add('time_t', 'ret')
-        info.codeafter.append('    return PyInt_FromLong(ret);')
+        # Python 3: PyInt_FromLong -> PyLong_FromLong
+        info.codeafter.append('    return PyLong_FromLong(ret);')
 
 class ULongArg(ArgType):
     def write_param(self, ptype, pname, pdflt, pnull, info):
@@ -388,6 +400,7 @@ class DoubleArg(ArgType):
         info.codeafter.append('    return PyFloat_FromDouble(ret);')
 
 class FileArg(ArgType):
+    # Python 3: File objects work differently, but this is mostly C code generation
     nulldflt = ('    if (py_%(name)s == Py_None)\n'
                 '        %(name)s = NULL;\n'
                 '    else if (py_%(name)s && PyFile_Check(py_%(name)s)\n'
@@ -398,7 +411,7 @@ class FileArg(ArgType):
                 '    }')
     null = ('    if (py_%(name)s && PyFile_Check(py_%(name)s)\n'
             '        %(name)s = PyFile_AsFile(py_%(name)s);\n'
-            '    else if (py_%(name)s != Py_None) {\n'
+            '    else if ((PyObject *)py_%(name)s != Py_None) {\n'
             '        PyErr_SetString(PyExc_TypeError, "%(name)s should be a file object or None");\n'
             '        return NULL;\n'
             '    }\n')
@@ -413,8 +426,8 @@ class FileArg(ArgType):
             else:
                 info.varlist.add('FILE', '*' + pname + ' = NULL')
                 info.varlist.add('PyObject', '*py_' + pname)
-                info.codebefore.append(self.null & {'name':pname})
-            info.arglist.appned(pname)
+                info.codebefore.append(self.null % {'name':pname})
+            info.arglist.append(pname)  # Fixed typo: appned -> append
             info.add_parselist('O', ['&py_' + pname], [pname])
         else:
             if pdflt:
@@ -454,7 +467,7 @@ class EnumArg(ArgType):
         info.codeafter.append('    return pyg_enum_from_gtype(%s, ret);' % self.typecode)
 
 class FlagsArg(ArgType):
-    flag = ('    if (%(default)spyg_flags_get_value(%(typecode)s, py_%(name)s, (gint*)&%(name)s))\n'
+    flag = ('    if (%(default)spyg_flags_get_value(%(typecode)s, py_%(name)s, (guint*)&%(name)s))\n'  # Fixed: gint* -> guint*
             '        return NULL;\n')
     def __init__(self, flagname, typecode):
         self.flagname = flagname
@@ -497,7 +510,8 @@ class ObjectArg(ArgType):
            '        %(name)s = %(cast)s(py_%(name)s->obj);\n'
     def __init__(self, objname, parent, typecode):
         self.objname = objname
-        self.cast = string.replace(typecode, '_TYPE_', '_', 1)
+        # Python 3: string.replace -> str.replace
+        self.cast = typecode.replace('_TYPE_', '_', 1)
         self.parent = parent
     def write_param(self, ptype, pname, pdflt, pnull, info):
         if pnull:
@@ -716,8 +730,9 @@ class AtomArg(IntArg):
         info.varlist.add('GdkAtom', 'ret')
         info.varlist.add('PyObject *', 'py_ret')
         info.varlist.add('gchar *', 'name')
+        # Python 3: PyString_FromString -> PyUnicode_FromString
         info.codeafter.append('    name = gdk_atom_name(ret);\n'
-                              '    py_ret = PyString_FromString(name);\n'
+                              '    py_ret = PyUnicode_FromString(name);\n'
                               '    g_free(name);\n'
                               '    return py_ret;')
 
@@ -1050,6 +1065,122 @@ matcher.register('PyObject*', PyObjectArg())
 matcher.register('GdkNativeWindow', ULongArg())
 
 matcher.register_object('GObject', None, 'G_TYPE_OBJECT')
+
+# Add missing ArgType classes before the matcher registration section
+
+class GdkPixbufArg(ObjectArg):
+    def __init__(self):
+        ObjectArg.__init__(self, 'GdkPixbuf', 'GObject', 'GDK_TYPE_PIXBUF')
+
+class GtkTextIterArg(ArgType):
+    def write_param(self, ptype, pname, pdflt, pnull, info):
+        if pnull:
+            info.varlist.add('GtkTextIter', '*' + pname + ' = NULL')
+            info.varlist.add('PyObject', '*py_' + pname + ' = Py_None')
+            info.add_parselist('O', ['&py_' + pname], [pname])
+        else:
+            info.varlist.add('GtkTextIter', '*' + pname)
+            info.varlist.add('PyObject', '*py_' + pname)
+            info.add_parselist('O', ['&py_' + pname], [pname])
+        info.arglist.append(pname)
+        info.codebefore.append('    if (py_%s != Py_None) {\n'
+                               '        if (!pygtk_text_iter_from_pyobject(py_%s, %s)) {\n'
+                               '            PyErr_SetString(PyExc_TypeError, "could not convert to GtkTextIter");\n'
+                               '            return NULL;\n'
+                               '        }\n'
+                               '    }\n' % (pname, pname, pname))
+    def write_return(self, ptype, ownsreturn, info):
+        info.varlist.add('GtkTextIter', 'ret')
+        info.codeafter.append('    return pygtk_text_iter_to_pyobject(&ret);')
+
+class GtkTextBufferArg(ObjectArg):
+    def __init__(self):
+        ObjectArg.__init__(self, 'GtkTextBuffer', 'GObject', 'GTK_TYPE_TEXT_BUFFER')
+
+class IndexArg(IntArg):
+    # 'index' is essentially an int but with semantic meaning
+    pass
+
+class StrvArg(ArgType):
+    def write_param(self, ptype, pname, pdflt, pnull, info):
+        if pdflt:
+            if pdflt != 'NULL': 
+                raise TypeError("Only NULL is supported as a default strv value")
+            info.varlist.add('gchar', '**' + pname + ' = ' + pdflt)
+        else:
+            info.varlist.add('gchar', '**' + pname)
+        info.arglist.append(pname)
+        if pnull:
+            info.add_parselist('O&', ['_moo_pyobject_to_strv', '&' + pname], [pname])
+        else:
+            info.add_parselist('O&', ['_moo_pyobject_to_strv_no_null', '&' + pname], [pname])
+    def write_return(self, ptype, ownsreturn, info):
+        info.varlist.add('gchar', '**ret')
+        if ownsreturn:
+            info.codeafter.append('    if (ret) {\n'
+                                  '        PyObject *py_ret = _moo_strv_to_pyobject(ret);\n'
+                                  '        g_strfreev(ret);\n'
+                                  '        return py_ret;\n'
+                                  '    }\n'
+                                  '    Py_INCREF(Py_None);\n'
+                                  '    return Py_None;')
+        else:
+            info.codeafter.append('    return _moo_strv_to_pyobject(ret);')
+
+class GtkAccelGroupArg(ObjectArg):
+    def __init__(self):
+        ObjectArg.__init__(self, 'GtkAccelGroup', 'GObject', 'GTK_TYPE_ACCEL_GROUP')
+
+class GtkResponseTypeArg(IntArg):
+    def write_param(self, ptype, pname, pdflt, pnull, info):
+        if pdflt:
+            info.varlist.add('GtkResponseType', pname + ' = (GtkResponseType)' + pdflt)
+        else:
+            info.varlist.add('GtkResponseType', pname)
+        info.arglist.append(pname)
+        info.add_parselist('i', ['&' + pname], [pname])
+    def write_return(self, ptype, ownsreturn, info):
+        info.varlist.add('GtkResponseType', 'ret')
+        info.codeafter.append('    return PyLong_FromLong((long)ret);')
+
+# Add the missing registrations before the del arg line
+matcher.register('GdkPixbuf*', GdkPixbufArg())
+matcher.register('const-GdkPixbuf*', GdkPixbufArg())
+
+matcher.register('GtkTextIter*', GtkTextIterArg())
+matcher.register('const-GtkTextIter*', GtkTextIterArg())
+
+matcher.register('GtkTextBuffer*', GtkTextBufferArg())
+
+matcher.register('index', IndexArg())
+
+matcher.register('strv', StrvArg())
+
+matcher.register('GtkAccelGroup*', GtkAccelGroupArg())
+
+matcher.register('GtkResponseType', GtkResponseTypeArg())
+
+# Register the array types that are defined in argtypes_m.py
+# These are placeholders - the real definitions come from argtypes_m.py
+class ArrayArgPlaceholder(ArgType):
+    def __init__(self, typename):
+        self.typename = typename
+    def write_param(self, ptype, pname, pdflt, pnull, info):
+        info.varlist.add(self.typename, '*' + pname + ' = NULL')
+        info.add_parselist('O', ['&' + pname], [pname])
+        info.arglist.append(pname)
+    def write_return(self, ptype, ownsreturn, info):
+        info.varlist.add(self.typename, '*ret')
+        info.codeafter.append('    return _moo_object_array_to_pyobject((MooObjectArray*) ret);')
+
+# Register the MOO-specific array types
+array_types = [
+    'MooEditViewArray*', 'MooEditArray*', 'MooEditTabArray*', 
+    'MooEditWindowArray*', 'MooOpenInfoArray*'
+]
+
+for array_type in array_types:
+    matcher.register(array_type, ArrayArgPlaceholder(array_type[:-1]))
 
 del arg
 

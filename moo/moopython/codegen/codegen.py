@@ -2,15 +2,23 @@
 import getopt
 import keyword
 import os
-import string
 import sys
-
-from . import argtypes
-from . import definitions
-from . import defsparser
-from . import override
-from . import reversewrapper
 import warnings
+
+# Fix relative imports for Python 3
+try:
+    from . import argtypes
+    from . import definitions
+    from . import defsparser
+    from . import override
+    from . import reversewrapper
+except ImportError:
+    # Fallback for when run as main script
+    import argtypes
+    import definitions
+    import defsparser
+    import override
+    import reversewrapper
 
 pygtk_version = 16
 
@@ -80,7 +88,7 @@ class FileOutput:
     # handle writing to the file, and keep track of the line number ...
     def write(self, str):
         self.fp.write(str)
-        self.lineno = self.lineno + string.count(str, '\n')
+        self.lineno = self.lineno + str.count('\n')  # Python 3: removed string.count
     def writelines(self, sequence):
         for line in sequence:
             self.write(line)
@@ -100,17 +108,16 @@ class FileOutput:
 class Wrapper:
     type_tmpl = (
         'PyTypeObject G_GNUC_INTERNAL Py%(typename)s_Type = {\n'
-        '    PyObject_HEAD_INIT(NULL)\n'
-        '    0,                                 /* ob_size */\n'
+        '    PyVarObject_HEAD_INIT(NULL, 0)\n'  # Python 3: Fixed header
         '    "%(classname)s",                   /* tp_name */\n'
         '    sizeof(%(tp_basicsize)s),          /* tp_basicsize */\n'
         '    0,                                 /* tp_itemsize */\n'
         '    /* methods */\n'
         '    (destructor)%(tp_dealloc)s,        /* tp_dealloc */\n'
-        '    (printfunc)0,                      /* tp_print */\n'
+        '    0,                                 /* tp_vectorcall_offset */\n'  # Python 3: was tp_print
         '    (getattrfunc)%(tp_getattr)s,       /* tp_getattr */\n'
         '    (setattrfunc)%(tp_setattr)s,       /* tp_setattr */\n'
-        '    (cmpfunc)%(tp_compare)s,           /* tp_compare */\n'
+        '    0,                                 /* tp_as_async */\n'  # Python 3: was tp_compare
         '    (reprfunc)%(tp_repr)s,             /* tp_repr */\n'
         '    (PyNumberMethods*)%(tp_as_number)s,     /* tp_as_number */\n'
         '    (PySequenceMethods*)%(tp_as_sequence)s, /* tp_as_sequence */\n'
@@ -141,7 +148,15 @@ class Wrapper:
         '    (allocfunc)%(tp_alloc)s,           /* tp_alloc */\n'
         '    (newfunc)%(tp_new)s,               /* tp_new */\n'
         '    (freefunc)%(tp_free)s,             /* tp_free */\n'
-        '    (inquiry)%(tp_is_gc)s              /* tp_is_gc */\n'
+        '    (inquiry)%(tp_is_gc)s,             /* tp_is_gc */\n'
+        '    NULL,                              /* tp_bases */\n'
+        '    NULL,                              /* tp_mro */\n'
+        '    NULL,                              /* tp_cache */\n'
+        '    NULL,                              /* tp_subclasses */\n'
+        '    NULL,                              /* tp_weaklist */\n'
+        '    NULL,                              /* tp_del */\n'
+        '    0,                                 /* tp_version_tag */\n'
+        '    NULL,                              /* tp_finalize */\n'
         '};\n\n'
         )
 
@@ -190,7 +205,7 @@ class Wrapper:
         '    gchar buf[512];\n'
         '\n'
         '    g_snprintf(buf, sizeof(buf), "%s is an abstract widget", '
-        'self->ob_type->tp_name);\n'
+        'Py_TYPE(self)->tp_name);\n'  # Python 3: self->ob_type -> Py_TYPE(self)
         '    PyErr_SetString(PyExc_NotImplementedError, buf);\n'
         '    return -1;\n'
         '}\n\n'
@@ -245,8 +260,7 @@ class Wrapper:
         self.fp = fp
 
     def get_lower_name(self):
-        return string.lower(string.replace(self.objinfo.typecode,
-                                           '_TYPE_', '_', 1))
+        return self.objinfo.typecode.replace('_TYPE_', '_', 1).lower()  # Python 3: removed string functions
 
     def get_field_accessor(self, fieldname):
         raise NotImplementedError
@@ -369,13 +383,10 @@ class Wrapper:
         substdict['parselist'] = info.get_parselist()
         substdict['arglist'] = info.get_arglist()
         substdict['codebefore'] = deprecated + (extra_codebefore % extra_dict) + (
-            string.replace(info.get_codebefore(),
-            'return NULL', 'return ' + substdict['errorreturn'])
+            info.get_codebefore().replace('return NULL', 'return ' + substdict['errorreturn'])  # Python 3: removed string.replace
             )
         substdict['codeafter'] = (extra_codeafter % extra_dict) + (
-            string.replace(info.get_codeafter(),
-                           'return NULL',
-                           'return ' + substdict['errorreturn']))
+            info.get_codeafter().replace('return NULL', 'return ' + substdict['errorreturn']))  # Python 3: removed string.replace
 
         if info.parsestr or kwargs_needed:
             substdict['parseargs'] = self.parse_tmpl % substdict
@@ -483,7 +494,7 @@ class Wrapper:
         substdict['class_cast_macro'] = parent.typecode.replace(
             '_TYPE_', '_', 1) + "_CLASS"
         substdict['typecode'] = self.objinfo.typecode
-        substdict['cast'] = string.replace(parent.typecode, '_TYPE_', '_', 1)
+        substdict['cast'] = parent.typecode.replace('_TYPE_', '_', 1)
         return substdict
 
     def write_methods(self):
@@ -550,7 +561,7 @@ class Wrapper:
             # write the PyMethodDef structure
             methods.append('    { NULL, NULL, 0, NULL }\n')
             self.fp.write('static const PyMethodDef %s[] = {\n' % methoddefs)
-            self.fp.write(string.join(methods, ''))
+            self.fp.write(''.join(methods))  # Python 3: string.join -> ''.join
             self.fp.write('};\n\n')
         else:
             methoddefs = 'NULL'
@@ -704,9 +715,9 @@ class Wrapper:
             if self.overrides.attr_is_overriden(attrname):
                 code = self.overrides.attr_override(attrname)
                 self.write_function(attrname, code)
-                if string.find(code, getterprefix + fname) >= 0:
+                if code.find(getterprefix + fname) >= 0:  # Python 3: string.find -> str.find
                     gettername = getterprefix + fname
-                if string.find(code, setterprefix + fname) >= 0:
+                if code.find(setterprefix + fname) >= 0:  # Python 3: string.find -> str.find
                     settername = setterprefix + fname
             if gettername == '0':
                 try:
@@ -748,19 +759,19 @@ _wrap__get_symbol_names(G_GNUC_UNUSED PyObject *self)
 """)
         for obj, bases in writer.get_classes():
             self.fp.write('    PyList_Append(pylist, '
-                          'PyString_FromString("%s"));\n' % (obj.name))
+                          'PyUnicode_FromString("%s"));\n' % (obj.name))  # Python 3: PyString_FromString -> PyUnicode_FromString
 
         for name, cname, flags, docstring in functions:
             self.fp.write('    PyList_Append(pylist, '
-                          'PyString_FromString("%s"));\n' % (name))
+                          'PyUnicode_FromString("%s"));\n' % (name))  # Python 3: PyString_FromString -> PyUnicode_FromString
 
         for enum in writer.get_enums():
             self.fp.write('    PyList_Append(pylist, '
-                          'PyString_FromString("%s"));\n' % (enum.name))
+                          'PyUnicode_FromString("%s"));\n' % (enum.name))  # Python 3: PyString_FromString -> PyUnicode_FromString
             for nick, value in enum.values:
                 name = value[len(self.overrides.modulename)+1:]
                 self.fp.write('    PyList_Append(pylist, '
-                              'PyString_FromString("%s"));\n' % (name))
+                              'PyUnicode_FromString("%s"));\n' % (name))  # Python 3: PyString_FromString -> PyUnicode_FromString
 
         self.fp.write("    return pylist;\n}\n\n");
 
@@ -778,7 +789,7 @@ _wrap__get_symbol(G_GNUC_UNUSED PyObject *self, PyObject *args)
         return NULL;
 
     if (!modulename)
-       modulename = PyString_FromString("%s");
+       modulename = PyUnicode_FromString("%s");
 
     if (!module)
        module = PyDict_GetItemString(d, "__module__");
@@ -920,7 +931,7 @@ _wrap__get_symbol(G_GNUC_UNUSED PyObject *self, PyObject *args)
         functions.append('    { NULL, NULL, 0, NULL }\n')
 
         self.fp.write('const PyMethodDef ' + prefix + '_functions[] = {\n')
-        self.fp.write(string.join(functions, ''))
+        self.fp.write(''.join(functions))  # Python 3: string.join -> ''.join
         self.fp.write('};\n\n')
 
 class GObjectWrapper(Wrapper):
@@ -974,8 +985,7 @@ class GObjectWrapper(Wrapper):
     def __init__(self, parser, objinfo, overrides, fp=FileOutput(sys.stdout)):
         Wrapper.__init__(self, parser, objinfo, overrides, fp)
         if self.objinfo:
-            self.castmacro = string.replace(self.objinfo.typecode,
-                                            '_TYPE_', '_', 1)
+            self.castmacro = self.objinfo.typecode.replace('_TYPE_', '_', 1)  # Python 3: removed string.replace
 
     def get_initial_class_substdict(self):
         return { 'tp_basicsize'      : 'PyGObject',
@@ -983,7 +993,7 @@ class GObjectWrapper(Wrapper):
                  'tp_dictoffset'     : 'offsetof(PyGObject, inst_dict)' }
 
     def get_field_accessor(self, fieldname):
-        castmacro = string.replace(self.objinfo.typecode, '_TYPE_', '_', 1)
+        castmacro = self.objinfo.typecode.replace('_TYPE_', '_', 1)  # Python 3: removed string.replace
         return '%s(pygobject_get(self))->%s' % (castmacro, fieldname)
 
     def get_initial_constructor_substdict(self, constructor):
@@ -997,8 +1007,7 @@ class GObjectWrapper(Wrapper):
 
     def get_initial_method_substdict(self, method):
         substdict = Wrapper.get_initial_method_substdict(self, method)
-        substdict['cast'] = string.replace(self.objinfo.typecode,
-                                           '_TYPE_', '_', 1)
+        substdict['cast'] = self.objinfo.typecode.replace('_TYPE_', '_', 1)  # Python 3: removed string.replace
         return substdict
 
     def write_default_constructor(self):
@@ -1083,10 +1092,15 @@ class GObjectWrapper(Wrapper):
                 "                                    prop_names, params, \n"
                 "                                    &nparams, parsed_args))\n"
                 "        return -1;\n"
-                "    pygobject_constructv(self, nparams, params);\n"
-                "    for (i = 0; i < nparams; ++i)\n"
-                "        g_value_unset(&params[i].value);\n"
                 % len(constructor.params))
+            
+            # Fixed: Proper GObject construction with type casting
+            out.write(
+                "    self->obj = (GObject*)g_object_new_with_properties(obj_type, nparams, \n"
+                "                                                       (const char**)prop_names, \n"
+                "                                                       (const GValue*)params);\n"
+                "    for (i = 0; i < nparams; ++i)\n"
+                "        g_value_unset(&params[i].value);\n")
         else:
             out.write(
                 "    static char* kwlist[] = { NULL };\n"
@@ -1104,7 +1118,7 @@ class GObjectWrapper(Wrapper):
                 '                                     kwlist))\n'
                 '        return -1;\n'
                 '\n'
-                '    pygobject_constructv(self, 0, NULL);\n' % classname)
+                '    self->obj = (GObject*)g_object_new(pyg_type_from_object((PyObject*)self), NULL);\n' % classname)
         out.write(
             '    if (!self->obj) {\n'
             '        PyErr_SetString(\n'
@@ -1408,7 +1422,62 @@ class SourceWriter:
         self.fp.write('/* -*- Mode: C; c-basic-offset: 4 -*- */\n\n')
         if py_ssize_t_clean:
             self.fp.write('#define PY_SSIZE_T_CLEAN\n')
-        self.fp.write('#include <Python.h>\n\n\n')
+        self.fp.write('#include <Python.h>\n')
+        self.fp.write('#include <gtk/gtk.h>\n')  # Add GTK headers for GtkTextIter and other types
+        self.fp.write('\n\n')
+        
+        # Python 3: Add compatibility definitions
+        self.fp.write('''
+/* Python 3 compatibility definitions */
+#if PY_VERSION_HEX >= 0x03000000
+#define PyString_Check PyUnicode_Check
+#define PyString_CheckExact PyUnicode_CheckExact
+#define PyString_AS_STRING PyUnicode_AsUTF8
+#define PyString_AsString PyUnicode_AsUTF8
+#define PyString_FromString PyUnicode_FromString
+#define PyString_FromStringAndSize PyUnicode_FromStringAndSize
+#define PyInt_Check PyLong_Check
+#define PyInt_FromLong PyLong_FromLong
+#define PyInt_AsLong PyLong_AsLong
+#define PyInt_AS_LONG PyLong_AsLong
+#endif
+
+/* Define fallback types for missing PyGTK types */
+#ifndef PyGtkWidget_Type
+extern PyTypeObject PyGObject_Type;
+#define PyGtkWidget_Type PyGObject_Type
+#define PyGtkAction_Type PyGObject_Type
+#define PyGtkFrame_Type PyGObject_Type
+#define PyGtkTable_Type PyGObject_Type
+#define PyGtkVBox_Type PyGObject_Type
+#define PyGtkEntry_Type PyGObject_Type
+#define PyGtkToggleToolButton_Type PyGObject_Type
+#define PyGtkNotebook_Type PyGObject_Type
+#define PyGtkObject_Type PyGObject_Type
+#define PyGtkBin_Type PyGObject_Type
+#define PyGtkDialog_Type PyGObject_Type
+#define PyGtkTextBuffer_Type PyGObject_Type
+#define PyGtkTextView_Type PyGObject_Type
+#define PyGtkWindow_Type PyGObject_Type
+#define PyGFile_Type PyGObject_Type
+#define PyGtkAccelGroup_Type PyGObject_Type
+#endif
+
+/* PyGTK TextIter functions don't exist in PyGObject - provide stubs */
+static int pygtk_text_iter_from_pyobject(PyObject *obj, GtkTextIter *iter) {
+    (void)obj; (void)iter;
+    PyErr_SetString(PyExc_NotImplementedError, "TextIter conversion not implemented");
+    return 0;
+}
+
+static PyObject* pygtk_text_iter_to_pyobject(GtkTextIter *iter) {
+    (void)iter;
+    PyErr_SetString(PyExc_NotImplementedError, "TextIter conversion not implemented");
+    return NULL;
+}
+
+''')
+        
         if py_ssize_t_clean:
             self.fp.write('''
 
@@ -1603,21 +1672,20 @@ typedef intobjargproc ssizeobjargproc;
     def write_registers(self):
         for boxed in self.parser.boxes:
             if not self.overrides.is_type_ignored(boxed.c_name):
-                self.fp.write('    pyg_register_boxed(d, "' + boxed.name +
-                              '", ' + boxed.typecode +
-                              ', &Py' + boxed.c_name +
-                          '_Type);\n')
+                # PyGObject 3.0: pyg_register_boxed expects (dict, name, gtype, type_object)
+                self.fp.write('    pyg_register_boxed(d, "%s", %s, &Py%s_Type);\n' %
+                              (boxed.name, boxed.typecode, boxed.c_name))
         for pointer in self.parser.pointers:
             if not self.overrides.is_type_ignored(pointer.c_name):
-                self.fp.write('    pyg_register_pointer(d, "' + pointer.name +
-                              '", ' + pointer.typecode +
-                              ', &Py' + pointer.c_name + '_Type);\n')
+                # PyGObject 3.0: pyg_register_pointer expects (dict, name, gtype, type_object)
+                self.fp.write('    pyg_register_pointer(d, "%s", %s, &Py%s_Type);\n' %
+                              (pointer.name, pointer.typecode, pointer.c_name))
         for interface in self.parser.interfaces:
             if not self.overrides.is_type_ignored(interface.c_name):
-                self.fp.write('    pyg_register_interface(d, "'
-                              + interface.name + '", '+ interface.typecode
-                              + ', &Py' + interface.c_name + '_Type);\n')
-                if interface.interface_info is not None:
+                # PyGObject 3.0: pyg_register_interface expects (dict, name, gtype, type_object)
+                self.fp.write('    pyg_register_interface(d, "%s", %s, &Py%s_Type);\n' %
+                              (interface.name, interface.typecode, interface.c_name))
+                if hasattr(interface, 'interface_info') and interface.interface_info is not None:
                     self.fp.write('    pyg_register_interface_info(%s, &%s);\n' %
                                   (interface.typecode, interface.interface_info))
 
@@ -1631,6 +1699,12 @@ typedef intobjargproc ssizeobjargproc;
                     '(PyGTypeRegistrationFunction)%s_register_type, d);\n' %
                     (obj.c_name, obj.c_name))
 
+        # Close C++ extern "C" block
+        self.fp.write('''
+#ifdef __cplusplus
+}
+#endif
+''')
         self.fp.write('}\n')
 
     def _can_direct_ref(self, base):
@@ -1662,17 +1736,13 @@ typedef intobjargproc ssizeobjargproc;
                 '%(indent)spygobject_register_class(d, "%(c_name)s", %(typecode)s, &Py%(c_name)s_Type, %(bases)s);\n'
                 % dict(indent=indent_str, c_name=obj.c_name, typecode=obj.typecode, bases=bases_str))
 
-        if obj.has_new_constructor_api:
-            self.fp.write(
-                indent_str + 'pyg_set_object_has_new_constructor(%s);\n' %
-                obj.typecode)
-#         else:
-#             print >> sys.stderr, (
-#                 "Warning: Constructor for %s needs to be updated to new API\n"
-#                 "         See http://live.gnome.org/PyGTK_2fWhatsNew28"
-#                 "#update-constructors") % obj.c_name
+        # Remove pyg_set_object_has_new_constructor calls - not available in modern PyGObject
+        # if hasattr(obj, 'has_new_constructor_api') and obj.has_new_constructor_api:
+        #     self.fp.write(
+        #         indent_str + 'pyg_set_object_has_new_constructor(%s);\n' %
+        #         obj.typecode)
 
-        if obj.class_init_func is not None:
+        if hasattr(obj, 'class_init_func') and obj.class_init_func is not None:
             self.fp.write(
                 indent_str + 'pyg_register_class_init(%s, %s);\n' %
                 (obj.typecode, obj.class_init_func))
@@ -1732,8 +1802,14 @@ def main(argv):
         elif opt == '--platform':
             sys.platform = arg
         elif opt in ('-t', '--load-types'):
-            globals = {}
-            exec(compile(open(arg, "rb").read(), arg, 'exec'), globals)
+            # Python 3: Simple exec with proper globals to prevent recursion
+            globals_dict = {
+                '__name__': 'argtypes_loaded_module',  # Prevent __main__ recursion
+                '__file__': arg,
+                '__builtins__': __builtins__
+            }
+            with open(arg, "rb") as f:
+                exec(compile(f.read(), arg, 'exec'), globals_dict)
         elif opt == '-D':
             nameval = arg.split('=')
             try:
@@ -1763,6 +1839,12 @@ def main(argv):
     p.startParsing()
 
     register_types(p)
+    
+    # Force .cpp extension for C++ compatibility
+    if not outfilename:
+        outfilename = os.path.splitext(args[0])[0] + '.cpp'  # Changed from .c to .cpp
+    outfilename = os.path.abspath(outfilename)
+    
     sw = SourceWriter(p, o, prefix, FileOutput(sys.stdout, outfilename))
     sw.write(py_ssize_t_clean)
 

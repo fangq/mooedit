@@ -2,7 +2,6 @@
 # -*- Mode: Python; py-indent-offset: 4 -*-
 
 
-import string
 from io import StringIO
 
 class error(Exception):
@@ -14,13 +13,14 @@ class error(Exception):
     def __str__(self):
         return '%s:%d: error: %s' % (self.filename, self.lineno, self.msg)
 
+# Python 3 fix: Build translation table without string module
 trans = [' '] * 256
 for i in range(256):
-    if chr(i) in string.letters + string.digits + '_':
+    if chr(i).isalnum() or chr(i) == '_':
         trans[i] = chr(i)
     else:
         trans[i] = '_'
-trans = string.join(trans, '')
+trans = ''.join(trans)  # Python 3: string.join(trans, '') → ''.join(trans)
 
 def parse(filename):
     if isinstance(filename, str):
@@ -113,7 +113,16 @@ class Parser:
         for statement in statements:
             self.handle(statement)
     def handle(self, tup):
-        cmd = string.translate(tup[0], trans)
+        # Python 3: Use the pre-built trans string as a translation table
+        # The original code used string.translate(tup[0], trans) which in Python 2
+        # would translate each character according to the trans table
+        cmd = ''
+        for char in tup[0]:
+            if ord(char) < 256:
+                cmd += trans[ord(char)]
+            else:
+                cmd += '_'  # Handle Unicode characters beyond ASCII
+        
         if hasattr(self, cmd):
             getattr(self, cmd)(*tup[1:])
         else:

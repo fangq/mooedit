@@ -1,5 +1,5 @@
 /*
- *   moopython.c
+ *   moopython-builtin.c
  *
  *   Copyright (C) 2004-2010 by Yevgen Muntyan <emuntyan@users.sourceforge.net>
  *
@@ -18,31 +18,34 @@
 #endif
 #include <Python.h>
 #define NO_IMPORT_PYGOBJECT
-#define NO_IMPORT_PYGTK
+/* Remove PyGTK includes for PyGObject conversion */
 #include <pygobject.h>
-G_BEGIN_DECLS
-#include <pygtk/pygtk.h>
-G_END_DECLS
 #include "mooedit/mooplugin-loader.h"
 #include "moopython/moopython-builtin.h"
 #include "moopython/moopython-api.h"
 #include "moopython/moopython-loader.h"
-#include "moopython/pygtk/moo-pygtk.h"
-#include "moopython/moopython-pygtkmod.h"
+#include "moopython/pygobject/moo-pygobject.h"  /* Updated path */
+#include "moopython/moopython-pygobjectmod.h"   /* Updated filename */
 #include "mooutils/mooutils-misc.h"
-#include "moopython/pygtk/moo-mod.h"
+#include "moopython/pygobject/moo-mod.h"        /* Updated path */
 
 static gboolean create_moo_module (void)
 {
     PyObject *moo_module;
     PyObject *code;
 
+    /* Python 3: Py_file_input is still valid */
     code = Py_CompileString (MOO_PY, "moo.py", Py_file_input);
 
     if (!code)
         return FALSE;
 
+    /* Python 3: PyImport_ExecCodeModule is deprecated, use PyImport_ExecCodeModuleEx */
+#if PY_VERSION_HEX >= 0x03000000
+    moo_module = PyImport_ExecCodeModuleEx ((char*) "moo", code, "moo.py");
+#else
     moo_module = PyImport_ExecCodeModule ((char*) "moo", code);
+#endif
 
     if (!moo_module)
         PyErr_Print ();
@@ -59,7 +62,16 @@ _moo_python_builtin_init (void)
     {
         if (!moo_python_api_init ())
         {
-            g_warning ("oops");
+            g_warning ("could not initialize Python API");
+            return FALSE;
+        }
+
+        /* Initialize PyGObject instead of the old PyGTK module system */
+        if (!init_pygobject_mod ())
+        {
+            g_warning ("could not initialize PyGObject");
+            PyErr_Print ();
+            moo_python_api_deinit ();
             return FALSE;
         }
 

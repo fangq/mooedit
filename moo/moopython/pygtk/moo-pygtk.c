@@ -1,5 +1,5 @@
 /*
- *   moo-pygtk.c
+ *   moo-pygobject.c
  *
  *   Copyright (C) 2004-2010 by Yevgen Muntyan <emuntyan@users.sourceforge.net>
  *
@@ -19,14 +19,11 @@
 #include "config.h"
 #endif
 
-#include "moopython/pygtk/moo-pygtk.h"
+#include "moopython/pygobject/moo-pygobject.h"
 #include "moopython/moopython-utils.h"
-#include <pygobject.h>  /* _PyGObjectAPI lives here */
-G_BEGIN_DECLS
-#include <pygtk/pygtk.h>
-G_END_DECLS
+#include <pygobject.h>
 #include <mooglib/moo-glib.h>
-#include "moopython/moopython-pygtkmod.h"
+#include "moopython/moopython-pygobjectmod.h"
 #include <mooutils/moostock.h>
 
 /**
@@ -38,7 +35,8 @@ static void     init_moo_utils          (PyObject       *module);
 static PyObject *
 moo_version (void)
 {
-    return PyString_FromString (MOO_VERSION);
+    /* Python 3: PyString_FromString -> PyUnicode_FromString */
+    return PyUnicode_FromString (MOO_VERSION);
 }
 
 static PyObject *
@@ -47,10 +45,11 @@ moo_detailed_version (void)
     PyObject *res = PyDict_New ();
     g_return_val_if_fail (res != NULL, NULL);
 
-    PyDict_SetItemString (res, "full", PyString_FromString (MOO_VERSION));
-    PyDict_SetItemString (res, "major", PyInt_FromLong (MOO_MAJOR_VERSION));
-    PyDict_SetItemString (res, "minor", PyInt_FromLong (MOO_MINOR_VERSION));
-    PyDict_SetItemString (res, "micro", PyInt_FromLong (MOO_MICRO_VERSION));
+    /* Python 3: PyString_FromString -> PyUnicode_FromString, PyInt_FromLong -> PyLong_FromLong */
+    PyDict_SetItemString (res, "full", PyUnicode_FromString (MOO_VERSION));
+    PyDict_SetItemString (res, "major", PyLong_FromLong (MOO_MAJOR_VERSION));
+    PyDict_SetItemString (res, "minor", PyLong_FromLong (MOO_MINOR_VERSION));
+    PyDict_SetItemString (res, "micro", PyLong_FromLong (MOO_MICRO_VERSION));
 
     return res;
 }
@@ -79,24 +78,39 @@ py_object_to_moo_py_object (GValue *value, PyObject *obj)
     return 0;
 }
 
+/* Python 3 module initialization structure */
+static struct PyModuleDef _moo_moduledef = {
+    PyModuleDef_HEAD_INIT,
+    "_moo",                     /* m_name */
+    _moo_module_doc,           /* m_doc */
+    -1,                        /* m_size */
+    (PyMethodDef*) _moo_functions, /* m_methods */
+    NULL,                      /* m_reload */
+    NULL,                      /* m_traverse */
+    NULL,                      /* m_clear */
+    NULL,                      /* m_free */
+};
+
 gboolean
 _moo_module_init (void)
 {
     PyObject *_moo_module = NULL;
 
-    init_pygtk_mod ();
+    /* Initialize PyGObject instead of PyGTK */
+    init_pygobject_mod ();
 
     if (PyErr_Occurred ())
         return FALSE;
 
-    pyg_register_boxed_custom (MOO_TYPE_PY_OBJECT,
-                               py_object_from_moo_py_object,
-                               py_object_to_moo_py_object);
+    //pyg_register_boxed_custom (MOO_TYPE_PY_OBJECT,
+    //                           py_object_from_moo_py_object,
+    //                           py_object_to_moo_py_object);
 
     if (PyErr_Occurred ())
         return FALSE;
 
-    _moo_module = Py_InitModule3 ("_moo", (PyMethodDef*) _moo_functions, (char*) _moo_module_doc);
+    /* Python 3: Use PyModule_Create instead of Py_InitModule3 */
+    _moo_module = PyModule_Create (&_moo_moduledef);
 
     if (!_moo_module)
         return FALSE;
@@ -124,9 +138,35 @@ _moo_module_init (void)
     return TRUE;
 }
 
+/* Python 3 module initialization function - must be named PyInit_<modulename> */
+PyMODINIT_FUNC
+PyInit__moo(void)
+{
+    PyObject *module;
+    
+    /* Initialize PyGObject */
+    if (!pygobject_init(-1, -1, -1)) {
+        return NULL;
+    }
+
+    module = PyModule_Create(&_moo_moduledef);
+    if (!module) {
+        return NULL;
+    }
+
+    /* Call the existing initialization */
+    if (!_moo_module_init()) {
+        Py_DECREF(module);
+        return NULL;
+    }
+
+    return module;
+}
+
 static void
 init_moo_utils (PyObject *module)
 {
+    /* Python 3: All strings are Unicode, so these should work as-is */
     PyModule_AddStringConstant (module, "GETTEXT_PACKAGE", GETTEXT_PACKAGE);
 
     PyModule_AddStringConstant (module, "STOCK_TERMINAL", MOO_STOCK_TERMINAL);

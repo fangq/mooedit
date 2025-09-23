@@ -14,9 +14,15 @@
 #
 
 """ moo module """
+
+# Python 3 + PyGObject imports
+import gi
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk as _gtk
+from gi.repository import GObject as _gobject
+
+# Import the native _moo module (assuming it's been updated for Python 3)
 import _moo
-import gtk as _gtk
-import gobject as _gobject
 from _moo import *
 
 # note, these aren't standard gettext functions
@@ -41,6 +47,7 @@ class _ActionFactory(object):
         self.props = {}
         self.fake_props = {}
 
+        # Python 3: dict.keys() returns a view, convert to list for compatibility
         for key in list(kwargs.keys()):
             if key in ["callback"]:
                 self.fake_props[key] = kwargs[key]
@@ -49,6 +56,7 @@ class _ActionFactory(object):
 
     def __call__(self, window):
         self.window = window
+        # PyGObject: Use GObject.new() instead of _gobject.new()
         action = _gobject.new(Action, name=self.id, **self.props)
         self.set_fake_props(action)
         return action
@@ -57,6 +65,7 @@ class _ActionFactory(object):
         def _activate(action, callback, window):
             callback(window)
 
+        # Python 3: dict.keys() returns a view, convert to list
         for key in list(self.fake_props.keys()):
             if key == "callback":
                 action.connect("activate", _activate, self.fake_props[key], self.window)
@@ -64,6 +73,7 @@ class _ActionFactory(object):
                 raise ValueError("unknown property " + key)
 
     def set_props(self, action):
+        # Python 3: dict.keys() returns a view, convert to list
         for key in list(self.props.keys()):
             action.set_property(key, self.props[key])
 

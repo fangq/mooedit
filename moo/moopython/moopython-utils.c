@@ -47,7 +47,8 @@ moo_python_add_path (const char *dir)
         return FALSE;
     }
 
-    s = PyString_FromString (dir);
+    /* Python 3: PyString_FromString -> PyUnicode_FromString */
+    s = PyUnicode_FromString (dir);
     PyList_Append (path, s);
 
     Py_DECREF (s);
@@ -71,12 +72,16 @@ moo_python_remove_path (const char *dir)
     {
         PyObject *item = PyList_GET_ITEM (path, i);
 
-        if (PyString_CheckExact (item) &&
-            !strcmp (PyString_AsString (item), dir))
+        /* Python 3: PyString_CheckExact -> PyUnicode_CheckExact, PyString_AsString -> PyUnicode_AsUTF8 */
+        if (PyUnicode_CheckExact (item))
         {
-            if (PySequence_DelItem (path, i) != 0)
-                PyErr_Print ();
-            break;
+            const char *item_str = PyUnicode_AsUTF8(item);
+            if (item_str && !strcmp (item_str, dir))
+            {
+                if (PySequence_DelItem (path, i) != 0)
+                    PyErr_Print ();
+                break;
+            }
         }
     }
 }
@@ -88,9 +93,16 @@ moo_get_pygobject_type (void)
 
     if (G_UNLIKELY (!type))
     {
-        PyObject *module = PyImport_ImportModule ("gobject");
-        g_return_val_if_fail (module != NULL, NULL);
-        type = (PyTypeObject*) PyObject_GetAttrString (module, "GObject");
+        /* Python 3 + PyGObject: Use gi.repository.GObject */
+        PyObject *gi_module = PyImport_ImportModule ("gi.repository.GObject");
+        if (!gi_module) {
+            /* Fallback to old style import */
+            PyErr_Clear();
+            gi_module = PyImport_ImportModule ("gobject");
+        }
+        g_return_val_if_fail (gi_module != NULL, NULL);
+        type = (PyTypeObject*) PyObject_GetAttrString (gi_module, "GObject");
+        Py_DECREF(gi_module);
         g_return_val_if_fail (type != NULL, NULL);
     }
 
@@ -111,8 +123,9 @@ _moo_strv_to_pyobject (char **strv)
 
     for (i = 0; i < len; ++i)
     {
+        /* Python 3: PyString_FromString -> PyUnicode_FromString */
         PyTuple_SET_ITEM (result, i,
-                          PyString_FromString (strv[i]));
+                          PyUnicode_FromString (strv[i]));
     }
 
     return result;
@@ -137,7 +150,10 @@ _moo_pyobject_to_strv_no_check (PyObject *seq,
     for (i = 0; i < len; ++i)
     {
         PyObject *item = PySequence_ITEM (seq, i);
-        ret[i] = g_strdup (PyString_AS_STRING (item));
+        /* Python 3: PyString_AS_STRING -> PyUnicode_AsUTF8 */
+        const char *item_str = PyUnicode_AsUTF8(item);
+        ret[i] = g_strdup (item_str);
+        Py_DECREF(item);
     }
 
     if (++n == CACHE_SIZE)
@@ -180,12 +196,15 @@ int _moo_pyobject_to_strv (PyObject *obj, char ***dest)
 
         g_return_val_if_fail (item != NULL, FALSE);
 
-        if (!PyString_Check (item))
+        /* Python 3: PyString_Check -> PyUnicode_Check */
+        if (!PyUnicode_Check (item))
         {
+            Py_DECREF(item);
             PyErr_SetString (PyExc_TypeError,
                              "argument must be a sequence of strings");
             return FALSE;
         }
+        Py_DECREF(item);
     }
 
     *dest = _moo_pyobject_to_strv_no_check (obj, len);
@@ -221,6 +240,7 @@ _moo_pyobject_to_object_array_no_check (PyObject *seq,
     {
         PyObject *item = PySequence_ITEM (seq, i);
         moo_object_array_append (ar, pygobject_get (item));
+        Py_DECREF(item);
     }
 
     return ar;
@@ -266,10 +286,12 @@ _moo_pyobject_to_object_array (PyObject        *obj,
 
         if (!pygobject_check (item, type))
         {
+            Py_DECREF(item);
             PyErr_SetString (PyExc_TypeError,
                              "argument must be a sequence of objects");
             return FALSE;
         }
+        Py_DECREF(item);
     }
 
     *dest = _moo_pyobject_to_object_array_no_check (obj, len);
@@ -411,7 +433,8 @@ string_to_pyobject (gpointer str)
     if (!str)
         return_RuntimeError ("got NULL string");
     else
-        return PyString_FromString (str);
+        /* Python 3: PyString_FromString -> PyUnicode_FromString */
+        return PyUnicode_FromString (str);
 }
 
 PyObject *
@@ -472,12 +495,22 @@ _moo_py_err_string (void)
     str_value = PyObject_Str (value);
     str_tb = PyObject_Str (tb);
 
-    if (str_exc)
-        g_string_append_printf (string, "%s\n", PyString_AS_STRING (str_exc));
-    if (str_value)
-        g_string_append_printf (string, "%s\n", PyString_AS_STRING (str_value));
-    if (str_tb)
-        g_string_append_printf (string, "%s\n", PyString_AS_STRING (str_tb));
+    /* Python 3: PyString_AS_STRING -> PyUnicode_AsUTF8 */
+    if (str_exc) {
+        const char *exc_str = PyUnicode_AsUTF8(str_exc);
+        if (exc_str)
+            g_string_append_printf (string, "%s\n", exc_str);
+    }
+    if (str_value) {
+        const char *value_str = PyUnicode_AsUTF8(str_value);
+        if (value_str)
+            g_string_append_printf (string, "%s\n", value_str);
+    }
+    if (str_tb) {
+        const char *tb_str = PyUnicode_AsUTF8(str_tb);
+        if (tb_str)
+            g_string_append_printf (string, "%s\n", tb_str);
+    }
 
     Py_XDECREF(exc);
     Py_XDECREF(value);
@@ -501,14 +534,14 @@ typedef struct {
 
 
 static PyObject *
-_moo_py_file_close (G_GNUC_UNUSED PyObject *self)
+_moo_py_file_close (G_GNUC_UNUSED PyObject *self, G_GNUC_UNUSED PyObject *args)
 {
     return_None;
 }
 
 
 static PyObject *
-_moo_py_file_flush (G_GNUC_UNUSED PyObject *self)
+_moo_py_file_flush (G_GNUC_UNUSED PyObject *self, G_GNUC_UNUSED PyObject *args)
 {
     return_None;
 }
@@ -517,9 +550,10 @@ _moo_py_file_flush (G_GNUC_UNUSED PyObject *self)
 static PyObject *
 _moo_py_file_write (PyObject *self, PyObject *args)
 {
-    char *string;
+    const char *string;
     MooPyFile *file = (MooPyFile *) self;
 
+    /* Python 3: Use "s" for Unicode strings */
     if (!PyArg_ParseTuple (args, "s", &string))
         return NULL;
 
@@ -540,9 +574,9 @@ static PyMethodDef MooPyFile_methods[] = {
 
 
 static PyTypeObject MooPyFile_Type = {
-    PyObject_HEAD_INIT(NULL)
-    0,                                  /* ob_size */
-    "MooPyFile",                /* tp_name */
+    /* Python 3: PyObject_HEAD_INIT -> PyVarObject_HEAD_INIT */
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "MooPyFile",                        /* tp_name */
     sizeof (MooPyFile),                 /* tp_basicsize */
     0,                                  /* tp_itemsize */
     /* methods */
@@ -550,7 +584,7 @@ static PyTypeObject MooPyFile_Type = {
     (printfunc) 0,                      /* tp_print */
     (getattrfunc) 0,                    /* tp_getattr */
     (setattrfunc) 0,                    /* tp_setattr */
-    (cmpfunc) 0,                        /* tp_compare */
+    0,                                  /* tp_reserved (Python 3: was tp_compare) */
     (reprfunc) 0,                       /* tp_repr */
     (PyNumberMethods*) 0,               /* tp_as_number */
     (PySequenceMethods*) 0,             /* tp_as_sequence */
@@ -577,7 +611,7 @@ static PyTypeObject MooPyFile_Type = {
     (descrgetfunc) 0,                   /* tp_descr_get */
     (descrsetfunc) 0,                   /* tp_descr_set */
     0,                                  /* tp_dictoffset */
-    (initproc) 0,         /* tp_init */
+    (initproc) 0,                       /* tp_init */
     (allocfunc) 0,                      /* tp_alloc */
     (newfunc) 0,                        /* tp_new */
     (freefunc) 0,                       /* tp_free */

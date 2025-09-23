@@ -7,7 +7,6 @@
 import fnmatch
 import os
 import re
-import string
 import sys
 
 def class2cname(klass, method):
@@ -66,7 +65,8 @@ class Overrides:
         while line:
             if line == '%%\n' or line == '%%':
                 if lines:
-                    bufs.append((string.join(lines, ''), startline))
+                    # Python 3: string.join(lines, '') -> ''.join(lines)
+                    bufs.append((''.join(lines), startline))
                 startline = linenum + 1
                 lines = []
             else:
@@ -74,7 +74,8 @@ class Overrides:
             line = fp.readline()
             linenum = linenum + 1
         if lines:
-            bufs.append((string.join(lines, ''), startline))
+            # Python 3: string.join(lines, '') -> ''.join(lines)
+            bufs.append((''.join(lines), startline))
         if not bufs: return
 
         for buf, startline in bufs:
@@ -83,34 +84,39 @@ class Overrides:
         os.chdir(oldpath)
 
     def __parse_override(self, buffer, startline, filename):
-        pos = string.find(buffer, '\n')
+        # Python 3: string.find(buffer, '\n') -> buffer.find('\n')
+        pos = buffer.find('\n')
         if pos >= 0:
             line = buffer[:pos]
             rest = buffer[pos+1:]
         else:
             line = buffer ; rest = ''
-        words = string.split(line)
+        # Python 3: string.split(line) -> line.split()
+        words = line.split()
         command = words[0]
         if (command == 'ignore' or
             command == 'ignore-' + sys.platform):
             "ignore/ignore-platform [functions..]"
             for func in words[1:]:
                 self.ignores[func] = 1
-            for func in string.split(rest):
+            # Python 3: string.split(rest) -> rest.split()
+            for func in rest.split():
                 self.ignores[func] = 1
         elif (command == 'ignore-glob' or
               command == 'ignore-glob-' + sys.platform):
             "ignore-glob/ignore-glob-platform [globs..]"
             for func in words[1:]:
                 self.glob_ignores.append(func)
-            for func in string.split(rest):
+            # Python 3: string.split(rest) -> rest.split()
+            for func in rest.split():
                 self.glob_ignores.append(func)
         elif (command == 'ignore-type' or
               command == 'ignore-type-' + sys.platform):
             "ignore-type/ignore-type-platform [typenames..]"
             for typename in words[1:]:
                 self.type_ignores[typename] = 1
-            for typename in string.split(rest):
+            # Python 3: string.split(rest) -> rest.split()
+            for typename in rest.split():
                 self.type_ignores[typename] = 1
         elif command == 'override':
             "override function/method [kwargs|noargs|onearg] [staticmethod|classmethod]"
@@ -159,11 +165,13 @@ class Overrides:
             "include filename"
             for filename in words[1:]:
                 self.handle_file(filename)
-            for filename in string.split(rest):
+            # Python 3: string.split(rest) -> rest.split()
+            for filename in rest.split():
                 self.handle_file(filename)
         elif command == 'import':
             "import module1 [\n module2, \n module3 ...]"
-            for line in string.split(buffer, '\n'):
+            # Python 3: string.split(buffer, '\n') -> buffer.split('\n')
+            for line in buffer.split('\n'):
                 match = import_pat.match(line)
                 if match:
                     self.imports.append(match.groups())

@@ -70,7 +70,14 @@ do_load_file (const char *path)
     }
 
     moo_disable_win32_error_message ();
+    
+    /* Python 3: PyImport_ExecCodeModule is deprecated, use PyImport_ExecCodeModuleEx */
+#if PY_VERSION_HEX >= 0x03000000
+    mod = PyImport_ExecCodeModuleEx (modname, code, path);
+#else
     mod = PyImport_ExecCodeModule (modname, code);
+#endif
+
     moo_enable_win32_error_message ();
 
     Py_DECREF (code);
@@ -81,12 +88,14 @@ do_load_file (const char *path)
         {
             PyObject *type, *value, *traceback;
             PyObject *r;
-            char *s;
+            const char *s;
 
             PyErr_Fetch (&type, &value, &traceback);
             PyErr_NormalizeException (&type, &value, &traceback);
             r = PyObject_Repr (value);
-            s = r ? PyString_AsString (r) : NULL;
+            
+            /* Python 3: PyString_AsString -> PyUnicode_AsUTF8 */
+            s = r ? PyUnicode_AsUTF8 (r) : NULL;
 
             if (s && strcmp (s, "PluginWontLoad") == 0)
             {

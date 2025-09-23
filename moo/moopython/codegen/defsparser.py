@@ -1,8 +1,19 @@
 # -*- Mode: Python; py-indent-offset: 4 -*-
 import os, sys
-from . import scmexpr
-from .definitions import BoxedDef, EnumDef, FlagsDef, FunctionDef, \
-     InterfaceDef, MethodDef, ObjectDef, PointerDef, VirtualDef
+
+# Python 3: Fix relative imports with fallback
+try:
+    from . import scmexpr
+except ImportError:
+    import scmexpr
+
+# Python 3: Fix relative imports with fallback
+try:
+    from .definitions import BoxedDef, EnumDef, FlagsDef, FunctionDef, \
+         InterfaceDef, MethodDef, ObjectDef, PointerDef, VirtualDef
+except ImportError:
+    from definitions import BoxedDef, EnumDef, FlagsDef, FunctionDef, \
+         InterfaceDef, MethodDef, ObjectDef, PointerDef, VirtualDef
 
 include_path = ['.']
 
@@ -125,27 +136,31 @@ class DefsParser(IncludeParser):
 
     def find_methods(self, obj):
         objname = obj.c_name
+        # Python 3: filter() returns iterator, convert to list
         return list(filter(lambda func, on=objname: isinstance(func, MethodDef) and
                       func.of_object == on, self.functions))
 
     def find_virtuals(self, obj):
         objname = obj.c_name
+        # Python 3: filter() returns iterator, convert to list
         retval = list(filter(lambda func, on=objname: isinstance(func, VirtualDef) and
                         func.of_object == on, self.virtuals))
         return retval
 
     def find_functions(self):
+        # Python 3: List comprehension is already fine, no changes needed
         return [func for func in self.functions if isinstance(func, FunctionDef) and
                       not func.is_constructor_of]
 
     def ifdef(self, *args):
         if args[0] in self.defines:
             for arg in args[1:]:
-                #print >> sys.stderr, "-----> Handling conditional definition (%s): %s" % (args[0], arg)
+                # Python 3: print statement syntax was already converted
+                # print("-----> Handling conditional definition (%s): %s" % (args[0], arg), file=sys.stderr)
                 self.handle(arg)
         else:
             pass
-            #print >> sys.stderr, "-----> Conditional %s is not true" % (args[0],)
+            # print("-----> Conditional %s is not true" % (args[0],), file=sys.stderr)
 
     def ifndef(self, *args):
         if args[0] not in self.defines:

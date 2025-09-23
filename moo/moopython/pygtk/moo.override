@@ -17,13 +17,10 @@
 headers
 #include <Python.h>
 #define NO_IMPORT_PYGOBJECT
-#define NO_IMPORT_PYGTK
+/* Remove PyGTK includes for PyGObject conversion */
 #include <pygobject.h>
-G_BEGIN_DECLS
-#include <pygtk/pygtk.h>
-G_END_DECLS
 #include "moopython/moopython-utils.h"
-#include "moopython/pygtk/moo-pygtk.h"
+#include "moopython/pygobject/moo-pygobject.h"
 
 #include "mooutils/mooprefsdialog.h"
 #include "mooutils/moocombo.h"
@@ -79,37 +76,38 @@ G_END_DECLS
 %%
 modulename moo
 %%
-import gobject.GObject as PyGObject_Type
-import gtk.Bin as PyGtkBin_Type
-import gtk.Widget as PyGtkWidget_Type
-import gtk.VBox as PyGtkVBox_Type
-import gtk.Button as PyGtkButton_Type
-import gtk.TextBuffer as PyGtkTextBuffer_Type
-import gtk.TextView as PyGtkTextView_Type
-import gtk.Window as PyGtkWindow_Type
-import gtk.Dialog as PyGtkDialog_Type
-import gtk.Entry as PyGtkEntry_Type
-import gtk.Table as PyGtkTable_Type
-import gtk.Frame as PyGtkFrame_Type
-import gtk.TreeModel as PyGtkTreeModel_Type
-import gtk.TreeModelFilter as PyGtkTreeModelFilter_Type
-import gtk.ComboBox as PyGtkComboBox_Type
-import gtk.FileChooser as PyGtkFileChooser_Type
-import gtk.TextTag as PyGtkTextTag_Type
-import gtk.TextTagTable as PyGtkTextTagTable_Type
-import gtk.gdk.Pixbuf as PyGdkPixbuf_Type
-import gtk.Action as PyGtkAction_Type
-import gtk.RadioAction as PyGtkRadioAction_Type
-import gtk.ToggleAction as PyGtkToggleAction_Type
-import gtk.ToggleToolButton as PyGtkToggleToolButton_Type
-import gtk.Object as PyGtkObject_Type
-import gtk.Container as PyGtkContainer_Type
-import gtk.AccelGroup as PyGtkAccelGroup_Type
-import gtk.Notebook as PyGtkNotebook_Type
-import gtk.Paned as PyGtkPaned_Type
-import gtk.HPaned as PyGtkHPaned_Type
-import gtk.VPaned as PyGtkVPaned_Type
-import gio.File as PyGFile_Type
+/* PyGObject 3.0 import statements - updated for gi.repository */
+import gi.repository.GObject.GObject as PyGObject_Type
+import gi.repository.Gtk.Bin as PyGtkBin_Type
+import gi.repository.Gtk.Widget as PyGtkWidget_Type
+import gi.repository.Gtk.Box as PyGtkVBox_Type
+import gi.repository.Gtk.Button as PyGtkButton_Type
+import gi.repository.Gtk.TextBuffer as PyGtkTextBuffer_Type
+import gi.repository.Gtk.TextView as PyGtkTextView_Type
+import gi.repository.Gtk.Window as PyGtkWindow_Type
+import gi.repository.Gtk.Dialog as PyGtkDialog_Type
+import gi.repository.Gtk.Entry as PyGtkEntry_Type
+import gi.repository.Gtk.Grid as PyGtkTable_Type
+#import gi.repository.Gtk.Frame as PyGtkFrame_Type
+import gi.repository.Gtk.TreeModel as PyGtkTreeModel_Type
+import gi.repository.Gtk.TreeModelFilter as PyGtkTreeModelFilter_Type
+import gi.repository.Gtk.ComboBox as PyGtkComboBox_Type
+import gi.repository.Gtk.FileChooser as PyGtkFileChooser_Type
+import gi.repository.Gtk.TextTag as PyGtkTextTag_Type
+import gi.repository.Gtk.TextTagTable as PyGtkTextTagTable_Type
+import gi.repository.GdkPixbuf.Pixbuf as PyGdkPixbuf_Type
+#import gi.repository.Gtk.Action as PyGtkAction_Type
+import gi.repository.Gtk.RadioAction as PyGtkRadioAction_Type
+import gi.repository.Gtk.ToggleAction as PyGtkToggleAction_Type
+import gi.repository.Gtk.ToggleToolButton as PyGtkToggleToolButton_Type
+import gi.repository.Gtk.Widget as PyGtkObject_Type
+import gi.repository.Gtk.Container as PyGtkContainer_Type
+import gi.repository.Gtk.AccelGroup as PyGtkAccelGroup_Type
+import gi.repository.Gtk.Notebook as PyGtkNotebook_Type
+import gi.repository.Gtk.Paned as PyGtkPaned_Type
+import gi.repository.Gtk.Paned as PyGtkHPaned_Type
+import gi.repository.Gtk.Paned as PyGtkVPaned_Type
+import gi.repository.Gio.File as PyGFile_Type
 %%
 ignore-glob
   *_get_type

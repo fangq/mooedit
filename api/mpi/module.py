@@ -57,7 +57,8 @@ class _XmlObject(object):
         for attr, value in list(elm.items()):
             if not self._parse_attribute(attr, value):
                 raise RuntimeError('unknown attribute %s' % (attr,))
-        for child in elm.getchildren():
+        # Python 3 fix: Replace elm.getchildren() with list(elm)
+        for child in elm:
             self._parse_xml_element(module, child)
 
 class _ParamBase(_XmlObject):
@@ -548,6 +549,7 @@ class Module(object):
         assert root.tag == 'module'
         mod.name = root.get('name')
         assert mod.name is not None
-        for elm in root.getchildren():
+        # Python 3 fix: Replace root.getchildren() with list(root) or just iterate directly
+        for elm in root:
             mod.__parse_module_entry(elm)
         return mod

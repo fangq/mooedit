@@ -18950,7 +18950,7 @@ fi
 
 
 
-for ac_prog in python2 python2.7 python2.6 python2.5 python2.4 python2.3 python2.2 python2.1 python2.0 python
+for ac_prog in python3 python3.7 python3.6 python3.5 python3.4 python3.3 python3.2 python3.1 python3.0 python
 do
   # Extract the first word of "$ac_prog", so it can be a program name with args.
 set dummy $ac_prog; ac_word=$2
@@ -21429,7 +21429,7 @@ fi
 
   MOO_ENABLE_PYTHON=true
   _moo_want_python="auto"
-  _moo_python_version=2.2
+  _moo_python_version=3.6
 
 
 # Check whether --with-python was given.
@@ -21440,7 +21440,7 @@ then :
       MOO_ENABLE_PYTHON=false
     elif test "x$with_python" = "xyes"; then
       _moo_want_python="yes"
-      _moo_python_version="2.2"
+      _moo_python_version="3.6"
     else
       _moo_want_python="yes"
       _moo_python_version="$with_python"
@@ -21489,19 +21489,19 @@ printf "%s\n" "$PYTHON_LIBS" >&6; }
 
 
 pkg_failed=no
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for pygtk-2.0 >= 2.6.0" >&5
-printf %s "checking for pygtk-2.0 >= 2.6.0... " >&6; }
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for pygobject-3.0" >&5
+printf %s "checking for pygobject-3.0... " >&6; }
 
 if test -n "$PYGTK_CFLAGS"; then
     pkg_cv_PYGTK_CFLAGS="$PYGTK_CFLAGS"
  elif test -n "$PKG_CONFIG"; then
     if test -n "$PKG_CONFIG" && \
-    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"pygtk-2.0 >= 2.6.0\""; } >&5
-  ($PKG_CONFIG --exists --print-errors "pygtk-2.0 >= 2.6.0") 2>&5
+    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"pygobject-3.0\""; } >&5
+  ($PKG_CONFIG --exists --print-errors "pygobject-3.0") 2>&5
   ac_status=$?
   printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
   test $ac_status = 0; }; then
-  pkg_cv_PYGTK_CFLAGS=`$PKG_CONFIG --cflags "pygtk-2.0 >= 2.6.0" 2>/dev/null`
+  pkg_cv_PYGTK_CFLAGS=`$PKG_CONFIG --cflags "pygobject-3.0" 2>/dev/null`
 		      test "x$?" != "x0" && pkg_failed=yes
 else
   pkg_failed=yes
@@ -21513,12 +21513,12 @@ if test -n "$PYGTK_LIBS"; then
     pkg_cv_PYGTK_LIBS="$PYGTK_LIBS"
  elif test -n "$PKG_CONFIG"; then
     if test -n "$PKG_CONFIG" && \
-    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"pygtk-2.0 >= 2.6.0\""; } >&5
-  ($PKG_CONFIG --exists --print-errors "pygtk-2.0 >= 2.6.0") 2>&5
+    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"pygobject-3.0\""; } >&5
+  ($PKG_CONFIG --exists --print-errors "pygobject-3.0") 2>&5
   ac_status=$?
   printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
   test $ac_status = 0; }; then
-  pkg_cv_PYGTK_LIBS=`$PKG_CONFIG --libs "pygtk-2.0 >= 2.6.0" 2>/dev/null`
+  pkg_cv_PYGTK_LIBS=`$PKG_CONFIG --libs "pygobject-3.0" 2>/dev/null`
 		      test "x$?" != "x0" && pkg_failed=yes
 else
   pkg_failed=yes
@@ -21539,9 +21539,9 @@ else
         _pkg_short_errors_supported=no
 fi
         if test $_pkg_short_errors_supported = yes; then
-	        PYGTK_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors --cflags --libs "pygtk-2.0 >= 2.6.0" 2>&1`
+	        PYGTK_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors --cflags --libs "pygobject-3.0" 2>&1`
         else
-	        PYGTK_PKG_ERRORS=`$PKG_CONFIG --print-errors --cflags --libs "pygtk-2.0 >= 2.6.0" 2>&1`
+	        PYGTK_PKG_ERRORS=`$PKG_CONFIG --print-errors --cflags --libs "pygobject-3.0" 2>&1`
         fi
 	# Put the nasty error message in config.log where it belongs
 	echo "$PYGTK_PKG_ERRORS" >&5
@@ -21608,7 +21608,7 @@ then :
   printf %s "(cached) " >&6
 else $as_nop
 
-	for am_cv_pathless_PYTHON in python2 python2.7 python2.6 python none; do
+	for am_cv_pathless_PYTHON in python3 python3.7 python3.6 python none; do
 	  test "$am_cv_pathless_PYTHON" = none && break
 	  prog="import sys
 # split strings by '.' and convert to numeric.  Append some zeros
@@ -21897,7 +21897,12 @@ if can_use_sysconfig:
     scheme = 'posix_prefix'
   sitedir = sysconfig.get_path('purelib', scheme, vars={'base':'$am_py_prefix'})
 else:
-  from distutils import sysconfig
+  try:
+    import sysconfig
+  except ImportError:
+    can_use_sysconfig = 0
+  else:
+    can_use_sysconfig = 1
   sitedir = sysconfig.get_python_lib(0, 0, prefix='$am_py_prefix')
 sys.stdout.write(sitedir)"`
    #
@@ -21947,7 +21952,12 @@ if can_use_sysconfig:
     scheme = 'posix_prefix'
   sitedir = sysconfig.get_path('platlib', scheme, vars={'platbase':'$am_py_exec_prefix'})
 else:
-  from distutils import sysconfig
+  try:
+    import sysconfig
+  except ImportError:
+    can_use_sysconfig = 0
+  else:
+    can_use_sysconfig = 1
   sitedir = sysconfig.get_python_lib(1, 0, prefix='$am_py_exec_prefix')
 sys.stdout.write(sitedir)"`
    #
@@ -21984,7 +21994,7 @@ printf "%s\n" "$am_cv_python_pyexecdir" >&6; }
     # Check for distutils first
     { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for the distutils Python package" >&5
 printf %s "checking for the distutils Python package... " >&6; }
-    $PYTHON -c "import distutils" 2>/dev/null
+    $PYTHON -c "import sysconfig" 2>/dev/null
     if test $? -eq 0; then
         python_found=yes
     	{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
@@ -21993,9 +22003,9 @@ printf "%s\n" "yes" >&6; }
         python_found=no
     	{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
 printf "%s\n" "no" >&6; }
-    	{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: cannot import Python module \"distutils\".
+    	{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: cannot import Python module \"sysconfig\".
 Please check your Python installation." >&5
-printf "%s\n" "$as_me: WARNING: cannot import Python module \"distutils\".
+printf "%s\n" "$as_me: WARNING: cannot import Python module \"sysconfig\".
 Please check your Python installation." >&2;}
     fi
   fi
@@ -22007,8 +22017,8 @@ Please check your Python installation." >&2;}
 printf %s "checking for Python include path... " >&6; }
 
       if test -z "$PYTHON_INCLUDES"; then
-          python_path=`$PYTHON -c "import distutils.sysconfig; \
-                                   print distutils.sysconfig.get_python_inc();"`
+          python_path=`$PYTHON -c "import sysconfig; \
+                                   print(sysconfig.get_path('include'));"`
           if test -n "${python_path}"; then
               python_path="-I$python_path"
           fi
@@ -22024,27 +22034,27 @@ printf "%s\n" "$PYTHON_INCLUDES" >&6; }
   # if PYTHON_LIBS is set, do not do anything
   if test $python_found = yes; then
       { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking Python linker flags" >&5
-printf %s "checking Python linker flags... " >&6; }
+printf %s "checking Python linker flags ... " >&6; }
 
       if test "x$PYTHON_LIBS" = "x"; then
           # (makes two attempts to ensure we've got a version number
           # from the interpreter)
-          py_version=`$PYTHON -c "from distutils.sysconfig import *; \
-                      from string import join; \
-                      print join(get_config_vars('VERSION'))"`
+          py_version=`$PYTHON -c "from sysconfig import get_config_var; \
+                      print(get_config_var('VERSION') or '')"`
           if test "x$py_version" = "xNone"; then
               if test "x$PYTHON_VERSION" != "x"; then
                   py_version=$PYTHON_VERSION
               else
                   py_version=`$PYTHON -c "import sys; \
-                              print sys.version[:3]"`
+                              print(sys.version[:3])"`
               fi
           fi
 
-          PYTHON_LIBS=`$PYTHON -c "from distutils.sysconfig import *; \
-                                   from string import join; \
-                                   print '-L' + PREFIX + '/lib', \
-                                   '-lpython';"`$py_version
+          PYTHON_LIBS=`$PYTHON -c "from sysconfig import get_config_var; \
+                                   import sys; \
+                                   prefix = get_config_var('PREFIX') or sys.prefix; \
+                                   version = get_config_var('VERSION') or f'{sys.version_info.major}.{sys.version_info.minor}'; \
+                                   print(f'-L{prefix}/lib -lpython');"`$py_version
       fi
 
       { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $PYTHON_LIBS" >&5
@@ -22072,19 +22082,19 @@ printf "%s\n" "$as_me: WARNING: Found python interpreter but no development head
 
 
 pkg_failed=no
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for pygtk-2.0 >= 2.6.0" >&5
-printf %s "checking for pygtk-2.0 >= 2.6.0... " >&6; }
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for pygobject-3.0" >&5
+printf %s "checking for pygobject-3.0... " >&6; }
 
 if test -n "$PYGTK_CFLAGS"; then
     pkg_cv_PYGTK_CFLAGS="$PYGTK_CFLAGS"
  elif test -n "$PKG_CONFIG"; then
     if test -n "$PKG_CONFIG" && \
-    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"pygtk-2.0 >= 2.6.0\""; } >&5
-  ($PKG_CONFIG --exists --print-errors "pygtk-2.0 >= 2.6.0") 2>&5
+    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"pygobject-3.0\""; } >&5
+  ($PKG_CONFIG --exists --print-errors "pygobject-3.0") 2>&5
   ac_status=$?
   printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
   test $ac_status = 0; }; then
-  pkg_cv_PYGTK_CFLAGS=`$PKG_CONFIG --cflags "pygtk-2.0 >= 2.6.0" 2>/dev/null`
+  pkg_cv_PYGTK_CFLAGS=`$PKG_CONFIG --cflags "pygobject-3.0" 2>/dev/null`
 		      test "x$?" != "x0" && pkg_failed=yes
 else
   pkg_failed=yes
@@ -22096,12 +22106,12 @@ if test -n "$PYGTK_LIBS"; then
     pkg_cv_PYGTK_LIBS="$PYGTK_LIBS"
  elif test -n "$PKG_CONFIG"; then
     if test -n "$PKG_CONFIG" && \
-    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"pygtk-2.0 >= 2.6.0\""; } >&5
-  ($PKG_CONFIG --exists --print-errors "pygtk-2.0 >= 2.6.0") 2>&5
+    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"pygobject-3.0\""; } >&5
+  ($PKG_CONFIG --exists --print-errors "pygobject-3.0") 2>&5
   ac_status=$?
   printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
   test $ac_status = 0; }; then
-  pkg_cv_PYGTK_LIBS=`$PKG_CONFIG --libs "pygtk-2.0 >= 2.6.0" 2>/dev/null`
+  pkg_cv_PYGTK_LIBS=`$PKG_CONFIG --libs "pygobject-3.0" 2>/dev/null`
 		      test "x$?" != "x0" && pkg_failed=yes
 else
   pkg_failed=yes
@@ -22122,9 +22132,9 @@ else
         _pkg_short_errors_supported=no
 fi
         if test $_pkg_short_errors_supported = yes; then
-	        PYGTK_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors --cflags --libs "pygtk-2.0 >= 2.6.0" 2>&1`
+	        PYGTK_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors --cflags --libs "pygobject-3.0" 2>&1`
         else
-	        PYGTK_PKG_ERRORS=`$PKG_CONFIG --print-errors --cflags --libs "pygtk-2.0 >= 2.6.0" 2>&1`
+	        PYGTK_PKG_ERRORS=`$PKG_CONFIG --print-errors --cflags --libs "pygobject-3.0" 2>&1`
         fi
 	# Put the nasty error message in config.log where it belongs
 	echo "$PYGTK_PKG_ERRORS" >&5
@@ -22154,11 +22164,13 @@ fi
 
 
     if $MOO_ENABLE_PYTHON; then
-      PYGTK_DEFS_DIR=`$PKG_CONFIG --variable=defsdir pygtk-2.0`
+      PYGTK_DEFS_DIR=`$PKG_CONFIG --variable=defsdir pygtk-3.0`
 
-      PYGOBJECT_DEFS_DIR=`$PKG_CONFIG --variable=defsdir pygobject-2.0`
+      PYGOBJECT_DEFS_DIR=`$PKG_CONFIG --variable=defsdir pygobject-3.0`
 
     fi
+
+    #MOO_ENABLE_PYTHON=true
 
     if $MOO_ENABLE_PYTHON; then
       { printf "%s\n" "$as_me:${as_lineno-$LINENO}: compiling python support" >&5

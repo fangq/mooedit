@@ -1,5 +1,5 @@
 /*
- *   moo-pygtk.h
+ *   moo-pygobject.h
  *
  *   Copyright (C) 2004-2010 by Yevgen Muntyan <emuntyan@users.sourceforge.net>
  *
@@ -13,22 +13,28 @@
  *   License along with medit.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef MOO_PYGTK_H
-#define MOO_PYGTK_H
+#ifndef MOO_PYGOBJECT_H
+#define MOO_PYGOBJECT_H
 
 #include <Python.h>
 #include <mooglib/moo-glib.h>
 
 G_BEGIN_DECLS
 
+/* Python 3 module initialization function - required for Python 3 extensions */
+PyMODINIT_FUNC PyInit__moo(void);
+
+/* Internal initialization function */
 gboolean    _moo_module_init            (void);
 
+/* External function table - defined elsewhere */
 extern const PyMethodDef _moo_functions[];
 
+/* Class and constant registration functions */
 void        _moo_register_classes       (PyObject       *dict);
 void        _moo_add_constants          (PyObject       *module,
                                          const char     *strip_prefix);
 
 G_END_DECLS
 
-#endif /* MOO_PYGTK_H */
+#endif /* MOO_PYGOBJECT_H */

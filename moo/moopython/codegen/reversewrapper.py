@@ -1,7 +1,13 @@
 ### -*- python -*-
 ### Code to generate "Reverse Wrappers", i.e. C->Python wrappers
 ### (C) 2004 Gustavo Carneiro <gjc@gnome.org>
-from . import argtypes
+
+# Python 3: Fix relative imports with fallback
+try:
+    from . import argtypes
+except ImportError:
+    import argtypes
+
 import os
 
 DEBUG_MODE = ('PYGTK_CODEGEN_DEBUG' in os.environ)
@@ -45,7 +51,9 @@ class CodeSink(object):
 class FileCodeSink(CodeSink):
     def __init__(self, fp):
         CodeSink.__init__(self)
-        assert isinstance(fp, file)
+        # Python 3: 'file' type doesn't exist, check for file-like object
+        if not hasattr(fp, 'write'):
+            raise TypeError("fp must be a file-like object")
         self.fp = fp
 
     def writeln(self, line=''):
@@ -200,6 +208,7 @@ class ReverseWrapper(object):
             sink.writeln('static %s' % self.return_type.get_c_type())
         else:
             sink.writeln(self.return_type.get_c_type())
+        # Python 3: map() returns iterator, convert to list
         c_proto_params = list(map(Parameter.format_for_c_proto, self.parameters))
         sink.writeln("%s(%s)\n{" % (self.cname, ", ".join(c_proto_params)))
 
@@ -387,13 +396,13 @@ class StringParam(Parameter):
         if self.props.get('optional', False):
             self.wrapper.add_declaration("PyObject *py_%s = NULL;" % self.name)
             self.wrapper.write_code(code=("if (%s)\n"
-                                          "    py_%s = PyString_FromString(%s);\n"
+                                          "    py_%s = PyUnicode_FromString(%s);\n"  # Python 3: PyString_FromString -> PyUnicode_FromString
                                           % (self.name, self.name, self.name)),
                                     cleanup=("Py_XDECREF(py_%s);" % self.name))
             self.wrapper.add_pyargv_item("py_%s" % self.name, optional=True)
         else:
             self.wrapper.add_declaration("PyObject *py_%s;" % self.name)
-            self.wrapper.write_code(code=("py_%s = PyString_FromString(%s);" %
+            self.wrapper.write_code(code=("py_%s = PyUnicode_FromString(%s);" %  # Python 3: PyString_FromString -> PyUnicode_FromString
                                           (self.name, self.name)),
                                     cleanup=("Py_DECREF(py_%s);" % self.name),
                                     failure_expression=("!py_%s" % self.name))
@@ -493,7 +502,7 @@ class IntParam(Parameter):
 
     def convert_c2py(self):
         self.wrapper.add_declaration("PyObject *py_%s;" % self.name)
-        self.wrapper.write_code(code=("py_%s = PyInt_FromLong(%s);" %
+        self.wrapper.write_code(code=("py_%s = PyLong_FromLong(%s);" %  # Python 3: PyInt_FromLong -> PyLong_FromLong
                                       (self.name, self.name)),
                                 cleanup=("Py_DECREF(py_%s);" % self.name))
         self.wrapper.add_pyargv_item("py_%s" % self.name)
@@ -530,7 +539,7 @@ class IntPtrParam(Parameter):
     def convert_c2py(self):
         if self.props["direction"] == "inout":
             self.wrapper.add_declaration("PyObject *py_%s;" % self.name)
-            self.wrapper.write_code(code=("py_%s = PyInt_FromLong(*%s);" %
+            self.wrapper.write_code(code=("py_%s = PyLong_FromLong(*%s);" %  # Python 3: PyInt_FromLong -> PyLong_FromLong
                                           (self.name, self.name)),
                                     cleanup=("Py_DECREF(py_%s);" % self.name))
             self.wrapper.add_pyargv_item("py_%s" % self.name)

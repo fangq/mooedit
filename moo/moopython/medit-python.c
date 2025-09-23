@@ -32,7 +32,7 @@ create_script_dict (const char *name)
 
     if (name)
     {
-        PyObject *py_name = PyString_FromString (name);
+        PyObject *py_name = PyUnicode_FromString (name);
         PyDict_SetItemString (dict, "__name__", py_name);
         Py_XDECREF (py_name);
     }
