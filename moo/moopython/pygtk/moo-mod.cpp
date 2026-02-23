@@ -38,20 +38,7 @@ extern PyTypeObject PyGObject_Type;
 #define PyGtkWindow_Type PyGObject_Type
 #define PyGFile_Type PyGObject_Type
 #define PyGtkAccelGroup_Type PyGObject_Type
-#define PyGdkPixbuf_Type PyGObject_Type
 #endif
-#include <string.h>
-static int pygdk_rectangle_from_pyobject(PyObject *obj, GdkRectangle *r) {
-    if (!obj || obj == Py_None) { r->x=r->y=r->width=r->height=0; return 1; }
-    if (PyTuple_Check(obj) && PyTuple_Size(obj)==4) {
-        r->x=(int)PyLong_AsLong(PyTuple_GET_ITEM(obj,0));
-        r->y=(int)PyLong_AsLong(PyTuple_GET_ITEM(obj,1));
-        r->width=(int)PyLong_AsLong(PyTuple_GET_ITEM(obj,2));
-        r->height=(int)PyLong_AsLong(PyTuple_GET_ITEM(obj,3));
-        return !PyErr_Occurred(); }
-    PyErr_SetString(PyExc_TypeError, "expected (x,y,w,h) tuple"); return 0;
-}
-
 
 /* PyGTK TextIter functions don't exist in PyGObject - provide stubs */
 static int pygtk_text_iter_from_pyobject(PyObject *obj, GtkTextIter *iter) {
@@ -1971,7 +1958,7 @@ _wrap_moo_edit_get_cursor_pos(PyGObject *self)
     moo_test_coverage_record ("python", "moo_edit_get_cursor_pos");
 #endif
     
-    ret = *moo_edit_get_cursor_pos(MOO_EDIT(self->obj));
+    ret = moo_edit_get_cursor_pos(MOO_EDIT(self->obj));
     
     return pygtk_text_iter_to_pyobject(&ret);
 }
@@ -2051,7 +2038,7 @@ _wrap_moo_edit_get_end_pos(PyGObject *self)
     moo_test_coverage_record ("python", "moo_edit_get_end_pos");
 #endif
     
-    ret = *moo_edit_get_end_pos(MOO_EDIT(self->obj));
+    ret = moo_edit_get_end_pos(MOO_EDIT(self->obj));
     
     return pygtk_text_iter_to_pyobject(&ret);
 }
@@ -2263,7 +2250,7 @@ _wrap_moo_edit_get_pos_at_line(PyGObject *self, PyObject *args, PyObject *kwargs
     moo_test_coverage_record ("python", "moo_edit_get_pos_at_line");
 #endif
     
-    ret = *moo_edit_get_pos_at_line(MOO_EDIT(self->obj), line);
+    ret = moo_edit_get_pos_at_line(MOO_EDIT(self->obj), line);
     
     return pygtk_text_iter_to_pyobject(&ret);
 }
@@ -2281,7 +2268,7 @@ _wrap_moo_edit_get_pos_at_line_end(PyGObject *self, PyObject *args, PyObject *kw
     moo_test_coverage_record ("python", "moo_edit_get_pos_at_line_end");
 #endif
     
-    ret = *moo_edit_get_pos_at_line_end(MOO_EDIT(self->obj), line);
+    ret = moo_edit_get_pos_at_line_end(MOO_EDIT(self->obj), line);
     
     return pygtk_text_iter_to_pyobject(&ret);
 }
@@ -2335,7 +2322,7 @@ _wrap_moo_edit_get_selection_end_pos(PyGObject *self)
     moo_test_coverage_record ("python", "moo_edit_get_selection_end_pos");
 #endif
     
-    ret = *moo_edit_get_selection_end_pos(MOO_EDIT(self->obj));
+    ret = moo_edit_get_selection_end_pos(MOO_EDIT(self->obj));
     
     return pygtk_text_iter_to_pyobject(&ret);
 }
@@ -2349,7 +2336,7 @@ _wrap_moo_edit_get_selection_start_pos(PyGObject *self)
     moo_test_coverage_record ("python", "moo_edit_get_selection_start_pos");
 #endif
     
-    ret = *moo_edit_get_selection_start_pos(MOO_EDIT(self->obj));
+    ret = moo_edit_get_selection_start_pos(MOO_EDIT(self->obj));
     
     return pygtk_text_iter_to_pyobject(&ret);
 }
@@ -2363,7 +2350,7 @@ _wrap_moo_edit_get_start_pos(PyGObject *self)
     moo_test_coverage_record ("python", "moo_edit_get_start_pos");
 #endif
     
-    ret = *moo_edit_get_start_pos(MOO_EDIT(self->obj));
+    ret = moo_edit_get_start_pos(MOO_EDIT(self->obj));
     
     return pygtk_text_iter_to_pyobject(&ret);
 }
@@ -10614,103 +10601,58 @@ _moo_register_classes(PyObject *d)
 
 #line 10603 "/home/fangq/space/git/Temp/newsrc/mooedit/moo/moopython/pygtk/moo-mod.c"
     pyg_register_boxed(d, "PaneLabel", MOO_TYPE_PANE_LABEL, &PyMooPaneLabel_Type);
-    if (PyErr_Occurred()) PyErr_Clear();
     pyg_register_boxed(d, "PaneParams", MOO_TYPE_PANE_PARAMS, &PyMooPaneParams_Type);
-    if (PyErr_Occurred()) PyErr_Clear();
     pyg_register_boxed(d, "PluginInfo", MOO_TYPE_PLUGIN_INFO, &PyMooPluginInfo_Type);
-    if (PyErr_Occurred()) PyErr_Clear();
     pyg_register_boxed(d, "PluginParams", MOO_TYPE_PLUGIN_PARAMS, &PyMooPluginParams_Type);
-    if (PyErr_Occurred()) PyErr_Clear();
     pyg_register_pointer(d, "UiNode", MOO_TYPE_UI_NODE, &PyMooUiNode_Type);
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooAction", MOO_TYPE_ACTION, &PyMooAction_Type, Py_BuildValue("(O)", &PyGtkAction_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooActionCollection", MOO_TYPE_ACTION_COLLECTION, &PyMooActionCollection_Type, Py_BuildValue("(O)", &PyGObject_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooApp", MOO_TYPE_APP, &PyMooApp_Type, Py_BuildValue("(O)", &PyGObject_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooBigPaned", MOO_TYPE_BIG_PANED, &PyMooBigPaned_Type, Py_BuildValue("(O)", &PyGtkFrame_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooCombo", MOO_TYPE_COMBO, &PyMooCombo_Type, Py_BuildValue("(O)", &PyGtkTable_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooDocPlugin", MOO_TYPE_DOC_PLUGIN, &PyMooDocPlugin_Type, Py_BuildValue("(O)", &PyGObject_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pyg_register_class_init(MOO_TYPE_DOC_PLUGIN, __MooDocPlugin_class_init);
     pygobject_register_class(d, "MooEdit", MOO_TYPE_EDIT, &PyMooEdit_Type, Py_BuildValue("(O)", &PyGObject_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooEditAction", MOO_TYPE_EDIT_ACTION, &PyMooEditAction_Type, Py_BuildValue("(O)", &PyMooAction_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pyg_register_class_init(MOO_TYPE_EDIT_ACTION, __MooEditAction_class_init);
     pygobject_register_class(d, "MooEditTab", MOO_TYPE_EDIT_TAB, &PyMooEditTab_Type, Py_BuildValue("(O)", &PyGtkVBox_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooEditor", MOO_TYPE_EDITOR, &PyMooEditor_Type, Py_BuildValue("(O)", &PyGObject_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooEntry", MOO_TYPE_ENTRY, &PyMooEntry_Type, Py_BuildValue("(O)", &PyGtkEntry_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooFileDialog", MOO_TYPE_FILE_DIALOG, &PyMooFileDialog_Type, Py_BuildValue("(O)", &PyGObject_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooGladeXml", MOO_TYPE_GLADE_XML, &PyMooGladeXml_Type, Py_BuildValue("(O)", &PyGObject_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooHistoryCombo", MOO_TYPE_HISTORY_COMBO, &PyMooHistoryCombo_Type, Py_BuildValue("(O)", &PyMooCombo_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooHistoryList", MOO_TYPE_HISTORY_LIST, &PyMooHistoryList_Type, Py_BuildValue("(O)", &PyGObject_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooHistoryMgr", MOO_TYPE_HISTORY_MGR, &PyMooHistoryMgr_Type, Py_BuildValue("(O)", &PyGObject_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooLineMark", MOO_TYPE_LINE_MARK, &PyMooLineMark_Type, Py_BuildValue("(O)", &PyGObject_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooEditBookmark", MOO_TYPE_EDIT_BOOKMARK, &PyMooEditBookmark_Type, Py_BuildValue("(O)", &PyMooLineMark_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooLuaState", MOO_TYPE_LUA_STATE, &PyMooLuaState_Type, Py_BuildValue("(O)", &PyGObject_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooMenuAction", MOO_TYPE_MENU_ACTION, &PyMooMenuAction_Type, Py_BuildValue("(O)", &PyMooAction_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooMenuMgr", MOO_TYPE_MENU_MGR, &PyMooMenuMgr_Type, Py_BuildValue("(O)", &PyGObject_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooMenuToolButton", MOO_TYPE_MENU_TOOL_BUTTON, &PyMooMenuToolButton_Type, Py_BuildValue("(O)", &PyGtkToggleToolButton_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooNotebook", MOO_TYPE_NOTEBOOK, &PyMooNotebook_Type, Py_BuildValue("(O)", &PyGtkNotebook_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooOpenInfo", MOO_TYPE_OPEN_INFO, &PyMooOpenInfo_Type, Py_BuildValue("(O)", &PyGObject_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooPane", MOO_TYPE_PANE, &PyMooPane_Type, Py_BuildValue("(O)", &PyGtkObject_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooPaned", MOO_TYPE_PANED, &PyMooPaned_Type, Py_BuildValue("(O)", &PyGtkBin_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooPlugin", MOO_TYPE_PLUGIN, &PyMooPlugin_Type, Py_BuildValue("(O)", &PyGObject_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pyg_register_class_init(MOO_TYPE_PLUGIN, __MooPlugin_class_init);
     pygobject_register_class(d, "MooPrefsDialog", MOO_TYPE_PREFS_DIALOG, &PyMooPrefsDialog_Type, Py_BuildValue("(O)", &PyGtkDialog_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pyg_register_class_init(MOO_TYPE_PREFS_DIALOG, __MooPrefsDialog_class_init);
     pygobject_register_class(d, "MooPrefsPage", MOO_TYPE_PREFS_PAGE, &PyMooPrefsPage_Type, Py_BuildValue("(O)", &PyGtkVBox_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pyg_register_class_init(MOO_TYPE_PREFS_PAGE, __MooPrefsPage_class_init);
     pygobject_register_class(d, "MooReloadInfo", MOO_TYPE_RELOAD_INFO, &PyMooReloadInfo_Type, Py_BuildValue("(O)", &PyGObject_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooSaveInfo", MOO_TYPE_SAVE_INFO, &PyMooSaveInfo_Type, Py_BuildValue("(O)", &PyGObject_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooTextBuffer", MOO_TYPE_TEXT_BUFFER, &PyMooTextBuffer_Type, Py_BuildValue("(O)", &PyGtkTextBuffer_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooTextView", MOO_TYPE_TEXT_VIEW, &PyMooTextView_Type, Py_BuildValue("(O)", &PyGtkTextView_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooLineView", MOO_TYPE_LINE_VIEW, &PyMooLineView_Type, Py_BuildValue("(O)", &PyMooTextView_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooCmdView", MOO_TYPE_CMD_VIEW, &PyMooCmdView_Type, Py_BuildValue("(O)", &PyMooLineView_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooEditView", MOO_TYPE_EDIT_VIEW, &PyMooEditView_Type, Py_BuildValue("(O)", &PyMooTextView_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooUiXml", MOO_TYPE_UI_XML, &PyMooUiXml_Type, Py_BuildValue("(O)", &PyGObject_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooWinPlugin", MOO_TYPE_WIN_PLUGIN, &PyMooWinPlugin_Type, Py_BuildValue("(O)", &PyGObject_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pyg_register_class_init(MOO_TYPE_WIN_PLUGIN, __MooWinPlugin_class_init);
     pygobject_register_class(d, "MooWindow", MOO_TYPE_WINDOW, &PyMooWindow_Type, Py_BuildValue("(O)", &PyGtkWindow_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
     pygobject_register_class(d, "MooEditWindow", MOO_TYPE_EDIT_WINDOW, &PyMooEditWindow_Type, Py_BuildValue("(O)", &PyMooWindow_Type));
-    if (PyErr_Occurred()) PyErr_Clear();
 
 #ifdef __cplusplus
 }
 #endif
-
+}

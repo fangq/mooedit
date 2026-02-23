@@ -1,13 +1,8 @@
-[module]
-version=2.0
-type=Python
-file=python.py
-
-[plugin]
-id=Python
-name=Python
-description=Python support
-author=Yevgen Muntyan
-version=0.1
-enabled=true
-visible=false
+[Plugin]
+Loader=Python
+Module=python
+_Name=Python
+_Description=Python support
+Author=Yevgen Muntyan
+Version=0.1
+Visible=false

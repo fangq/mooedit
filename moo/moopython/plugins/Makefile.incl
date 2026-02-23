@@ -23,7 +23,7 @@ EXTRA_DIST +=					\
 if MOO_ENABLE_PYTHON
 
 moo_python_ini_files = $(moo_python_ini_in_files:.ini.in=.ini)
-built_plugins_sources += $(moo_python_ini_in_files) $(moo_python_ini_files)
+built_plugins_sources += $(moo_python_ini_files)
 
 moopython/plugins/%.ini: $(srcdir)/moopython/plugins/%.ini.in $(top_builddir)/config.status
 	$(AM_V_at)$(MKDIR_P) moopython/plugins
