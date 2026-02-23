@@ -1,0 +1,8 @@
+[Plugin]
+Loader=Python
+Module=insert_date_and_time
+_Name=Insert Date and Time
+_Description=Insert date and time into the document
+Author=Yevgen Muntyan
+Version=0.1
+Visible=false

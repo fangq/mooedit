@@ -17,7 +17,7 @@
 
 # Python 3 + PyGObject imports
 import gi
-gi.require_version('Gtk', '3.0')
+gi.require_version('Gtk', '2.0')
 from gi.repository import Gtk as _gtk
 from gi.repository import GObject as _gobject
 

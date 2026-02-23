@@ -24,7 +24,7 @@ create_script_dict (const char *name)
 {
     PyObject *dict, *builtins;
 
-    builtins = PyImport_ImportModule ("__builtin__");
+    builtins = PyImport_ImportModule ("builtins");
     g_return_val_if_fail (builtins != NULL, NULL);
 
     dict = PyDict_New ();
@@ -66,7 +66,7 @@ run_string (const char *str,
     code = Py_CompileString (str, filename ? filename : "<script>", Py_file_input);
 
     if (code)
-        ret = PyEval_EvalCode ((PyCodeObject*) code, globals, locals);
+        ret = PyEval_EvalCode (code, globals, locals);
 
     Py_XDECREF (code);
     Py_DECREF (locals);

@@ -511,7 +511,18 @@ moo_python_api_init (void)
         Py_InitializeEx (FALSE);
 
         /* pygtk wants sys.argv */
-        PySys_SetArgv (argc, argv);
+        /* Python 3 requires wchar_t** for PySys_SetArgv */
+        {
+            wchar_t **wargv = (wchar_t**)PyMem_Malloc(sizeof(wchar_t*) * (argc + 1));
+            int i;
+            for (i = 0; i < argc; i++)
+                wargv[i] = Py_DecodeLocale(argv[i], NULL);
+            wargv[argc] = NULL;
+            PySys_SetArgv(argc, wargv);
+            for (i = 0; i < argc; i++)
+                PyMem_RawFree(wargv[i]);
+            PyMem_Free(wargv);
+        }
         _moo_py_init_print_funcs ();
     }
 
