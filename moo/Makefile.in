@@ -107,7 +107,7 @@ bin_PROGRAMS = $(am__EXEEXT_1)
 @MOO_OS_DARWIN_FALSE@@MOO_OS_WIN32_FALSE@am__append_12 = -ldl
 @MOO_DEV_MODE_TRUE@am__append_13 = moolua/moo-lua-api.cpp \
 @MOO_DEV_MODE_TRUE@	moolua/gtk-lua-api.cpp
-@MOO_ENABLE_PYTHON_TRUE@am__append_14 = $(moo_python_ini_in_files) $(moo_python_ini_files)
+@MOO_ENABLE_PYTHON_TRUE@am__append_14 = $(moo_python_ini_files)
 @MOO_ENABLE_PYTHON_TRUE@am__append_15 = $(moo_python_sources)
 @MOO_ENABLE_PYTHON_TRUE@am__append_16 = $(built_moo_python_sources)
 @MOO_BUILD_CTAGS_TRUE@am__append_17 = \
@@ -578,11 +578,10 @@ am__objects_17 = moopython/pygtk/_moo_la-moo-mod.lo
 am__objects_19 = $(am__objects_2) _moo_la-marshals.lo $(am__objects_2) \
 	$(am__objects_18)
 @MOO_ENABLE_PYTHON_TRUE@am__objects_20 = $(am__objects_2)
-@MOO_ENABLE_PYTHON_TRUE@am__objects_21 = $(am__objects_2) \
-@MOO_ENABLE_PYTHON_TRUE@	$(am__objects_20)
+@MOO_ENABLE_PYTHON_TRUE@am__objects_21 = $(am__objects_20)
 am__objects_22 = $(am__objects_21) $(am__objects_2)
-@MOO_BUILD_MODULE_TRUE@nodist__moo_la_OBJECTS = $(am__objects_19) \
-@MOO_BUILD_MODULE_TRUE@	$(am__objects_22)
+@MOO_ENABLE_PYTHON_TRUE@nodist__moo_la_OBJECTS = $(am__objects_19) \
+@MOO_ENABLE_PYTHON_TRUE@	$(am__objects_22)
 _moo_la_OBJECTS = $(am__moo_la_OBJECTS) $(nodist__moo_la_OBJECTS)
 AM_V_lt = $(am__v_lt_@AM_V@)
 am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
@@ -1905,9 +1904,9 @@ CLEANFILES = $(am__append_26) $(am__append_28) $(am__append_31) \
 	$(built_moo_sources) $(built_plugins_sources)
 noinst_LIBRARIES = 
 AM_CPPFLAGS = $(MOO_CPPFLAGS) -I$(top_srcdir)/doc/built \
-	-Imooutils/glade -Imoofileview -Imoofileview/glade \
-	-DLUA_USE_APICHECK $(am__append_10) $(am__append_11) \
-	-I$(srcdir)/plugins/support
+	-Imooutils/glade $(PYTHON_INCLUDES) -Imoofileview \
+	-Imoofileview/glade -DLUA_USE_APICHECK $(am__append_10) \
+	$(am__append_11) -I$(srcdir)/plugins/support
 AM_CFLAGS = $(MOO_CFLAGS) $(am__append_8) $(am__append_24)
 AM_CXXFLAGS = $(MOO_CXXFLAGS)
 
@@ -2457,8 +2456,8 @@ genplatxml_args = $(am__append_19) $(am__append_20) $(am__append_21)
 @MOO_BUILD_MODULE_TRUE@_moo_la_LDFLAGS = -avoid-version -module \
 @MOO_BUILD_MODULE_TRUE@	-export-symbols-regex init_moo \
 @MOO_BUILD_MODULE_TRUE@	$(am__append_29)
-@MOO_BUILD_MODULE_TRUE@_moo_la_CFLAGS = $(AM_CFLAGS)
-@MOO_BUILD_MODULE_TRUE@_moo_la_CXXFLAGS = $(AM_CXXFLAGS)
+@MOO_BUILD_MODULE_TRUE@_moo_la_CFLAGS = $(AM_CFLAGS) $(PYTHON_INCLUDES)
+@MOO_BUILD_MODULE_TRUE@_moo_la_CXXFLAGS = $(AM_CXXFLAGS) $(PYTHON_INCLUDES)
 @MOO_BUILD_MODULE_TRUE@python_DATA = moopython/pygtk/moo.py
 @MOO_BUILD_MODULE_TRUE@_moo_la_SOURCES = \
 @MOO_BUILD_MODULE_TRUE@	medit-module/medit-module.cpp	\
@@ -2467,9 +2466,9 @@ genplatxml_args = $(am__append_19) $(am__append_20) $(am__append_21)
 
 @MOO_BUILD_MODULE_TRUE@_moo_la_LIBADD = $(MOO_LIBS) $(moo_libadd) \
 @MOO_BUILD_MODULE_TRUE@	$(am__append_32)
-@MOO_BUILD_MODULE_TRUE@nodist__moo_la_SOURCES = \
-@MOO_BUILD_MODULE_TRUE@	$(built_moo_sources)		\
-@MOO_BUILD_MODULE_TRUE@	$(built_plugins_sources)
+@MOO_ENABLE_PYTHON_TRUE@nodist__moo_la_SOURCES = \
+@MOO_ENABLE_PYTHON_TRUE@	$(built_moo_sources)		\
+@MOO_ENABLE_PYTHON_TRUE@	$(built_plugins_sources)
 
 all: $(BUILT_SOURCES)
 	$(MAKE) $(AM_MAKEFLAGS) all-am

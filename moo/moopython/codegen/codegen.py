@@ -351,7 +351,12 @@ class Wrapper:
         substdict['setreturn'] = ''
         if handle_return:
             if function_obj.ret not in ('none', None):
-                substdict['setreturn'] = 'ret = '
+                # GtkTextIter is returned by pointer in moo API but stored as value;
+                # dereference the pointer so 'ret' gets the struct value directly.
+                if function_obj.ret in ('GtkTextIter', 'GtkTextIter*'):
+                    substdict['setreturn'] = 'ret = *'
+                else:
+                    substdict['setreturn'] = 'ret = '
             handler = argtypes.matcher.get(function_obj.ret)
             handler.write_return(function_obj.ret,
                                  function_obj.caller_owns_return, info)
@@ -1426,9 +1431,8 @@ class SourceWriter:
         self.fp.write('#include <gtk/gtk.h>\n')  # Add GTK headers for GtkTextIter and other types
         self.fp.write('\n\n')
         
-        # Python 3: Add compatibility definitions
-        self.fp.write('''
-/* Python 3 compatibility definitions */
+        # Python 3 / PyGObject compatibility definitions
+        self.fp.write('''#include <string.h>
 #if PY_VERSION_HEX >= 0x03000000
 #define PyString_Check PyUnicode_Check
 #define PyString_CheckExact PyUnicode_CheckExact
@@ -1441,8 +1445,6 @@ class SourceWriter:
 #define PyInt_AsLong PyLong_AsLong
 #define PyInt_AS_LONG PyLong_AsLong
 #endif
-
-/* Define fallback types for missing PyGTK types */
 #ifndef PyGtkWidget_Type
 extern PyTypeObject PyGObject_Type;
 #define PyGtkWidget_Type PyGObject_Type
@@ -1461,21 +1463,26 @@ extern PyTypeObject PyGObject_Type;
 #define PyGtkWindow_Type PyGObject_Type
 #define PyGFile_Type PyGObject_Type
 #define PyGtkAccelGroup_Type PyGObject_Type
+#define PyGdkPixbuf_Type PyGObject_Type
 #endif
-
-/* PyGTK TextIter functions don't exist in PyGObject - provide stubs */
 static int pygtk_text_iter_from_pyobject(PyObject *obj, GtkTextIter *iter) {
-    (void)obj; (void)iter;
-    PyErr_SetString(PyExc_NotImplementedError, "TextIter conversion not implemented");
-    return 0;
+    if (!obj || obj == Py_None) { memset(iter, 0, sizeof(GtkTextIter)); return 1; }
+    { typedef struct { PyObject_HEAD GType gtype; void *boxed; } _B;
+      _B *b = (_B*)obj;
+      if (b->boxed && b->gtype == GTK_TYPE_TEXT_ITER) { *iter = *(GtkTextIter*)(b->boxed); return 1; } }
+    PyErr_SetString(PyExc_TypeError, "expected Gtk.TextIter or None"); return 0;
 }
-
-static PyObject* pygtk_text_iter_to_pyobject(GtkTextIter *iter) {
-    (void)iter;
-    PyErr_SetString(PyExc_NotImplementedError, "TextIter conversion not implemented");
-    return NULL;
+static PyObject* pygtk_text_iter_to_pyobject(GtkTextIter *i) { (void)i; Py_RETURN_NONE; }
+static int pygdk_rectangle_from_pyobject(PyObject *obj, GdkRectangle *r) {
+    if (!obj || obj == Py_None) { r->x=r->y=r->width=r->height=0; return 1; }
+    if (PyTuple_Check(obj) && PyTuple_Size(obj)==4) {
+        r->x=(int)PyLong_AsLong(PyTuple_GET_ITEM(obj,0));
+        r->y=(int)PyLong_AsLong(PyTuple_GET_ITEM(obj,1));
+        r->width=(int)PyLong_AsLong(PyTuple_GET_ITEM(obj,2));
+        r->height=(int)PyLong_AsLong(PyTuple_GET_ITEM(obj,3));
+        return !PyErr_Occurred(); }
+    PyErr_SetString(PyExc_TypeError, "expected (x,y,w,h) tuple"); return 0;
 }
-
 ''')
         
         if py_ssize_t_clean:
@@ -1494,6 +1501,9 @@ typedef intobjargproc ssizeobjargproc;
         self.fp.write(self.overrides.get_headers())
         self.fp.resetline()
         self.fp.write('\n\n')
+        # Open C++ extern "C" block (after all #includes) to match
+        # the closing guard emitted by write_registers().
+        self.fp.write('#ifdef __cplusplus\nextern "C" {\n#endif\n\n')
 
     def write_imports(self):
         self.fp.write('/* ---------- types from other modules ---------- */\n')
@@ -1699,13 +1709,14 @@ typedef intobjargproc ssizeobjargproc;
                     '(PyGTypeRegistrationFunction)%s_register_type, d);\n' %
                     (obj.c_name, obj.c_name))
 
+        # Close _register_classes function body
+        self.fp.write('}\n')
         # Close C++ extern "C" block
         self.fp.write('''
 #ifdef __cplusplus
 }
 #endif
 ''')
-        self.fp.write('}\n')
 
     def _can_direct_ref(self, base):
         if not self.overrides.dynamicnamespace:

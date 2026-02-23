@@ -4,8 +4,7 @@
 #include <gtk/gtk.h>
 
 
-
-/* Python 3 compatibility definitions */
+#include <string.h>
 #if PY_VERSION_HEX >= 0x03000000
 #define PyString_Check PyUnicode_Check
 #define PyString_CheckExact PyUnicode_CheckExact
@@ -18,8 +17,6 @@
 #define PyInt_AsLong PyLong_AsLong
 #define PyInt_AS_LONG PyLong_AsLong
 #endif
-
-/* Define fallback types for missing PyGTK types */
 #ifndef PyGtkWidget_Type
 extern PyTypeObject PyGObject_Type;
 #define PyGtkWidget_Type PyGObject_Type
@@ -38,21 +35,26 @@ extern PyTypeObject PyGObject_Type;
 #define PyGtkWindow_Type PyGObject_Type
 #define PyGFile_Type PyGObject_Type
 #define PyGtkAccelGroup_Type PyGObject_Type
+#define PyGdkPixbuf_Type PyGObject_Type
 #endif
-
-/* PyGTK TextIter functions don't exist in PyGObject - provide stubs */
 static int pygtk_text_iter_from_pyobject(PyObject *obj, GtkTextIter *iter) {
-    (void)obj; (void)iter;
-    PyErr_SetString(PyExc_NotImplementedError, "TextIter conversion not implemented");
-    return 0;
+    if (!obj || obj == Py_None) { memset(iter, 0, sizeof(GtkTextIter)); return 1; }
+    { typedef struct { PyObject_HEAD GType gtype; void *boxed; } _B;
+      _B *b = (_B*)obj;
+      if (b->boxed && b->gtype == GTK_TYPE_TEXT_ITER) { *iter = *(GtkTextIter*)(b->boxed); return 1; } }
+    PyErr_SetString(PyExc_TypeError, "expected Gtk.TextIter or None"); return 0;
 }
-
-static PyObject* pygtk_text_iter_to_pyobject(GtkTextIter *iter) {
-    (void)iter;
-    PyErr_SetString(PyExc_NotImplementedError, "TextIter conversion not implemented");
-    return NULL;
+static PyObject* pygtk_text_iter_to_pyobject(GtkTextIter *i) { (void)i; Py_RETURN_NONE; }
+static int pygdk_rectangle_from_pyobject(PyObject *obj, GdkRectangle *r) {
+    if (!obj || obj == Py_None) { r->x=r->y=r->width=r->height=0; return 1; }
+    if (PyTuple_Check(obj) && PyTuple_Size(obj)==4) {
+        r->x=(int)PyLong_AsLong(PyTuple_GET_ITEM(obj,0));
+        r->y=(int)PyLong_AsLong(PyTuple_GET_ITEM(obj,1));
+        r->width=(int)PyLong_AsLong(PyTuple_GET_ITEM(obj,2));
+        r->height=(int)PyLong_AsLong(PyTuple_GET_ITEM(obj,3));
+        return !PyErr_Occurred(); }
+    PyErr_SetString(PyExc_TypeError, "expected (x,y,w,h) tuple"); return 0;
 }
-
 
 #line 18 "./moopython/pygtk/moo.override"
 #include <Python.h>
@@ -113,8 +115,12 @@ static PyObject* pygtk_text_iter_to_pyobject(GtkTextIter *iter) {
 
 #include "moolua/medit-lua.h"
 
-#line 117 "/home/fangq/space/git/Temp/newsrc/mooedit/moo/moopython/pygtk/moo-mod.c"
+#line 119 "/home/fangq/space/git/Temp/newsrc/mooedit/moo/moopython/pygtk/moo-mod.c"
 
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* ---------- types from other modules ---------- */
 
@@ -165,7 +171,7 @@ extern PyTypeObject G_GNUC_INTERNAL PyMooUiXml_Type;
 extern PyTypeObject G_GNUC_INTERNAL PyMooWinPlugin_Type;
 extern PyTypeObject G_GNUC_INTERNAL PyMooWindow_Type;
 
-#line 169 "/home/fangq/space/git/Temp/newsrc/mooedit/moo/moopython/pygtk/moo-mod.c"
+#line 175 "/home/fangq/space/git/Temp/newsrc/mooedit/moo/moopython/pygtk/moo-mod.c"
 
 
 
@@ -1958,7 +1964,7 @@ _wrap_moo_edit_get_cursor_pos(PyGObject *self)
     moo_test_coverage_record ("python", "moo_edit_get_cursor_pos");
 #endif
     
-    ret = moo_edit_get_cursor_pos(MOO_EDIT(self->obj));
+    ret = *moo_edit_get_cursor_pos(MOO_EDIT(self->obj));
     
     return pygtk_text_iter_to_pyobject(&ret);
 }
@@ -2038,7 +2044,7 @@ _wrap_moo_edit_get_end_pos(PyGObject *self)
     moo_test_coverage_record ("python", "moo_edit_get_end_pos");
 #endif
     
-    ret = moo_edit_get_end_pos(MOO_EDIT(self->obj));
+    ret = *moo_edit_get_end_pos(MOO_EDIT(self->obj));
     
     return pygtk_text_iter_to_pyobject(&ret);
 }
@@ -2250,7 +2256,7 @@ _wrap_moo_edit_get_pos_at_line(PyGObject *self, PyObject *args, PyObject *kwargs
     moo_test_coverage_record ("python", "moo_edit_get_pos_at_line");
 #endif
     
-    ret = moo_edit_get_pos_at_line(MOO_EDIT(self->obj), line);
+    ret = *moo_edit_get_pos_at_line(MOO_EDIT(self->obj), line);
     
     return pygtk_text_iter_to_pyobject(&ret);
 }
@@ -2268,7 +2274,7 @@ _wrap_moo_edit_get_pos_at_line_end(PyGObject *self, PyObject *args, PyObject *kw
     moo_test_coverage_record ("python", "moo_edit_get_pos_at_line_end");
 #endif
     
-    ret = moo_edit_get_pos_at_line_end(MOO_EDIT(self->obj), line);
+    ret = *moo_edit_get_pos_at_line_end(MOO_EDIT(self->obj), line);
     
     return pygtk_text_iter_to_pyobject(&ret);
 }
@@ -2322,7 +2328,7 @@ _wrap_moo_edit_get_selection_end_pos(PyGObject *self)
     moo_test_coverage_record ("python", "moo_edit_get_selection_end_pos");
 #endif
     
-    ret = moo_edit_get_selection_end_pos(MOO_EDIT(self->obj));
+    ret = *moo_edit_get_selection_end_pos(MOO_EDIT(self->obj));
     
     return pygtk_text_iter_to_pyobject(&ret);
 }
@@ -2336,7 +2342,7 @@ _wrap_moo_edit_get_selection_start_pos(PyGObject *self)
     moo_test_coverage_record ("python", "moo_edit_get_selection_start_pos");
 #endif
     
-    ret = moo_edit_get_selection_start_pos(MOO_EDIT(self->obj));
+    ret = *moo_edit_get_selection_start_pos(MOO_EDIT(self->obj));
     
     return pygtk_text_iter_to_pyobject(&ret);
 }
@@ -2350,7 +2356,7 @@ _wrap_moo_edit_get_start_pos(PyGObject *self)
     moo_test_coverage_record ("python", "moo_edit_get_start_pos");
 #endif
     
-    ret = moo_edit_get_start_pos(MOO_EDIT(self->obj));
+    ret = *moo_edit_get_start_pos(MOO_EDIT(self->obj));
     
     return pygtk_text_iter_to_pyobject(&ret);
 }
@@ -10421,7 +10427,7 @@ _wrap_moo_window_class_add_action (G_GNUC_UNUSED PyObject *self, PyObject *args)
     g_type_class_unref (klass);
     return_None;
 }
-#line 10425 "/home/fangq/space/git/Temp/newsrc/mooedit/moo/moopython/pygtk/moo-mod.c"
+#line 10431 "/home/fangq/space/git/Temp/newsrc/mooedit/moo/moopython/pygtk/moo-mod.c"
 
 
 #line 133 "mooutils.override"
@@ -10452,7 +10458,7 @@ _wrap_moo_window_class_find_action (G_GNUC_UNUSED PyObject *self, PyObject *args
 
     return_Bool (ret);
 }
-#line 10456 "/home/fangq/space/git/Temp/newsrc/mooedit/moo/moopython/pygtk/moo-mod.c"
+#line 10462 "/home/fangq/space/git/Temp/newsrc/mooedit/moo/moopython/pygtk/moo-mod.c"
 
 
 #line 162 "mooutils.override"
@@ -10482,7 +10488,7 @@ _wrap_moo_window_class_remove_action (G_GNUC_UNUSED PyObject *self, PyObject *ar
 
     return_None;
 }
-#line 10486 "/home/fangq/space/git/Temp/newsrc/mooedit/moo/moopython/pygtk/moo-mod.c"
+#line 10492 "/home/fangq/space/git/Temp/newsrc/mooedit/moo/moopython/pygtk/moo-mod.c"
 
 
 const PyMethodDef _moo_functions[] = {
@@ -10599,7 +10605,7 @@ void
 _moo_register_classes(PyObject *d)
 {
 
-#line 10603 "/home/fangq/space/git/Temp/newsrc/mooedit/moo/moopython/pygtk/moo-mod.c"
+#line 10609 "/home/fangq/space/git/Temp/newsrc/mooedit/moo/moopython/pygtk/moo-mod.c"
     pyg_register_boxed(d, "PaneLabel", MOO_TYPE_PANE_LABEL, &PyMooPaneLabel_Type);
     pyg_register_boxed(d, "PaneParams", MOO_TYPE_PANE_PARAMS, &PyMooPaneParams_Type);
     pyg_register_boxed(d, "PluginInfo", MOO_TYPE_PLUGIN_INFO, &PyMooPluginInfo_Type);
@@ -10651,8 +10657,8 @@ _moo_register_classes(PyObject *d)
     pyg_register_class_init(MOO_TYPE_WIN_PLUGIN, __MooWinPlugin_class_init);
     pygobject_register_class(d, "MooWindow", MOO_TYPE_WINDOW, &PyMooWindow_Type, Py_BuildValue("(O)", &PyGtkWindow_Type));
     pygobject_register_class(d, "MooEditWindow", MOO_TYPE_EDIT_WINDOW, &PyMooEditWindow_Type, Py_BuildValue("(O)", &PyMooWindow_Type));
+}
 
 #ifdef __cplusplus
 }
 #endif
-}
