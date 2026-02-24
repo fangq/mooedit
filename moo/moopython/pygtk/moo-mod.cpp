@@ -231,7 +231,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooPaneLabel_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -314,7 +314,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooPaneParams_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -393,7 +393,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooPluginInfo_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -472,7 +472,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooPluginParams_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -581,7 +581,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooUiNode_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -637,7 +637,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooAction_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -693,7 +693,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooActionCollection_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -804,7 +804,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooApp_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -880,7 +880,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooBigPaned_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -1000,7 +1000,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooTextView_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -1095,7 +1095,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooLineView_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -1237,7 +1237,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooCmdView_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -1313,7 +1313,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooCombo_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -1479,7 +1479,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooDocPlugin_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -3187,7 +3187,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooEdit_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -3330,7 +3330,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooEditAction_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -3613,7 +3613,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooLineMark_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -3669,7 +3669,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooEditBookmark_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -3796,7 +3796,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooEditTab_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -3924,7 +3924,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooEditView_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -3980,7 +3980,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooWindow_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -4448,7 +4448,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooEditWindow_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -5267,7 +5267,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooEditor_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -5343,7 +5343,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooEntry_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -5419,7 +5419,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooFileDialog_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -5475,7 +5475,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooGladeXml_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -5551,7 +5551,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooHistoryCombo_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -5627,7 +5627,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooHistoryList_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -5683,7 +5683,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooHistoryMgr_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -5789,7 +5789,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooLuaState_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -5845,7 +5845,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooMenuAction_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -5921,7 +5921,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooMenuMgr_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -5977,7 +5977,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooMenuToolButton_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -6053,7 +6053,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooNotebook_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -6417,7 +6417,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooOpenInfo_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -6821,7 +6821,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooPane_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -6897,7 +6897,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooPaned_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -7221,7 +7221,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooPlugin_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -7881,7 +7881,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooPrefsDialog_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -8148,7 +8148,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooPrefsPage_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -8419,7 +8419,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooReloadInfo_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -8569,7 +8569,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooSaveInfo_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -8625,7 +8625,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooTextBuffer_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -9135,7 +9135,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooUiXml_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */
@@ -9284,7 +9284,7 @@ PyTypeObject G_GNUC_INTERNAL PyMooWinPlugin_Type = {
     (getattrofunc)0,     /* tp_getattro */
     (setattrofunc)0,     /* tp_setattro */
     (PyBufferProcs*)0,  /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,                      /* tp_flags */
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE,                      /* tp_flags */
     NULL,                        /* Documentation string */
     (traverseproc)0,     /* tp_traverse */
     (inquiry)0,             /* tp_clear */

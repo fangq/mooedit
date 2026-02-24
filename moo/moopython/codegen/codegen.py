@@ -287,7 +287,7 @@ class Wrapper:
                       self.objinfo.c_name)
         substdict = self.get_initial_class_substdict()
         if 'tp_flags' not in substdict:
-            substdict['tp_flags'] = 'Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE'
+            substdict['tp_flags'] = 'Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HEAPTYPE'
         substdict['typename'] = self.objinfo.c_name
         if self.overrides.modulename:
             substdict['classname'] = '%s.%s' % (self.overrides.modulename,
