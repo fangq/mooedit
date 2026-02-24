@@ -55,7 +55,6 @@ moopython/pygtk/moo-mod.cpp: $(moo_override_files) moopython/pygtk/moo.defs $(co
 		--register $(PYGTK_DEFS_DIR)/gtk-types.defs \
 		--register $(PYGTK_DEFS_DIR)/gdk-types.defs \
 		--override $(srcdir)/moopython/pygtk/moo.override \
-		--outfilename moopython/pygtk/moo-mod.c \
 		moopython/pygtk/moo.defs > $@.tmp && \
 		mv $@.tmp $@
 

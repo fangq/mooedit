@@ -580,8 +580,8 @@ am__objects_19 = $(am__objects_2) _moo_la-marshals.lo $(am__objects_2) \
 @MOO_ENABLE_PYTHON_TRUE@am__objects_20 = $(am__objects_2)
 @MOO_ENABLE_PYTHON_TRUE@am__objects_21 = $(am__objects_20)
 am__objects_22 = $(am__objects_21) $(am__objects_2)
-@MOO_ENABLE_PYTHON_TRUE@nodist__moo_la_OBJECTS = $(am__objects_19) \
-@MOO_ENABLE_PYTHON_TRUE@	$(am__objects_22)
+@MOO_BUILD_MODULE_TRUE@nodist__moo_la_OBJECTS = $(am__objects_19) \
+@MOO_BUILD_MODULE_TRUE@	$(am__objects_22)
 _moo_la_OBJECTS = $(am__moo_la_OBJECTS) $(nodist__moo_la_OBJECTS)
 AM_V_lt = $(am__v_lt_@AM_V@)
 am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
@@ -2466,9 +2466,9 @@ genplatxml_args = $(am__append_19) $(am__append_20) $(am__append_21)
 
 @MOO_BUILD_MODULE_TRUE@_moo_la_LIBADD = $(MOO_LIBS) $(moo_libadd) \
 @MOO_BUILD_MODULE_TRUE@	$(am__append_32)
-@MOO_ENABLE_PYTHON_TRUE@nodist__moo_la_SOURCES = \
-@MOO_ENABLE_PYTHON_TRUE@	$(built_moo_sources)		\
-@MOO_ENABLE_PYTHON_TRUE@	$(built_plugins_sources)
+@MOO_BUILD_MODULE_TRUE@nodist__moo_la_SOURCES = \
+@MOO_BUILD_MODULE_TRUE@	$(built_moo_sources)		\
+@MOO_BUILD_MODULE_TRUE@	$(built_plugins_sources)
 
 all: $(BUILT_SOURCES)
 	$(MAKE) $(AM_MAKEFLAGS) all-am
@@ -6640,7 +6640,6 @@ moopython/pygtk/moo-mod.cpp: $(moo_override_files) moopython/pygtk/moo.defs $(co
 		--register $(PYGTK_DEFS_DIR)/gtk-types.defs \
 		--register $(PYGTK_DEFS_DIR)/gdk-types.defs \
 		--override $(srcdir)/moopython/pygtk/moo.override \
-		--outfilename moopython/pygtk/moo-mod.c \
 		moopython/pygtk/moo.defs > $@.tmp && \
 		mv $@.tmp $@
 

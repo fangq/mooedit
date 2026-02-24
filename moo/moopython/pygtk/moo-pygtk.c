@@ -26,6 +26,11 @@
 #include "moopython/moopython-pygobjectmod.h"
 #include <mooutils/moostock.h>
 
+/* Symbols defined in the generated moo-mod.cpp (extern "C" linkage) */
+extern const PyMethodDef _moo_functions[];
+extern void _moo_add_constants(PyObject *module, const gchar *strip_prefix);
+extern void _moo_register_classes(PyObject *d);
+
 /**
  * moo_window_class_add_action: (moo.lua 0) (moo.private 1)
  **/
