@@ -297,7 +297,7 @@ _moo_win32_message_box(GtkWidget      *parent,
     if (parent)
         parent = gtk_widget_get_toplevel (parent);
     if (parent)
-        parenthwnd = (HWND) GDK_WINDOW_HWND (parent->window);
+        parenthwnd = (HWND) GDK_WINDOW_HWND (gtk_widget_get_window (parent));
 
     if (title)
         wtitle = (wchar_t*) g_utf8_to_utf16 (title, -1, NULL, NULL, NULL);

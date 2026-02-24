@@ -47,7 +47,7 @@ static void moo_prefs_dialog_get_property   (GObject        *object,
                                              GValue         *value,
                                              GParamSpec     *pspec);
 
-static void moo_prefs_dialog_destroy        (GtkObject      *object);
+static void moo_prefs_dialog_destroy        (GInitiallyUnowned      *object);
 static void moo_prefs_dialog_response       (GtkDialog      *dialog,
                                              int             response);
 
@@ -85,7 +85,7 @@ static void
 moo_prefs_dialog_class_init (MooPrefsDialogClass *klass)
 {
     GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
-    GtkObjectClass *gtkobject_class = GTK_OBJECT_CLASS (klass);
+    GObjectClass *gtkobject_class = G_OBJECT_CLASS(klass);
     GtkDialogClass *dialog_class = GTK_DIALOG_CLASS (klass);
 
     gobject_class->set_property = moo_prefs_dialog_set_property;
@@ -152,9 +152,9 @@ moo_prefs_dialog_init (MooPrefsDialog *dialog)
 #endif /* GTK_MINOR_VERSION >= 6 */
     gtk_dialog_set_default_response (GTK_DIALOG (dialog), GTK_RESPONSE_OK);
 
-    hbox = gtk_hbox_new (FALSE, 0);
+    hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_widget_show (GTK_WIDGET (hbox));
-    gtk_box_pack_start (GTK_BOX (GTK_DIALOG(dialog)->vbox), hbox, TRUE, TRUE, 0);
+    gtk_box_pack_start (GTK_BOX (gtk_dialog_get_content_area (GTK_DIALOG (dialog))), hbox, TRUE, TRUE, 0);
 
     scrolledwindow = gtk_scrolled_window_new (NULL, NULL);
     gtk_widget_show (scrolledwindow);
@@ -195,7 +195,7 @@ destroy_page (GtkTreeModel  *model,
 }
 
 static void
-moo_prefs_dialog_destroy (GtkObject *object)
+moo_prefs_dialog_destroy (GInitiallyUnowned *object)
 {
     MooPrefsDialog *dialog = MOO_PREFS_DIALOG (object);
 
@@ -212,7 +212,7 @@ moo_prefs_dialog_destroy (GtkObject *object)
         dialog->store = NULL;
     }
 
-    GTK_OBJECT_CLASS(moo_prefs_dialog_parent_class)->destroy (object);
+    G_OBJECT_CLASS(moo_prefs_dialog_parent_class)->destroy (object);
 }
 
 

@@ -189,7 +189,7 @@ combo_changed (GtkComboBox   *combo,
 
 
 static void
-moo_tree_helper_destroy (GtkObject *object)
+moo_tree_helper_destroy (GInitiallyUnowned *object)
 {
     MooTreeHelper *helper = MOO_TREE_HELPER (object);
 
@@ -237,7 +237,7 @@ moo_tree_helper_destroy (GtkObject *object)
         helper->widget = NULL;
     }
 
-    GTK_OBJECT_CLASS (_moo_tree_helper_parent_class)->destroy (object);
+    G_OBJECT_CLASS(_moo_tree_helper_parent_class)->destroy (object);
 }
 
 
@@ -312,7 +312,7 @@ tree_helper_move_row_default (G_GNUC_UNUSED MooTreeHelper *helper,
 static void
 _moo_tree_helper_class_init (MooTreeHelperClass *klass)
 {
-    GTK_OBJECT_CLASS(klass)->destroy = moo_tree_helper_destroy;
+    G_OBJECT_CLASS(klass)->destroy = moo_tree_helper_destroy;
 
     klass->move_row = tree_helper_move_row_default;
     klass->new_row = tree_helper_new_row_default;
@@ -1008,7 +1008,7 @@ moo_expander_cell_render (GtkCellRenderer      *cell,
     }
     else if (flags & GTK_CELL_RENDERER_SELECTED)
     {
-        if (GTK_WIDGET_HAS_FOCUS (widget))
+        if (gtk_widget_has_focus (GTK_WIDGET (widget)))
             state = GTK_STATE_SELECTED;
         else
             state = GTK_STATE_ACTIVE;
@@ -1018,14 +1018,14 @@ moo_expander_cell_render (GtkCellRenderer      *cell,
         state = GTK_STATE_PRELIGHT;
     }
 
-    gdk_draw_rectangle (window, widget->style->text_gc[state], FALSE,
+    gdk_draw_rectangle (window, gtk_widget_get_style (widget)->text_gc[state], FALSE,
                         pix_rect.x, pix_rect.y,
                         pix_rect.width, pix_rect.height);
-    gdk_draw_line (window, widget->style->text_gc[state],
+    gdk_draw_line (window, gtk_widget_get_style (widget)->text_gc[state],
                    pix_rect.x + 2, pix_rect.y + pix_rect.height / 2,
                    pix_rect.x + pix_rect.width - 2, pix_rect.y + pix_rect.height / 2);
     if (!exp_cell->expanded)
-        gdk_draw_line (window, widget->style->text_gc[state],
+        gdk_draw_line (window, gtk_widget_get_style (widget)->text_gc[state],
                        pix_rect.x + pix_rect.width / 2, pix_rect.y + 2,
                        pix_rect.x + pix_rect.width / 2, pix_rect.y + pix_rect.height - 2);
 }

@@ -19383,19 +19383,19 @@ printf "%s\n" "$ac_cv_path_SED" >&6; }
 
 
 pkg_failed=no
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for gtk+-2.0" >&5
-printf %s "checking for gtk+-2.0... " >&6; }
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for gtk+-3.0" >&5
+printf %s "checking for gtk+-3.0... " >&6; }
 
 if test -n "$GTK_CFLAGS"; then
     pkg_cv_GTK_CFLAGS="$GTK_CFLAGS"
  elif test -n "$PKG_CONFIG"; then
     if test -n "$PKG_CONFIG" && \
-    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"gtk+-2.0\""; } >&5
-  ($PKG_CONFIG --exists --print-errors "gtk+-2.0") 2>&5
+    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"gtk+-3.0\""; } >&5
+  ($PKG_CONFIG --exists --print-errors "gtk+-3.0") 2>&5
   ac_status=$?
   printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
   test $ac_status = 0; }; then
-  pkg_cv_GTK_CFLAGS=`$PKG_CONFIG --cflags "gtk+-2.0" 2>/dev/null`
+  pkg_cv_GTK_CFLAGS=`$PKG_CONFIG --cflags "gtk+-3.0" 2>/dev/null`
 		      test "x$?" != "x0" && pkg_failed=yes
 else
   pkg_failed=yes
@@ -19407,12 +19407,12 @@ if test -n "$GTK_LIBS"; then
     pkg_cv_GTK_LIBS="$GTK_LIBS"
  elif test -n "$PKG_CONFIG"; then
     if test -n "$PKG_CONFIG" && \
-    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"gtk+-2.0\""; } >&5
-  ($PKG_CONFIG --exists --print-errors "gtk+-2.0") 2>&5
+    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"gtk+-3.0\""; } >&5
+  ($PKG_CONFIG --exists --print-errors "gtk+-3.0") 2>&5
   ac_status=$?
   printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
   test $ac_status = 0; }; then
-  pkg_cv_GTK_LIBS=`$PKG_CONFIG --libs "gtk+-2.0" 2>/dev/null`
+  pkg_cv_GTK_LIBS=`$PKG_CONFIG --libs "gtk+-3.0" 2>/dev/null`
 		      test "x$?" != "x0" && pkg_failed=yes
 else
   pkg_failed=yes
@@ -19433,14 +19433,14 @@ else
         _pkg_short_errors_supported=no
 fi
         if test $_pkg_short_errors_supported = yes; then
-	        GTK_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors --cflags --libs "gtk+-2.0" 2>&1`
+	        GTK_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors --cflags --libs "gtk+-3.0" 2>&1`
         else
-	        GTK_PKG_ERRORS=`$PKG_CONFIG --print-errors --cflags --libs "gtk+-2.0" 2>&1`
+	        GTK_PKG_ERRORS=`$PKG_CONFIG --print-errors --cflags --libs "gtk+-3.0" 2>&1`
         fi
 	# Put the nasty error message in config.log where it belongs
 	echo "$GTK_PKG_ERRORS" >&5
 
-	as_fn_error $? "Package requirements (gtk+-2.0) were not met:
+	as_fn_error $? "Package requirements (gtk+-3.0) were not met:
 
 $GTK_PKG_ERRORS
 
@@ -19745,7 +19745,7 @@ else
 printf "%s\n" "yes" >&6; }
 
 fi
-# PKG_CHECK_MODULES(GDK, gdk-2.0)
+# PKG_CHECK_MODULES(GDK, gdk-3.0)
 
 
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking GLIB version" >&5
@@ -19888,7 +19888,7 @@ printf "%s\n" "#define MOO_BROKEN_GTK_THEME 1" >>confdefs.h
 fi
 
 
-gdk_target=`$PKG_CONFIG --variable=target gdk-2.0`
+gdk_target=`$PKG_CONFIG --variable=target gdk-3.0`
 
 GDK_X11=false
 GDK_WIN32=false
@@ -20802,7 +20802,6 @@ fi
     # really not disable deprecated stuff.
     MOO_CPPFLAGS="$MOO_CPPFLAGS -DGLIB_DISABLE_DEPRECATION_WARNINGS=1"
   else
-    #MOO_CPPFLAGS="$MOO_CPPFLAGS -DG_DISABLE_DEPRECATED -DGTK_DISABLE_DEPRECATED -DGDK_DISABLE_DEPRECATED"
     #MOO_CPPFLAGS="$MOO_CPPFLAGS -DGSEAL_ENABLE"
     #MOO_CPPFLAGS="$MOO_CPPFLAGS -DGTK_DISABLE_SINGLE_INCLUDES"
     true

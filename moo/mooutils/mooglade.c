@@ -212,7 +212,7 @@ static void          collect_signals            (MooMarkupNode  *node,
 static GType         get_type_by_name           (const char     *name);
 static gboolean      parse_bool                 (const char     *value);
 static int           parse_int                  (const char     *value);
-static GtkObject    *parse_adjustment           (const char     *value);
+static GInitiallyUnowned    *parse_adjustment           (const char     *value);
 static gboolean      parse_property             (GParamSpec     *param_spec,
                                                  const char     *value,
                                                  GParameter     *param);
@@ -728,7 +728,7 @@ moo_glade_xml_create_widget (MooGladeXML *xml,
                 else
                     widget = gtk_radio_button_new_with_label (NULL, props->label);
             }
-            else if (type == GTK_TYPE_LIST_ITEM)
+            else if (type == G_TYPE_NONE /* GTK3: removed */)
             {
                 widget = gtk_list_item_new_with_label (props->label);
             }
@@ -811,23 +811,15 @@ create_child (MooGladeXML    *xml,
 
         if (!strcmp (child->internal_child, "vbox") && GTK_IS_DIALOG (real_parent))
         {
-            widget = GTK_DIALOG (real_parent)->vbox;
+            widget = gtk_dialog_get_content_area (GTK_DIALOG (real_parent));
         }
         else if (!strcmp (child->internal_child, "action_area") && GTK_IS_DIALOG (real_parent))
         {
-            widget = GTK_DIALOG (real_parent)->action_area;
+            widget = gtk_dialog_get_action_area (GTK_DIALOG (real_parent));
         }
-        else if (!strcmp (child->internal_child, "entry") && GTK_IS_COMBO_BOX_ENTRY (real_parent))
+        else if (!strcmp (child->internal_child, "entry") && GTK_IS_COMBO_BOX_TEXT (real_parent))
         {
-            widget = GTK_BIN (real_parent)->child;
-        }
-        else if (!strcmp (child->internal_child, "entry") && GTK_IS_COMBO (real_parent))
-        {
-            widget = GTK_COMBO (real_parent)->entry;
-        }
-        else if (!strcmp (child->internal_child, "list") && GTK_IS_COMBO (real_parent))
-        {
-            widget = GTK_COMBO (real_parent)->list;
+            widget = gtk_bin_get_child (GTK_BIN (real_parent));
         }
         else if (!strcmp (child->internal_child, "image") && GTK_IS_IMAGE_MENU_ITEM (real_parent))
         {
@@ -1303,13 +1295,13 @@ child_new (MooGladeXML    *xml,
         }
         else if (!strcmp (internal_child, "entry"))
         {
-            parent_types[0] = GTK_TYPE_COMBO;
-            parent_types[1] = GTK_TYPE_COMBO_BOX_ENTRY;
+            parent_types[0] = G_TYPE_NONE /* GTK3: GtkCombo removed */;
+            parent_types[1] = GTK_TYPE_COMBO_BOX_TEXT;
             n_parent_types = 2;
         }
         else if (!strcmp (internal_child, "list"))
         {
-            parent_types[0] = GTK_TYPE_COMBO;
+            parent_types[0] = G_TYPE_NONE /* GTK3: GtkCombo removed */;
         }
         else if (!strcmp (internal_child, "image"))
         {
@@ -1896,7 +1888,7 @@ parse_property (GParamSpec     *param_spec,
     }
     else if (param_spec->value_type == GTK_TYPE_ADJUSTMENT)
     {
-        GtkObject *adjustment = parse_adjustment (value);
+        GInitiallyUnowned *adjustment = parse_adjustment (value);
 
         if (!adjustment)
         {
@@ -1962,17 +1954,17 @@ parse_int (const char *value)
 }
 
 
-static GtkObject*
+static GInitiallyUnowned*
 parse_adjustment (const char *value)
 {
     char **pieces;
-    GtkObject *adj = NULL;
+    GInitiallyUnowned *adj = NULL;
     double vals[6];
     guint i;
 
     /* XXX is this correct? */
     if (!value)
-        return GTK_OBJECT (g_object_new (GTK_TYPE_ADJUSTMENT, (const char*) NULL));
+        return G_OBJECT(g_object_new (GTK_TYPE_ADJUSTMENT, (const char*) NULL));
 
     pieces = g_strsplit (value, " ", 0);
     g_return_val_if_fail (pieces != NULL, NULL);
@@ -2663,7 +2655,7 @@ get_type_by_name (const char *name)
         add_type ("GtkAction", gtk_action_get_type);
         add_type ("GtkActionGroup", gtk_action_group_get_type);
         add_type ("GtkComboBox", gtk_combo_box_get_type);
-        add_type ("GtkComboBoxEntry", gtk_combo_box_entry_get_type);
+        add_type ("GtkComboBoxText", gtk_combo_box_text_get_type);
         add_type ("GtkExpander", gtk_expander_get_type);
         add_type ("GtkFileChooser", gtk_file_chooser_get_type);
         add_type ("GtkFileChooserDialog", gtk_file_chooser_dialog_get_type);
@@ -2701,9 +2693,9 @@ get_type_by_name (const char *name)
         add_type ("GtkColorButton", gtk_color_button_get_type);
         add_type ("GtkColorSelection", gtk_color_selection_get_type);
         add_type ("GtkColorSelectionDialog", gtk_color_selection_dialog_get_type);
-        add_type ("GtkCombo", gtk_combo_get_type);
+        add_type ("GtkCombo", G_TYPE_NONE /* GTK3: removed */ ? 0 : );
         add_type ("GtkContainer", gtk_container_get_type);
-        add_type ("GtkCurve", gtk_curve_get_type);
+        add_type ("GtkCurve", 0 /* removed */);
         add_type ("GtkDialog", gtk_dialog_get_type);
         add_type ("GtkDrawingArea", gtk_drawing_area_get_type);
         add_type ("GtkEditable", gtk_editable_get_type);
@@ -2714,11 +2706,11 @@ get_type_by_name (const char *name)
         add_type ("GtkFontSelection", gtk_font_selection_get_type);
         add_type ("GtkFontSelectionDialog", gtk_font_selection_dialog_get_type);
         add_type ("GtkFrame", gtk_frame_get_type);
-        add_type ("GtkGammaCurve", gtk_gamma_curve_get_type);
-        add_type ("GtkHBox", gtk_hbox_get_type);
+        add_type ("GtkGammaCurve", 0 /* removed */);
+        add_type ("GtkBox", gtk_hbox_get_type);
         add_type ("GtkHButtonBox", gtk_hbutton_box_get_type);
         add_type ("GtkHPaned", gtk_hpaned_get_type);
-        add_type ("GtkHRuler", gtk_hruler_get_type);
+        add_type ("GtkHRuler", 0 /* removed */);
         add_type ("GtkHScale", gtk_hscale_get_type);
         add_type ("GtkHScrollbar", gtk_hscrollbar_get_type);
         add_type ("GtkHSeparator", gtk_hseparator_get_type);
@@ -2731,12 +2723,12 @@ get_type_by_name (const char *name)
         add_type ("GtkImMulticontext", gtk_im_multicontext_get_type);
         add_type ("GtkImage", gtk_image_get_type);
         add_type ("GtkImageMenuItem", gtk_image_menu_item_get_type);
-        add_type ("GtkInputDialog", gtk_input_dialog_get_type);
+        add_type ("GtkInputDialog", 0 /* removed */);
         add_type ("GtkInvisible", gtk_invisible_get_type);
-        add_type ("GtkItem", gtk_item_get_type);
+        add_type ("GtkItem", 0 /* removed */);
         add_type ("GtkLabel", gtk_label_get_type);
         add_type ("GtkLayout", gtk_layout_get_type);
-        add_type ("GtkList", gtk_list_get_type);
+        add_type ("GtkList", 0 /* removed */);
         add_type ("GtkListStore", gtk_list_store_get_type);
         add_type ("GtkMenu", gtk_menu_get_type);
         add_type ("GtkMenuBar", gtk_menu_bar_get_type);
@@ -2745,14 +2737,14 @@ get_type_by_name (const char *name)
         add_type ("GtkMessageDialog", gtk_message_dialog_get_type);
         add_type ("GtkMisc", gtk_misc_get_type);
         add_type ("GtkNotebook", gtk_notebook_get_type);
-        add_type ("GtkObject", gtk_object_get_type);
-        add_type ("GtkOptionMenu", gtk_option_menu_get_type);
+        add_type ("GInitiallyUnowned", 0 /* removed */);
+        add_type ("GtkOptionMenu", 0 /* removed */);
         add_type ("GtkPaned", gtk_paned_get_type);
         add_type ("GtkProgressBar", gtk_progress_bar_get_type);
         add_type ("GtkRadioButton", gtk_radio_button_get_type);
         add_type ("GtkRadioMenuItem", gtk_radio_menu_item_get_type);
         add_type ("GtkRange", gtk_range_get_type);
-        add_type ("GtkRuler", gtk_ruler_get_type);
+        add_type ("GtkRuler", 0 /* removed */);
         add_type ("GtkScale", gtk_scale_get_type);
         add_type ("GtkScrollbar", gtk_scrollbar_get_type);
         add_type ("GtkScrolledWindow", gtk_scrolled_window_get_type);
@@ -2763,7 +2755,7 @@ get_type_by_name (const char *name)
         add_type ("GtkSpinButton", gtk_spin_button_get_type);
         add_type ("GtkStatusbar", gtk_statusbar_get_type);
         add_type ("GtkStyle", gtk_style_get_type);
-        add_type ("GtkTable", gtk_table_get_type);
+        add_type ("GtkGrid", gtk_table_get_type);
         add_type ("GtkTearoffMenuItem", gtk_tearoff_menu_item_get_type);
         add_type ("GtkTextBuffer", gtk_text_buffer_get_type);
         add_type ("GtkTextChildAnchor", gtk_text_child_anchor_get_type);
@@ -2785,24 +2777,24 @@ get_type_by_name (const char *name)
         add_type ("GtkTreeStore", gtk_tree_store_get_type);
         add_type ("GtkTreeView", gtk_tree_view_get_type);
         add_type ("GtkTreeViewColumn", gtk_tree_view_column_get_type);
-        add_type ("GtkTreeViewMode", gtk_tree_view_mode_get_type);
-        add_type ("GtkVBox", gtk_vbox_get_type);
+        add_type ("GtkTreeViewMode", 0 /* removed */);
+        add_type ("GtkBox", gtk_vbox_get_type);
         add_type ("GtkVButtonBox", gtk_vbutton_box_get_type);
         add_type ("GtkViewport", gtk_viewport_get_type);
         add_type ("GtkVPaned", gtk_vpaned_get_type);
-        add_type ("GtkVRuler", gtk_vruler_get_type);
+        add_type ("GtkVRuler", 0 /* removed */);
         add_type ("GtkVScale", gtk_vscale_get_type);
         add_type ("GtkVScrollbar", gtk_vscrollbar_get_type);
         add_type ("GtkVSeparator", gtk_vseparator_get_type);
         add_type ("GtkWidget", gtk_widget_get_type);
-        add_type ("GtkWidgetFlags", gtk_widget_flags_get_type);
+        add_type ("GtkWidgetFlags", 0 /* removed */);
         add_type ("GtkWidgetHelpType", gtk_widget_help_type_get_type);
         add_type ("GtkWindow", gtk_window_get_type);
         add_type ("GtkWindowGroup", gtk_window_group_get_type);
 
 #ifndef __WIN32__
-        add_type ("GtkPlug", gtk_plug_get_type);
-        add_type ("GtkSocket", gtk_socket_get_type);
+        add_type ("GtkPlug", 0 /* removed */);
+        add_type ("GtkSocket", 0 /* removed */);
 #endif
 
 #undef add_type

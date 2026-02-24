@@ -45,6 +45,7 @@
 #endif
 #include <gmodule.h>
 #include <gtk/gtk.h>
+#include "mooutils/moo-gtk3-compat.h"
 #include <gdk/gdkkeysyms.h>
 #include <string.h>
 
@@ -202,7 +203,7 @@ moo_file_selector_set_property (GObject        *object,
     switch (prop_id)
     {
         case PROP_WINDOW:
-            sel->window = (MooEditWindow*) g_value_get_object (value);
+            gtk_widget_get_window (sel) = (MooEditWindow*) g_value_get_object (value);
             break;
 
         default:
@@ -222,7 +223,7 @@ moo_file_selector_get_property (GObject        *object,
     switch (prop_id)
     {
         case PROP_WINDOW:
-            g_value_set_object (value, sel->window);
+            g_value_set_object (value, gtk_widget_get_window (sel));
             break;
 
         default:
@@ -305,8 +306,8 @@ moo_file_selector_activate (MooFileView    *fileview,
     }
 
     if (is_text)
-        moo_editor_open_path (moo_edit_window_get_editor (filesel->window),
-                              path, nullptr, -1, filesel->window);
+        moo_editor_open_path (moo_edit_window_get_editor (gtk_widget_get_window (filesel)),
+                              path, nullptr, -1, gtk_widget_get_window (filesel));
     else if (!is_exe)
         moo_open_file (path);
 }
@@ -319,7 +320,7 @@ goto_current_doc_dir (MooFileSelector *filesel)
     GFile *file, *parent_file;
     GError *error = nullptr;
 
-    doc = moo_edit_window_get_active_doc (filesel->window);
+    doc = moo_edit_window_get_active_doc (gtk_widget_get_window (filesel));
     file = doc ? moo_edit_get_file (doc) : nullptr;
     parent_file = file ? g_file_get_parent (file) : nullptr;
 
@@ -514,7 +515,7 @@ file_selector_create_file (MooFileSelector *filesel)
         goto out;
 
     info = moo_open_info_new (path, nullptr, -1, MOO_OPEN_FLAGS_NONE);
-    doc = moo_editor_new_file (moo_edit_window_get_editor (filesel->window),
+    doc = moo_editor_new_file (moo_edit_window_get_editor (gtk_widget_get_window (filesel)),
                                info, GTK_WIDGET (filesel), nullptr);
     g_object_unref (info);
 
@@ -559,8 +560,8 @@ file_selector_open_files (MooFileSelector *filesel)
 
     while (files)
     {
-        moo_editor_open_path (moo_edit_window_get_editor (filesel->window),
-                              (const char*) files->data, nullptr, -1, filesel->window);
+        moo_editor_open_path (moo_edit_window_get_editor (gtk_widget_get_window (filesel)),
+                              (const char*) files->data, nullptr, -1, gtk_widget_get_window (filesel));
         g_free (files->data);
         files = g_list_delete_link (files, files);
     }
@@ -596,7 +597,7 @@ moo_file_selector_constructor (GType           type,
     filesel = MOO_FILE_SELECTOR (object);
     fileview = MOO_FILE_VIEW (object);
 
-    g_return_val_if_fail (filesel->window != nullptr, object);
+    g_return_val_if_fail (gtk_widget_get_window (filesel) != nullptr, object);
 
     file_selector_go_home (MOO_FILE_VIEW (fileview));
 
@@ -646,11 +647,11 @@ moo_file_selector_constructor (GType           type,
     label = moo_pane_label_new (MOO_STOCK_FILE_SELECTOR,
                                 nullptr, _("File Selector"),
                                 _("File Selector"));
-    moo_edit_window_add_pane (filesel->window, MOO_FILE_SELECTOR_PLUGIN_ID,
+    moo_edit_window_add_pane (gtk_widget_get_window (filesel), MOO_FILE_SELECTOR_PLUGIN_ID,
                               GTK_WIDGET (filesel), label, MOO_PANE_POS_RIGHT);
     moo_pane_label_free (label);
 
-    pane = moo_big_paned_find_pane (filesel->window->paned,
+    pane = moo_big_paned_find_pane (gtk_widget_get_window (filesel)->paned,
                                     GTK_WIDGET (filesel), nullptr);
     moo_pane_set_drag_dest (pane);
 
@@ -1051,7 +1052,7 @@ create_menu_item (MooFileSelector *filesel,
 
     if (stock_icon)
     {
-        GtkWidget *icon = gtk_image_new_from_stock (stock_icon, GTK_ICON_SIZE_MENU);
+        GtkWidget *icon = gtk_image_new_from_icon_name (stock_icon, GTK_ICON_SIZE_MENU);
         gtk_image_menu_item_set_image (GTK_IMAGE_MENU_ITEM (item), icon);
     }
 

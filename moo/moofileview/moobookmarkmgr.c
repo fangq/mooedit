@@ -696,7 +696,7 @@ _moo_bookmark_mgr_remove_user (MooBookmarkMgr *mgr,
 //             if (bookmark->pixbuf)
 //                 icon = gtk_image_new_from_pixbuf (bookmark->pixbuf);
 //             else if (bookmark->icon_stock_id)
-//                 icon = gtk_image_new_from_stock (bookmark->icon_stock_id,
+//                 icon = gtk_image_new_from_icon_name (bookmark->icon_stock_id,
 //                     GTK_ICON_SIZE_MENU);
 //             else
 //                 icon = NULL;

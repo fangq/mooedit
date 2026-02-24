@@ -25,6 +25,7 @@
 #include "mooutils/mooeditops.h"
 #include "mooutils/mooi18n.h"
 #include <gtk/gtk.h>
+#include "mooutils/moo-gtk3-compat.h"
 #include <gdk/gdkkeysyms.h>
 #include <string.h>
 
@@ -45,7 +46,7 @@ static guint DELETE_ACTION_TYPE;
 
 
 static void     moo_entry_class_init        (MooEntryClass      *klass);
-static void     moo_entry_editable_init     (GtkEditableClass   *klass);
+static void     moo_entry_editable_init     (GtkEditableInterface   *klass);
 static void     moo_entry_undo_ops_init     (MooUndoOpsIface    *iface);
 
 static void     moo_entry_init              (MooEntry           *entry);
@@ -65,7 +66,7 @@ static gboolean moo_entry_button_release    (GtkWidget          *widget,
 static void     moo_entry_delete_to_start   (MooEntry           *entry);
 
 static void     moo_entry_populate_popup    (GtkEntry           *entry,
-                                             GtkMenu            *menu);
+                                             GtkWidget          *menu);
 
 static void     moo_entry_delete_from_cursor(GtkEntry           *entry,
                                              GtkDeleteType       type,
@@ -155,7 +156,7 @@ enum {
 };
 
 static guint signals[NUM_SIGNALS];
-static GtkEditableClass *parent_editable_iface;
+static GtkEditableInterface *parent_editable_iface;
 static gpointer moo_entry_parent_class;
 
 static void
@@ -183,7 +184,7 @@ moo_entry_class_init (MooEntryClass *klass)
     klass->redo = moo_entry_redo;
 
     moo_entry_parent_class = g_type_class_peek_parent (klass);
-    parent_editable_iface = reinterpret_cast<GtkEditableClass*> (g_type_interface_peek(moo_entry_parent_class, GTK_TYPE_EDITABLE));
+    parent_editable_iface = reinterpret_cast<GtkEditableInterface*> (g_type_interface_peek(moo_entry_parent_class, GTK_TYPE_EDITABLE));
 
     g_object_class_install_property (gobject_class,
                                      PROP_ENABLE_UNDO,
@@ -259,20 +260,20 @@ moo_entry_class_init (MooEntryClass *klass)
                                 G_TYPE_NONE, 0);
 
     binding_set = gtk_binding_set_by_class (klass);
-    gtk_binding_entry_add_signal (binding_set, GDK_z,
+    gtk_binding_entry_add_signal (binding_set, GDK_KEY_z,
                                   MOO_ACCEL_CTRL_MASK,
                                   "undo", 0);
-    gtk_binding_entry_add_signal (binding_set, GDK_z,
+    gtk_binding_entry_add_signal (binding_set, GDK_KEY_z,
                                   (GdkModifierType) (MOO_ACCEL_CTRL_MASK | GDK_SHIFT_MASK),
                                   "redo", 0);
-    gtk_binding_entry_add_signal (binding_set, GDK_u,
+    gtk_binding_entry_add_signal (binding_set, GDK_KEY_u,
                                   GDK_CONTROL_MASK,
                                   "delete-to-start", 0);
 }
 
 
 static void
-moo_entry_editable_init (GtkEditableClass   *klass)
+moo_entry_editable_init (GtkEditableInterface   *klass)
 {
     klass->do_insert_text = moo_entry_do_insert_text;
     klass->do_delete_text = moo_entry_do_delete_text;
@@ -539,7 +540,7 @@ create_special_chars_menu (MooEntry *entry)
 
 static void
 moo_entry_populate_popup (GtkEntry           *gtkentry,
-                          GtkMenu            *menu)
+                          GtkWidget          *menu)
 {
     GtkWidget *item;
     MooEntry *entry = MOO_ENTRY (gtkentry);

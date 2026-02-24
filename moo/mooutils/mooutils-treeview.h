@@ -32,7 +32,7 @@ typedef struct _MooTreeHelper MooTreeHelper;
 typedef struct _MooTreeHelperClass MooTreeHelperClass;
 
 struct _MooTreeHelper {
-    GtkObject parent;
+    GInitiallyUnowned parent;
 
     gboolean modified;
     int type;
@@ -45,7 +45,7 @@ struct _MooTreeHelper {
 };
 
 struct _MooTreeHelperClass {
-    GtkObjectClass parent_class;
+    GObjectClass parent_class;
 
     gboolean    (*new_row)          (MooTreeHelper  *helper,
                                      GtkTreeModel   *model,

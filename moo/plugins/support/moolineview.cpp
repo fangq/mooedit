@@ -23,6 +23,7 @@
 #include "mooutils/mooutils-messages.h"
 #include "mooutils/moocompat.h"
 #include <gtk/gtk.h>
+#include "mooutils/moo-gtk3-compat.h"
 #include <gdk/gdkkeysyms.h>
 
 
@@ -117,7 +118,7 @@ moo_line_view_class_init (MooLineViewClass *klass)
 
     binding_set = gtk_binding_set_by_class (klass);
 
-    gtk_binding_entry_add_signal (binding_set, GDK_Return, (GdkModifierType) 0,
+    gtk_binding_entry_add_signal (binding_set, GDK_KEY_Return, (GdkModifierType) 0,
                                   "activate-current-line", 0);
 }
 
@@ -163,7 +164,7 @@ moo_line_view_parent_set (GtkWidget *widget,
     view->priv->hscrollbar = NULL;
 
     if (widget->parent && GTK_IS_SCROLLED_WINDOW (widget->parent))
-        view->priv->hscrollbar = GTK_SCROLLED_WINDOW(widget->parent)->hscrollbar;
+        view->priv->hscrollbar = gtk_scrolled_window_get_hscrollbar (GTK_SCROLLED_WINDOW (widget->parent));
 
     if (GTK_WIDGET_CLASS (moo_line_view_parent_class)->parent_set)
         GTK_WIDGET_CLASS (moo_line_view_parent_class)->parent_set (widget, old_parent);
@@ -216,7 +217,7 @@ moo_line_view_button_release (GtkWidget      *widget,
 
     result = GTK_WIDGET_CLASS(moo_line_view_parent_class)->button_release_event (widget, event);
 
-    if (gtk_text_view_get_window_type (textview, event->window) == GTK_TEXT_WINDOW_TEXT &&
+    if (gtk_text_view_get_window_type (textview, gtk_widget_get_window (event)) == GTK_TEXT_WINDOW_TEXT &&
         !moo_text_view_has_selection (MOO_TEXT_VIEW (widget)))
     {
         gtk_text_view_window_to_buffer_coords (textview,

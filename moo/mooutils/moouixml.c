@@ -1825,7 +1825,7 @@ create_menu_item (MooUiXml       *xml,
         {
             if (item->icon_stock_id)
             {
-                GtkWidget *icon = gtk_image_new_from_stock (item->icon_stock_id,
+                GtkWidget *icon = gtk_image_new_from_icon_name (item->icon_stock_id,
                                                             GTK_ICON_SIZE_MENU);
                 menu_item = gtk_image_menu_item_new_with_mnemonic (item->label);
                 gtk_image_menu_item_set_image (GTK_IMAGE_MENU_ITEM (menu_item), icon);

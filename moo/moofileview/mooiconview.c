@@ -23,6 +23,7 @@
 #include <gtk/gtk.h>
 #include <string.h>
 #include <math.h>
+#include "mooutils/moo-gtk3-compat.h"
 
 
 typedef struct Column    Column;
@@ -141,7 +142,7 @@ static void     moo_icon_view_size_request  (GtkWidget      *widget,
 static void     moo_icon_view_size_allocate (GtkWidget      *widget,
                                              GtkAllocation  *allocation);
 static gboolean moo_icon_view_expose        (GtkWidget      *widget,
-                                             GdkEventExpose *event);
+                                             cairo_t *event);
 
 static gboolean moo_icon_view_button_press  (GtkWidget      *widget,
                                              GdkEventButton *event);
@@ -301,7 +302,7 @@ _moo_icon_view_class_init (MooIconViewClass *klass)
     widget_class->unrealize = moo_icon_view_unrealize;
     widget_class->size_request = moo_icon_view_size_request;
     widget_class->size_allocate = moo_icon_view_size_allocate;
-    widget_class->expose_event = moo_icon_view_expose;
+    widget_class->draw = moo_icon_view_expose;
     widget_class->scroll_event = moo_icon_view_scroll_event;
     widget_class->button_press_event = moo_icon_view_button_press;
     widget_class->button_release_event = moo_icon_view_button_release;
@@ -409,49 +410,49 @@ _moo_icon_view_class_init (MooIconViewClass *klass)
 
     binding_set = gtk_binding_set_by_class (klass);
 
-    gtk_binding_entry_add_signal (binding_set, GDK_Return, 0, "activate-item-at-cursor", 0);
-    gtk_binding_entry_add_signal (binding_set, GDK_ISO_Enter, 0, "activate-item-at-cursor", 0);
-    gtk_binding_entry_add_signal (binding_set, GDK_KP_Enter, 0, "activate-item-at-cursor", 0);
-    gtk_binding_entry_add_signal (binding_set, GDK_a, MOO_ACCEL_CTRL_MASK, "select-all", 0);
+    gtk_binding_entry_add_signal (binding_set, GDK_KEY_Return, 0, "activate-item-at-cursor", 0);
+    gtk_binding_entry_add_signal (binding_set, GDK_KEY_ISO_Enter, 0, "activate-item-at-cursor", 0);
+    gtk_binding_entry_add_signal (binding_set, GDK_KEY_KP_Enter, 0, "activate-item-at-cursor", 0);
+    gtk_binding_entry_add_signal (binding_set, GDK_KEY_a, MOO_ACCEL_CTRL_MASK, "select-all", 0);
 
-    add_move_binding (binding_set, GDK_Up, 0,
+    add_move_binding (binding_set, GDK_KEY_Up, 0,
                       GTK_MOVEMENT_DISPLAY_LINES, -1);
-    add_move_binding (binding_set, GDK_KP_Up, 0,
+    add_move_binding (binding_set, GDK_KEY_KP_Up, 0,
                       GTK_MOVEMENT_DISPLAY_LINES, -1);
 
-    add_move_binding (binding_set, GDK_Down, 0,
+    add_move_binding (binding_set, GDK_KEY_Down, 0,
                       GTK_MOVEMENT_DISPLAY_LINES, 1);
-    add_move_binding (binding_set, GDK_KP_Down, 0,
+    add_move_binding (binding_set, GDK_KEY_KP_Down, 0,
                       GTK_MOVEMENT_DISPLAY_LINES, 1);
 
-    add_move_binding (binding_set, GDK_Home, 0,
+    add_move_binding (binding_set, GDK_KEY_Home, 0,
                       GTK_MOVEMENT_BUFFER_ENDS, -1);
-    add_move_binding (binding_set, GDK_KP_Home, 0,
+    add_move_binding (binding_set, GDK_KEY_KP_Home, 0,
                       GTK_MOVEMENT_BUFFER_ENDS, -1);
 
-    add_move_binding (binding_set, GDK_End, 0,
+    add_move_binding (binding_set, GDK_KEY_End, 0,
                       GTK_MOVEMENT_BUFFER_ENDS, 1);
-    add_move_binding (binding_set, GDK_KP_End, 0,
+    add_move_binding (binding_set, GDK_KEY_KP_End, 0,
                       GTK_MOVEMENT_BUFFER_ENDS, 1);
 
-    add_move_binding (binding_set, GDK_Page_Up, 0,
+    add_move_binding (binding_set, GDK_KEY_Page_Up, 0,
                       GTK_MOVEMENT_PAGES, -1);
-    add_move_binding (binding_set, GDK_KP_Page_Up, 0,
+    add_move_binding (binding_set, GDK_KEY_KP_Page_Up, 0,
                       GTK_MOVEMENT_PAGES, -1);
 
-    add_move_binding (binding_set, GDK_Page_Down, 0,
+    add_move_binding (binding_set, GDK_KEY_Page_Down, 0,
                       GTK_MOVEMENT_PAGES, 1);
-    add_move_binding (binding_set, GDK_KP_Page_Down, 0,
+    add_move_binding (binding_set, GDK_KEY_KP_Page_Down, 0,
                       GTK_MOVEMENT_PAGES, 1);
 
-    add_move_binding (binding_set, GDK_Right, 0,
+    add_move_binding (binding_set, GDK_KEY_Right, 0,
                       GTK_MOVEMENT_VISUAL_POSITIONS, 1);
-    add_move_binding (binding_set, GDK_Left, 0,
+    add_move_binding (binding_set, GDK_KEY_Left, 0,
                       GTK_MOVEMENT_VISUAL_POSITIONS, -1);
 
-    add_move_binding (binding_set, GDK_KP_Right, 0,
+    add_move_binding (binding_set, GDK_KEY_KP_Right, 0,
                       GTK_MOVEMENT_VISUAL_POSITIONS, 1);
-    add_move_binding (binding_set, GDK_KP_Left, 0,
+    add_move_binding (binding_set, GDK_KEY_KP_Left, 0,
                       GTK_MOVEMENT_VISUAL_POSITIONS, -1);
 }
 
@@ -496,8 +497,8 @@ _moo_icon_view_init (MooIconView *view)
 {
     GtkWidget *widget = GTK_WIDGET (view);
 
-    widget->allocation.width = -1;
-    widget->allocation.height = -1;
+    moo_widget_get_alloc(widget).width = -1;
+    moo_widget_get_alloc(widget).height = -1;
 
     GTK_WIDGET_UNSET_NO_WINDOW (view);
     GTK_WIDGET_SET_CAN_FOCUS (view);
@@ -920,8 +921,8 @@ moo_icon_view_style_set (GtkWidget *widget,
     MooIconView *view = MOO_ICON_VIEW (widget);
 
     if (GTK_WIDGET_REALIZED (widget))
-        gdk_window_set_background (widget->window,
-                                   &widget->style->base[GTK_WIDGET_STATE (widget)]);
+        gdk_window_set_background (gtk_widget_get_window (widget),
+                                   &gtk_widget_get_style (widget)->base[GTK_WIDGET_STATE (widget)]);
 
     if (view->priv->sel_gc)
     {
@@ -936,8 +937,8 @@ moo_icon_view_state_changed (GtkWidget *widget,
                              G_GNUC_UNUSED GtkStateType previous_state)
 {
     if (GTK_WIDGET_REALIZED (widget))
-        gdk_window_set_background (widget->window,
-                                   &widget->style->base[GTK_WIDGET_STATE (widget)]);
+        gdk_window_set_background (gtk_widget_get_window (widget),
+                                   &gtk_widget_get_style (widget)->base[GTK_WIDGET_STATE (widget)]);
 
     if (!GTK_WIDGET_IS_SENSITIVE (widget))
         _moo_icon_view_unselect_all (MOO_ICON_VIEW (widget));
@@ -957,10 +958,10 @@ moo_icon_view_realize (GtkWidget *widget)
 
     GTK_WIDGET_SET_REALIZED (widget);
 
-    attributes.x = widget->allocation.x;
-    attributes.y = widget->allocation.y;
-    attributes.width = widget->allocation.width;
-    attributes.height = widget->allocation.height;
+    attributes.x = moo_widget_get_alloc(widget).x;
+    attributes.y = moo_widget_get_alloc(widget).y;
+    attributes.width = moo_widget_get_alloc(widget).width;
+    attributes.height = moo_widget_get_alloc(widget).height;
     attributes.window_type = GDK_WINDOW_CHILD;
     attributes.event_mask = gtk_widget_get_events (widget)
             | GDK_POINTER_MOTION_MASK
@@ -971,17 +972,16 @@ moo_icon_view_realize (GtkWidget *widget)
             | GDK_LEAVE_NOTIFY_MASK;
 
     attributes.visual = gtk_widget_get_visual (widget);
-    attributes.colormap = gtk_widget_get_colormap (widget);
     attributes.wclass = GDK_INPUT_OUTPUT;
 
     attributes_mask = GDK_WA_X | GDK_WA_Y | GDK_WA_VISUAL | GDK_WA_COLORMAP;
 
-    widget->window = gdk_window_new (gtk_widget_get_parent_window (widget),
+    gtk_widget_get_window (widget) = gdk_window_new (gtk_widget_get_parent_window (widget),
                                      &attributes, attributes_mask);
-    gdk_window_set_user_data (widget->window, widget);
+    gdk_window_set_user_data (gtk_widget_get_window (widget), widget);
 
-    widget->style = gtk_style_attach (widget->style, widget->window);
-    gdk_window_set_background (widget->window, &widget->style->base[GTK_STATE_NORMAL]);
+    gtk_widget_get_style (widget) = gtk_style_attach (gtk_widget_get_style (widget), gtk_widget_get_window (widget));
+    gdk_window_set_background (gtk_widget_get_window (widget), &gtk_widget_get_style (widget)->base[GTK_STATE_NORMAL]);
 
     moo_icon_view_invalidate_layout (view);
 }
@@ -992,9 +992,9 @@ moo_icon_view_unrealize (GtkWidget *widget)
 {
     MooIconView *view = MOO_ICON_VIEW (widget);
 
-    gdk_window_set_user_data (widget->window, NULL);
-    gdk_window_destroy (widget->window);
-    widget->window = NULL;
+    gdk_window_set_user_data (gtk_widget_get_window (widget), NULL);
+    gdk_window_destroy (gtk_widget_get_window (widget));
+    gtk_widget_get_window (widget) = NULL;
     GTK_WIDGET_UNSET_REALIZED (widget);
 
     if (view->priv->sel_gc)
@@ -1023,7 +1023,7 @@ moo_icon_view_size_allocate (GtkWidget     *widget,
 
     if (GTK_WIDGET_REALIZED (widget))
     {
-        if (widget->allocation.height < 0 ||
+        if (moo_widget_get_alloc(widget).height < 0 ||
             view->priv->layout->row_height == 0)
         {
             height_changed = TRUE;
@@ -1040,7 +1040,7 @@ moo_icon_view_size_allocate (GtkWidget     *widget,
 
     if (GTK_WIDGET_REALIZED (widget))
     {
-        gdk_window_move_resize (widget->window,
+        gdk_window_move_resize (gtk_widget_get_window (widget),
                                 allocation->x,
                                 allocation->y,
                                 allocation->width,
@@ -1101,7 +1101,7 @@ num_entries (Column *column)
 
 static void     draw_column                 (MooIconView    *view,
                                              Column         *column,
-                                             GdkRegion      *clip);
+                                             cairo_region_t      *clip);
 static void     draw_entry                  (MooIconView    *view,
                                              GtkTreeIter    *iter,
                                              GtkTreePath    *path,
@@ -1133,10 +1133,10 @@ get_drag_select_rect (MooIconView  *view,
 
 static gboolean
 moo_icon_view_expose (GtkWidget      *widget,
-                      GdkEventExpose *event)
+                      cairo_t *event)
 {
     GSList *l;
-    GdkRegion *area;
+    cairo_region_t *area;
     MooIconView *view = MOO_ICON_VIEW (widget);
     Layout *layout = view->priv->layout;
 
@@ -1149,7 +1149,7 @@ moo_icon_view_expose (GtkWidget      *widget,
     for (l = layout->columns; l != NULL; l = l->next)
     {
         GdkRectangle column_rect;
-        GdkRegion *column_region;
+        cairo_region_t *column_region;
         Column *column;
 
         column = l->data;
@@ -1159,7 +1159,7 @@ moo_icon_view_expose (GtkWidget      *widget,
         column_rect.width = column->width;
         column_rect.height = num_entries (column) * layout->row_height;
 
-        column_region = gdk_region_rectangle (&column_rect);
+        column_region = cairo_region_create_rectangle (&column_rect);
         gdk_region_intersect (column_region, area);
 
         if (!gdk_region_empty (column_region))
@@ -1167,22 +1167,22 @@ moo_icon_view_expose (GtkWidget      *widget,
             draw_column (view, column, column_region);
         }
 
-        gdk_region_destroy (column_region);
+        cairo_region_destroy (column_region);
     }
 
-    gdk_region_destroy (area);
+    cairo_region_destroy (area);
 
     if (view->priv->drag_select)
     {
         cairo_t *cr;
         GdkRectangle rect;
-        GdkColor *color;
+        GdkRGBA *color;
         double dash_len = 1.;
 
-        cr = gdk_cairo_create (event->window);
+        cr = gdk_cairo_create (gtk_widget_get_window (event));
         get_drag_select_rect (view, &rect);
 
-        color = &widget->style->base[GTK_STATE_SELECTED];
+        color = &gtk_widget_get_style (widget)->base[GTK_STATE_SELECTED];
 
         cairo_set_source_rgba (cr,
                                color->red / 65535.,
@@ -1194,7 +1194,7 @@ moo_icon_view_expose (GtkWidget      *widget,
 
         cairo_set_dash (cr, &dash_len, 1, .5);
         cairo_set_line_width (cr, 1.);
-        gdk_cairo_set_source_color (cr, color);
+        gdk_cairo_set_source_rgba (cr, color);
         cairo_rectangle (cr,
                          rect.x + .5,
                          rect.y + .5,
@@ -1211,7 +1211,7 @@ moo_icon_view_expose (GtkWidget      *widget,
 
 static void     draw_column                 (MooIconView    *view,
                                              Column         *column,
-                                             GdkRegion      *clip)
+                                             cairo_region_t      *clip)
 {
     int i;
     GdkRectangle clip_rect;
@@ -1276,18 +1276,18 @@ static void     draw_entry                  (MooIconView    *view,
     {
         GdkGC *selection_gc;
 
-        if (GTK_WIDGET_HAS_FOCUS (widget) || drop)
+        if (gtk_widget_has_focus (GTK_WIDGET (widget)) || drop)
         {
-            selection_gc = widget->style->base_gc [GTK_STATE_SELECTED];
+            selection_gc = gtk_widget_get_style (widget)->base_gc [GTK_STATE_SELECTED];
             state = GTK_CELL_RENDERER_SELECTED | GTK_CELL_RENDERER_FOCUSED;
         }
         else
         {
-            selection_gc = widget->style->base_gc [GTK_STATE_ACTIVE];
+            selection_gc = gtk_widget_get_style (widget)->base_gc [GTK_STATE_ACTIVE];
             state = GTK_CELL_RENDERER_SELECTED;
         }
 
-        gdk_draw_rectangle (widget->window,
+        gdk_draw_rectangle (gtk_widget_get_window (widget),
                             selection_gc,
                             TRUE,
                             entry_rect->x,
@@ -1305,7 +1305,7 @@ static void     draw_entry                  (MooIconView    *view,
         cell_area.width = view->priv->layout->pixbuf_width;
 
         gtk_cell_renderer_render (view->priv->pixbuf.cell,
-                                  widget->window, widget,
+                                  gtk_widget_get_window (widget), widget,
                                   entry_rect,
                                   &cell_area,
                                   entry_rect,
@@ -1322,7 +1322,7 @@ static void     draw_entry                  (MooIconView    *view,
         cell_area.width = entry_rect->width - view->priv->layout->pixbuf_width;
 
         gtk_cell_renderer_render (view->priv->text.cell,
-                                  widget->window, widget,
+                                  gtk_widget_get_window (widget), widget,
                                   entry_rect,
                                   &cell_area,
                                   entry_rect,
@@ -1331,8 +1331,8 @@ static void     draw_entry                  (MooIconView    *view,
 
     if (cursor || drop)
     {
-        gtk_paint_focus (widget->style,
-                         widget->window,
+        gtk_paint_focus (gtk_widget_get_style (widget),
+                         gtk_widget_get_window (widget),
                          GTK_STATE_SELECTED,
                          entry_rect,
                          widget,
@@ -1430,7 +1430,7 @@ static gboolean moo_icon_view_update_layout     (MooIconView    *view)
     calculate_pixbuf_size (view);
     calculate_row_height (view);
 
-    layout->num_rows = MAX (widget->allocation.height / layout->row_height, 1);
+    layout->num_rows = MAX (moo_widget_get_alloc(widget).height / layout->row_height, 1);
     layout->height = layout->row_height * layout->num_rows;
     layout->width = 0;
 
@@ -1757,7 +1757,7 @@ static void     invalidate_cell_rect        (MooIconView    *view,
     rect.width = column->width;
     rect.height = view->priv->layout->row_height;
 
-    gdk_window_invalidate_rect (GTK_WIDGET(view)->window, &rect, FALSE);
+    gdk_window_invalidate_rect (gtk_widget_get_window (GTK_WIDGET(view)), &rect, FALSE);
 }
 
 
@@ -2117,11 +2117,11 @@ moo_icon_view_drag_select (MooIconView    *view,
                            GdkEventMotion *event)
 {
     GdkRectangle rect;
-    GdkRegion *region;
+    cairo_region_t *region;
     GList *rect_items_list;
     GTree *new_selection;
 
-    region = gdk_region_new ();
+    region = cairo_region_create ();
 
     get_drag_select_rect (view, &rect);
     gdk_region_union_with_rect (region, &rect);
@@ -2164,7 +2164,7 @@ moo_icon_view_drag_select (MooIconView    *view,
     }
 
     path_set_free (new_selection);
-    gdk_region_destroy (region);
+    cairo_region_destroy (region);
 }
 
 static gboolean
@@ -2576,7 +2576,7 @@ static void     moo_icon_view_scroll_to     (MooIconView    *view,
     if (offset == view->priv->xoffset)
         return;
 
-    gdk_window_scroll (GTK_WIDGET(view)->window, view->priv->xoffset - offset, 0);
+    gdk_window_scroll (gtk_widget_get_window (GTK_WIDGET(view)), view->priv->xoffset - offset, 0);
     view->priv->xoffset = offset;
 
     moo_icon_view_update_adjustment (view);
@@ -3449,12 +3449,12 @@ _moo_icon_view_scroll_to_cell (MooIconView *view,
     new_offset = xoffset;
     widget = GTK_WIDGET(view);
 
-    if (widget->allocation.width <= column->width)
+    if (moo_widget_get_alloc(widget).width <= column->width)
         new_offset = column->offset;
     else if (column->offset < xoffset)
         new_offset = column->offset;
-    else if (column->offset + column->width > xoffset + widget->allocation.width)
-        new_offset = column->offset + column->width - widget->allocation.width;
+    else if (column->offset + column->width > xoffset + moo_widget_get_alloc(widget).width)
+        new_offset = column->offset + column->width - moo_widget_get_alloc(widget).width;
 
     moo_icon_view_scroll_to (view, new_offset);
 }
@@ -3792,28 +3792,28 @@ drag_scroll_timeout (MooIconView *view)
     GdkEvent *event;
     DndInfo *info = view->priv->dnd_info;
 
-    gdk_window_get_pointer (widget->window, &x, &y, &mask);
+    gdk_window_get_pointer (gtk_widget_get_window (widget), &x, &y, &mask);
 
     if (view->priv->drag_select)
     {
         if (x < 0)
             delta = x;
         else
-            delta = x - widget->allocation.width;
+            delta = x - moo_widget_get_alloc(widget).width;
     }
     else
     {
         if (x < 0 || x >= alc->width || y < 0 || y >= alc->height)
             goto out;
 
-        if (x < widget->allocation.width * DRAG_SCROLL_MARGIN)
+        if (x < moo_widget_get_alloc(widget).width * DRAG_SCROLL_MARGIN)
         {
             dist = x;
             delta = -1;
         }
-        else if (x > widget->allocation.width * (1 - DRAG_SCROLL_MARGIN))
+        else if (x > moo_widget_get_alloc(widget).width * (1 - DRAG_SCROLL_MARGIN))
         {
-            dist = widget->allocation.width - 1 - x;
+            dist = moo_widget_get_alloc(widget).width - 1 - x;
             delta = 1;
         }
         else
@@ -3821,7 +3821,7 @@ drag_scroll_timeout (MooIconView *view)
             goto out;
         }
 
-        margin = widget->allocation.width * DRAG_SCROLL_MARGIN;
+        margin = moo_widget_get_alloc(widget).width * DRAG_SCROLL_MARGIN;
         margin = MAX (margin, 2);
         dist = CLAMP (dist, 1, margin - 1);
         ratio = (margin - dist) / margin;
@@ -3847,16 +3847,16 @@ drag_scroll_timeout (MooIconView *view)
     {
         event = gdk_event_new (GDK_MOTION_NOTIFY);
 
-        event->motion.window = g_object_ref (widget->window);
+        event->motion.window = g_object_ref (gtk_widget_get_window (widget));
         event->motion.axes = NULL;
-        gdk_window_get_pointer (widget->window, &x, &y, &mask);
+        gdk_window_get_pointer (gtk_widget_get_window (widget), &x, &y, &mask);
         event->motion.x = x;
         event->motion.y = y;
         event->motion.state = mask;
         event->motion.is_hint = FALSE;
         /* XXX ??? do I need it, is it right? */
         event->motion.device = gdk_device_get_core_pointer ();
-        gdk_window_get_position (toplevel->window, &x, &y);
+        gdk_window_get_position (gtk_widget_get_window (toplevel), &x, &y);
         event->motion.x_root = x + event->motion.x;
         event->motion.y_root = y + event->motion.y;
     }
@@ -3864,13 +3864,13 @@ drag_scroll_timeout (MooIconView *view)
     {
         event = gdk_event_new (GDK_DRAG_MOTION);
 
-        event->dnd.window = g_object_ref (toplevel->window);
+        event->dnd.window = g_object_ref (gtk_widget_get_window (toplevel));
         event->dnd.context = g_object_ref (info->drag_motion_context);
 
-        gdk_window_get_position (toplevel->window, &x, &y);
+        gdk_window_get_position (gtk_widget_get_window (toplevel), &x, &y);
         event->dnd.x_root = x;
         event->dnd.y_root = y;
-        gdk_window_get_pointer (toplevel->window, &x, &y, &mask);
+        gdk_window_get_pointer (gtk_widget_get_window (toplevel), &x, &y, &mask);
         event->dnd.x_root += x;
         event->dnd.y_root += y;
     }

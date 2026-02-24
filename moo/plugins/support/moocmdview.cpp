@@ -43,7 +43,7 @@ struct _MooCmdViewPrivate {
     MooOutputFilter *filter;
 };
 
-static void      moo_cmd_view_destroy       (GtkObject  *object);
+static void      moo_cmd_view_destroy       (GInitiallyUnowned  *object);
 static GObject  *moo_cmd_view_constructor   (GType                  type,
                                              guint                  n_construct_properties,
                                              GObjectConstructParam *construct_param);
@@ -82,7 +82,7 @@ static void
 moo_cmd_view_class_init (MooCmdViewClass *klass)
 {
     GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
-    GtkObjectClass *gtkobject_class = GTK_OBJECT_CLASS (klass);
+    GObjectClass *gtkobject_class = G_OBJECT_CLASS(klass);
 
     gobject_class->constructor = moo_cmd_view_constructor;
 
@@ -189,15 +189,15 @@ moo_cmd_view_constructor (GType                  type,
 
 
 static void
-moo_cmd_view_destroy (GtkObject *object)
+moo_cmd_view_destroy (GInitiallyUnowned *object)
 {
     MooCmdView *view = MOO_CMD_VIEW (object);
 
     moo_cmd_view_abort_and_disconnect (view);
     moo_cmd_view_set_filter (view, NULL);
 
-    if (GTK_OBJECT_CLASS (moo_cmd_view_parent_class)->destroy)
-        GTK_OBJECT_CLASS (moo_cmd_view_parent_class)->destroy (object);
+    if (G_OBJECT_CLASS(moo_cmd_view_parent_class)->destroy)
+        G_OBJECT_CLASS(moo_cmd_view_parent_class)->destroy (object);
 }
 
 

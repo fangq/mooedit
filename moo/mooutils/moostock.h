@@ -17,6 +17,7 @@
 #define MOOUTILS_STOCK_H
 
 #include <gtk/gtk.h>
+#include "mooutils/moo-gtk3-compat.h"
 
 G_BEGIN_DECLS
 

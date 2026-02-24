@@ -115,7 +115,7 @@ static int pygdk_rectangle_from_pyobject(PyObject *obj, GdkRectangle *r) {
 
 #include "moolua/medit-lua.h"
 
-#line 119 "/home/fangq/space/git/Temp/newsrc/mooedit/moo/moopython/pygtk/moo.c"
+#line 119 "/home/fangq/space/git/Temp/mooedit/moo/moopython/pygtk/moo.c"
 
 
 #ifdef __cplusplus
@@ -171,7 +171,7 @@ extern PyTypeObject G_GNUC_INTERNAL PyMooUiXml_Type;
 extern PyTypeObject G_GNUC_INTERNAL PyMooWinPlugin_Type;
 extern PyTypeObject G_GNUC_INTERNAL PyMooWindow_Type;
 
-#line 175 "/home/fangq/space/git/Temp/newsrc/mooedit/moo/moopython/pygtk/moo.c"
+#line 175 "/home/fangq/space/git/Temp/mooedit/moo/moopython/pygtk/moo.c"
 
 
 
@@ -10427,7 +10427,7 @@ _wrap_moo_window_class_add_action (G_GNUC_UNUSED PyObject *self, PyObject *args)
     g_type_class_unref (klass);
     return_None;
 }
-#line 10431 "/home/fangq/space/git/Temp/newsrc/mooedit/moo/moopython/pygtk/moo.c"
+#line 10431 "/home/fangq/space/git/Temp/mooedit/moo/moopython/pygtk/moo.c"
 
 
 #line 133 "mooutils.override"
@@ -10458,7 +10458,7 @@ _wrap_moo_window_class_find_action (G_GNUC_UNUSED PyObject *self, PyObject *args
 
     return_Bool (ret);
 }
-#line 10462 "/home/fangq/space/git/Temp/newsrc/mooedit/moo/moopython/pygtk/moo.c"
+#line 10462 "/home/fangq/space/git/Temp/mooedit/moo/moopython/pygtk/moo.c"
 
 
 #line 162 "mooutils.override"
@@ -10488,7 +10488,7 @@ _wrap_moo_window_class_remove_action (G_GNUC_UNUSED PyObject *self, PyObject *ar
 
     return_None;
 }
-#line 10492 "/home/fangq/space/git/Temp/newsrc/mooedit/moo/moopython/pygtk/moo.c"
+#line 10492 "/home/fangq/space/git/Temp/mooedit/moo/moopython/pygtk/moo.c"
 
 
 const PyMethodDef _moo_functions[] = {
@@ -10605,7 +10605,7 @@ void
 _moo_register_classes(PyObject *d)
 {
 
-#line 10609 "/home/fangq/space/git/Temp/newsrc/mooedit/moo/moopython/pygtk/moo.c"
+#line 10609 "/home/fangq/space/git/Temp/mooedit/moo/moopython/pygtk/moo.c"
     pyg_register_boxed(d, "PaneLabel", MOO_TYPE_PANE_LABEL, &PyMooPaneLabel_Type);
     pyg_register_boxed(d, "PaneParams", MOO_TYPE_PANE_PARAMS, &PyMooPaneParams_Type);
     pyg_register_boxed(d, "PluginInfo", MOO_TYPE_PLUGIN_INFO, &PyMooPluginInfo_Type);

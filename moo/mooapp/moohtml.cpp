@@ -1076,12 +1076,12 @@ moo_html_motion (GtkWidget      *widget,
     if (html->data->button_pressed)
         html->data->in_drag = TRUE;
 
-    if (event->window != gtk_text_view_get_window (textview, GTK_TEXT_WINDOW_TEXT))
+    if (gtk_widget_get_window (event) != gtk_text_view_get_window (textview, GTK_TEXT_WINDOW_TEXT))
         goto out;
 
     if (event->is_hint)
     {
-        gdk_window_get_pointer (event->window, &x, &y, &state);
+        gdk_window_get_pointer (gtk_widget_get_window (event), &x, &y, &state);
     }
     else
     {
@@ -1111,7 +1111,7 @@ moo_html_motion (GtkWidget      *widget,
             html->data->hover_link = g_strdup (tag->href);
 
             cursor = gdk_cursor_new (GDK_HAND2);
-            gdk_window_set_cursor (event->window, cursor);
+            gdk_window_set_cursor (gtk_widget_get_window (event), cursor);
             gdk_cursor_unref (cursor);
 
             g_signal_emit (html, html_signals[HOVER_LINK], 0, tag->href);
@@ -1125,7 +1125,7 @@ moo_html_motion (GtkWidget      *widget,
         html->data->hover_link = nullptr;
 
         cursor = gdk_cursor_new (GDK_XTERM);
-        gdk_window_set_cursor (event->window, cursor);
+        gdk_window_set_cursor (gtk_widget_get_window (event), cursor);
         gdk_cursor_unref (cursor);
 
         g_signal_emit (html, html_signals[HOVER_LINK], 0, nullptr);
@@ -1194,7 +1194,7 @@ moo_html_button_release (GtkWidget      *widget,
         goto out;
     }
 
-    if (event->window != gtk_text_view_get_window (textview, GTK_TEXT_WINDOW_TEXT))
+    if (gtk_widget_get_window (event) != gtk_text_view_get_window (textview, GTK_TEXT_WINDOW_TEXT))
         goto out;
 
     gtk_text_view_window_to_buffer_coords (textview, GTK_TEXT_WINDOW_TEXT,
@@ -1289,7 +1289,7 @@ moo_html_set_font (MooHtml            *html,
     font = pango_font_description_from_string (string);
     g_return_if_fail (font != nullptr);
 
-    gtk_widget_modify_font (GTK_WIDGET (html), font);
+    gtk_widget_override_font (GTK_WIDGET (html), font);
     pango_font_description_free (font);
 }
 #endif
@@ -1312,7 +1312,7 @@ moo_html_size_allocate_real (GtkWidget *widget,
 
     child_width = gdk_window_get_width (window);
     border_width = gtk_container_get_border_width (GTK_CONTAINER (widget));
-    child_width -= 2 * border_width + 2 * widget->style->xthickness +
+    child_width -= 2 * border_width + 2 * 1 /* GTK3: use CSS padding instead */ +
             gtk_text_view_get_left_margin (GTK_TEXT_VIEW (widget)) +
             gtk_text_view_get_right_margin (GTK_TEXT_VIEW (widget));
     child_width = MAX (child_width, 0);

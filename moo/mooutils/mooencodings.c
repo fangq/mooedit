@@ -752,7 +752,7 @@ setup_combo (GtkComboBox      *combo,
     }
 
     gtk_combo_box_set_model (combo, GTK_TREE_MODEL (store));
-    gtk_combo_box_entry_set_text_column (GTK_COMBO_BOX_ENTRY (combo), COLUMN_DISPLAY);
+    gtk_combo_box_entry_set_text_column (GTK_COMBO_BOX_TEXT (combo), COLUMN_DISPLAY);
 
     cell = gtk_cell_renderer_text_new ();
     gtk_cell_layout_clear (GTK_CELL_LAYOUT (combo));
@@ -824,7 +824,7 @@ _moo_encodings_attach_combo (GtkWidget  *dialog,
 
     g_return_if_fail (GTK_IS_FILE_CHOOSER (dialog));
 
-    hbox = gtk_hbox_new (FALSE, 0);
+    hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_widget_show (hbox);
     gtk_box_pack_start (GTK_BOX (parent), hbox, FALSE, FALSE, 0);
 
@@ -855,7 +855,7 @@ sync_combo (GtkComboBox *combo,
     if (gtk_combo_box_get_active_iter (combo, &dummy))
         return;
 
-    enc_name = gtk_entry_get_text (GTK_ENTRY (GTK_BIN (combo)->child));
+    enc_name = gtk_entry_get_text (GTK_ENTRY (gtk_bin_get_child (GTK_BIN (combo))));
 
     if (!validate_encoding_name (enc_name))
         enc_name = save_mode ? MOO_ENCODING_UTF8 : MOO_ENCODING_AUTO;
@@ -1234,7 +1234,7 @@ update_recent_list_visibility (MooEncodingsMenuAction *action)
         gtk_widget_show (action->cur_item);
         gtk_widget_show (action->cur_separator);
 
-        child = GTK_BIN (action->cur_item)->child;
+        child = gtk_bin_get_child (GTK_BIN (action->cur_item));
         gtk_label_set_text (GTK_LABEL (child), action->cur_enc->display_name);
 
         exclude_item (action->menu_data, action->cur_enc);

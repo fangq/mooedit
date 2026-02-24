@@ -34,7 +34,7 @@ typedef struct _MooComboClass    MooComboClass;
 
 struct _MooCombo
 {
-    GtkTable parent;
+    GtkGrid parent;
     MooComboPrivate *priv;
     GtkWidget *entry;
 };

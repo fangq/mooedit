@@ -405,7 +405,7 @@ _moo_get_toplevel_window_at_pointer (void)
 
     g_list_free (list);
     g_slist_free (windows);
-    return top ? top->window : NULL;
+    return top ? gtk_widget_get_window (top) : NULL;
 }
 
 // stolen from gdkwindow-win32.c

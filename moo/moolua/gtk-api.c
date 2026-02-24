@@ -11,7 +11,7 @@
  **/
 
 /**
- * class:GtkObject: (parent GObject) (moo.python 0)
+ * class:GInitiallyUnowned: (parent GObject) (moo.python 0)
  **/
 
 /**
@@ -19,7 +19,7 @@
  **/
 
 /**
- * class:GtkWidget: (parent GtkObject) (moo.python 0)
+ * class:GtkWidget: (parent GInitiallyUnowned) (moo.python 0)
  **/
 
 /**
@@ -39,7 +39,7 @@
  **/
 
 /**
- * class:GtkVBox: (parent GtkBox) (moo.python 0)
+ * class:GtkBox: (parent GtkBox) (moo.python 0)
  **/
 
 /**

@@ -1159,7 +1159,7 @@ callback_data_free (CallbackData *data)
     if (data)
     {
         if (data->notify)
-            data->notify (data->data);
+            data->notify (gtk_selection_data_get_data (data));
         g_slice_free (CallbackData, data);
     }
 }
@@ -1225,7 +1225,7 @@ moo_history_mgr_create_menu (MooHistoryMgr   *mgr,
 static void
 menu_item_activated (GtkWidget *menu_item)
 {
-    GtkWidget *parent = menu_item->parent;
+    GtkWidget *parent = gtk_widget_get_parent (menu_item);
     CallbackData *data;
     MooHistoryItem *item;
     GSList *list;
@@ -1237,7 +1237,7 @@ menu_item_activated (GtkWidget *menu_item)
     g_return_if_fail (data && item);
 
     list = g_slist_prepend (NULL, moo_history_item_copy (item));
-    data->callback (list, data->data);
+    data->callback (list, gtk_selection_data_get_data (data));
     moo_history_item_free ((MooHistoryItem*) list->data);
     g_slist_free (list);
 }
@@ -1335,7 +1335,7 @@ open_selected (GtkTreeView *tree_view)
     items = g_slist_reverse (items);
 
     if (items)
-        data->callback (items, data->data);
+        data->callback (items, gtk_selection_data_get_data (data));
 
     g_slist_foreach (items, (GFunc) moo_history_item_free, NULL);
     g_slist_free (items);
@@ -1584,7 +1584,7 @@ moo_history_mgr_create_dialog (MooHistoryMgr   *mgr,
     gtk_container_add (GTK_CONTAINER (swin), tree_view);
     gtk_widget_show_all (swin);
 
-    gtk_box_pack_start (GTK_BOX (GTK_DIALOG (dialog)->vbox), swin, TRUE, TRUE, 0);
+    gtk_box_pack_start (GTK_BOX (gtk_dialog_get_content_area (GTK_DIALOG (dialog))), swin, TRUE, TRUE, 0);
 
     g_signal_connect_swapped (tree_view, "row-activated",
                               G_CALLBACK (row_activated), dialog);

@@ -35,7 +35,7 @@ typedef struct _MooIconViewClass   MooIconViewClass;
 
 struct _MooIconView
 {
-    GtkVBox             vbox;
+    GtkBox             vbox;
     MooIconViewPrivate *priv;
 };
 

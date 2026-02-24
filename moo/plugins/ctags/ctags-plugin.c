@@ -23,6 +23,7 @@
 #include "ctags-view.h"
 #include "ctags-doc.h"
 #include <gtk/gtk.h>
+#include "mooutils/moo-gtk3-compat.h"
 
 #define CTAGS_PLUGIN_ID "Ctags"
 

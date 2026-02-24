@@ -187,11 +187,7 @@ text_iter_backward_word_start_n (GtkTextIter *iter,
 static void
 text_view_reset_im_context (GtkTextView *text_view)
 {
-  if (text_view->need_im_reset)
-    {
-      text_view->need_im_reset = FALSE;
-      gtk_im_context_reset (text_view->im_context);
-    }
+  gtk_text_view_reset_im_context (text_view);
 }
 
 
@@ -312,7 +308,7 @@ _moo_text_view_move_cursor (GtkTextView        *text_view,
     GtkTextMark *insert;
     GtkTextIter iter;
 
-    if (!text_view->cursor_visible)
+    if (!gtk_text_view_get_cursor_visible (text_view))
     {
         GTK_TEXT_VIEW_CLASS (_moo_text_view_parent_class)->move_cursor (text_view, step, count, extend_selection);
         return;
@@ -366,7 +362,7 @@ _moo_text_view_delete_from_cursor (GtkTextView        *text_view,
     /* XXX */
     if (gtk_text_buffer_get_selection_bounds (buf, &start, &end))
     {
-        gtk_text_buffer_delete_interactive (buf, &start, &end, text_view->editable);
+        gtk_text_buffer_delete_interactive (buf, &start, &end, gtk_text_view_get_editable (text_view));
         gtk_text_view_scroll_mark_onscreen (text_view, insert_mark);
         return;
     }
@@ -382,7 +378,7 @@ _moo_text_view_delete_from_cursor (GtkTextView        *text_view,
 
     if (!gtk_text_iter_equal (&start, &end))
     {
-        gtk_text_buffer_delete_interactive (buf, &start, &end, text_view->editable);
+        gtk_text_buffer_delete_interactive (buf, &start, &end, gtk_text_view_get_editable (text_view));
         gtk_text_view_scroll_mark_onscreen (text_view, insert_mark);
     }
 }
@@ -426,7 +422,7 @@ _moo_text_view_update_text_cursor (MooTextView *view,
 
     tcursor = MOO_TEXT_VIEW_GET_CLASS (view)->get_text_cursor (view, x, y);
 
-    if (tcursor == view->priv->text_cursor && !text_view->mouse_cursor_obscured)
+    if (tcursor == view->priv->text_cursor && TRUE /* GTK3: mouse_cursor_obscured check removed */)
         return;
 
     switch (tcursor)
@@ -447,7 +443,7 @@ _moo_text_view_update_text_cursor (MooTextView *view,
 
     gdk_window_set_cursor (gtk_text_view_get_window (text_view, GTK_TEXT_WINDOW_TEXT), cursor);
 
-    text_view->mouse_cursor_obscured = FALSE;
+    /* GTK3: mouse_cursor_obscured removed */
     view->priv->text_cursor = tcursor;
 
     if (cursor)
@@ -466,13 +462,13 @@ set_invisible_cursor (GdkWindow *window)
 static void
 text_view_obscure_mouse_cursor (GtkTextView *text_view)
 {
-    if (!text_view->mouse_cursor_obscured)
+    if (TRUE /* GTK3: mouse_cursor_obscured check removed */)
     {
         GdkWindow *window =
                 gtk_text_view_get_window (text_view,
                                           GTK_TEXT_WINDOW_TEXT);
         set_invisible_cursor (window);
-        text_view->mouse_cursor_obscured = TRUE;
+        /* GTK3: mouse_cursor_obscured removed */
     }
 }
 
@@ -550,7 +546,7 @@ left_window_click (GtkTextView    *text_view,
     MooTextView *view = MOO_TEXT_VIEW (text_view);
 
     *line_numbers = FALSE;
-    window_width = gdk_window_get_width (event->window);
+    window_width = gdk_window_get_width (gtk_widget_get_window (event));
 
     if (view->priv->lm.show_icons && event->x >= 0 && event->x < view->priv->lm.icon_width)
     {
@@ -663,7 +659,7 @@ event_button_to_buffer (GtkTextView    *text_view,
                         int            *y)
 {
     gtk_text_view_window_to_buffer_coords (text_view,
-                                           gtk_text_view_get_window_type (text_view, event->window),
+                                           gtk_text_view_get_window_type (text_view, gtk_widget_get_window (event)),
                                            (int) event->x, (int) event->y, x, y);
 }
 
@@ -677,7 +673,7 @@ event_motion_to_buffer (GtkTextView    *text_view,
 
     if (event->is_hint)
     {
-        gdk_window_get_pointer (event->window, &event_x, &event_y, NULL);
+        gdk_window_get_pointer (gtk_widget_get_window (event), &event_x, &event_y, NULL);
     }
     else
     {
@@ -686,7 +682,7 @@ event_motion_to_buffer (GtkTextView    *text_view,
     }
 
     gtk_text_view_window_to_buffer_coords (text_view,
-                                           gtk_text_view_get_window_type (text_view, event->window),
+                                           gtk_text_view_get_window_type (text_view, gtk_widget_get_window (event)),
                                            event_x, event_y, x, y);
 }
 
@@ -708,7 +704,7 @@ _moo_text_view_button_press_event (GtkWidget          *widget,
     event_button_to_buffer (text_view, event, &x, &y);
     _moo_text_view_update_text_cursor (view, x, y);
 
-    switch (gtk_text_view_get_window_type (text_view, event->window))
+    switch (gtk_text_view_get_window_type (text_view, gtk_widget_get_window (event)))
     {
         case GTK_TEXT_WINDOW_TEXT:
             break;
@@ -1012,9 +1008,9 @@ text_view_start_selection_dnd (GtkTextView       *text_view,
 
     gtk_target_list_add_text_targets (target_list, 0);
 
-    text_view->drag_start_x = -1;
-    text_view->drag_start_y = -1;
-    text_view->pending_place_cursor_button = 0;
+    /* GTK3: drag_start internal, handled by GtkTextView */
+    
+    
 
     gtk_drag_begin (GTK_WIDGET (text_view), target_list,
                     GDK_ACTION_COPY | GDK_ACTION_MOVE,
@@ -1243,7 +1239,7 @@ _moo_text_view_key_press_event (GtkWidget          *widget,
 
     moo_accel_translate_event (widget, event, &keyval, &mods);
 
-    if (keyval == GDK_KP_Enter || keyval == GDK_Return)
+    if (keyval == GDK_KEY_KP_Enter || keyval == GDK_KEY_Return)
     {
         gtk_text_buffer_begin_user_action (buffer);
         handled = handle_enter (view, event);
@@ -1253,12 +1249,12 @@ _moo_text_view_key_press_event (GtkWidget          *widget,
     {
         switch (keyval)
         {
-            case GDK_Tab:
-            case GDK_KP_Tab:
-            case GDK_ISO_Left_Tab:
+            case GDK_KEY_Tab:
+            case GDK_KEY_KP_Tab:
+            case GDK_KEY_ISO_Left_Tab:
                 handled = handle_tab (view, event);
                 break;
-            case GDK_BackSpace:
+            case GDK_KEY_BackSpace:
                 gtk_text_buffer_begin_user_action (buffer);
                 handled = handle_backspace (view, event);
                 gtk_text_buffer_end_user_action (buffer);
@@ -1269,8 +1265,8 @@ _moo_text_view_key_press_event (GtkWidget          *widget,
     {
         switch (keyval)
         {
-            case GDK_ISO_Left_Tab:
-            case GDK_KP_Tab:
+            case GDK_KEY_ISO_Left_Tab:
+            case GDK_KEY_KP_Tab:
                 handled = handle_tab (view, event);
                 break;
         }
@@ -1279,24 +1275,24 @@ _moo_text_view_key_press_event (GtkWidget          *widget,
     {
         switch (keyval)
         {
-            case GDK_Up:
-            case GDK_KP_Up:
+            case GDK_KEY_Up:
+            case GDK_KEY_KP_Up:
                 handled = handle_ctrl_up (view, event, TRUE);
                 /* if we scroll, let mouse cursor stay */
                 obscure = FALSE;
                 break;
-            case GDK_Down:
-            case GDK_KP_Down:
+            case GDK_KEY_Down:
+            case GDK_KEY_KP_Down:
                 handled = handle_ctrl_up (view, event, FALSE);
                 obscure = FALSE;
                 break;
-            case GDK_Page_Up:
-            case GDK_KP_Page_Up:
+            case GDK_KEY_Page_Up:
+            case GDK_KEY_KP_Page_Up:
                 handled = handle_ctrl_pgup (view, event, TRUE);
                 obscure = FALSE;
                 break;
-            case GDK_Page_Down:
-            case GDK_KP_Page_Down:
+            case GDK_KEY_Page_Down:
+            case GDK_KEY_KP_Page_Down:
                 handled = handle_ctrl_pgup (view, event, FALSE);
                 obscure = FALSE;
                 break;
@@ -1557,7 +1553,7 @@ handle_ctrl_up (MooTextView        *view,
         return FALSE;
 
     text_view = GTK_TEXT_VIEW (view);
-    adjustment = text_view->vadjustment;
+    adjustment = gtk_scrollable_get_vadjustment (GTK_SCROLLABLE (text_view));
 
     if (!adjustment)
         return FALSE;
@@ -1566,17 +1562,17 @@ handle_ctrl_up (MooTextView        *view,
 
     if (up)
     {
-        value = adjustment->value - line_height;
+        value = gtk_adjustment_get_value (adjustment) - line_height;
 
-        if (value < adjustment->lower)
-            value = adjustment->lower;
+        if (value < gtk_adjustment_get_lower (adjustment))
+            value = gtk_adjustment_get_lower (adjustment);
     }
     else
     {
-        value = adjustment->value + line_height;
+        value = gtk_adjustment_get_value (adjustment) + line_height;
 
-        if (value > adjustment->upper - adjustment->page_size)
-            value = adjustment->upper - adjustment->page_size;
+        if (value > gtk_adjustment_get_upper (adjustment) - gtk_adjustment_get_page_size (adjustment))
+            value = gtk_adjustment_get_upper (adjustment) - gtk_adjustment_get_page_size (adjustment);
     }
 
     gtk_adjustment_set_value (adjustment, value);
@@ -1598,23 +1594,23 @@ handle_ctrl_pgup (MooTextView        *view,
         return FALSE;
 
     text_view = GTK_TEXT_VIEW (view);
-    adjustment = text_view->vadjustment;
+    adjustment = gtk_scrollable_get_vadjustment (GTK_SCROLLABLE (text_view));
 
     if (!adjustment)
         return FALSE;
 
     if (up)
     {
-        value = adjustment->value - adjustment->page_increment;
-        if (value < adjustment->lower)
-            value = adjustment->lower;
+        value = gtk_adjustment_get_value (adjustment) - gtk_adjustment_get_page_increment (adjustment);
+        if (value < gtk_adjustment_get_lower (adjustment))
+            value = gtk_adjustment_get_lower (adjustment);
         gtk_adjustment_set_value (adjustment, value);
     }
     else
     {
-        value = adjustment->value + adjustment->page_increment;
-        if (value > adjustment->upper - adjustment->page_size)
-            value = adjustment->upper - adjustment->page_size;
+        value = gtk_adjustment_get_value (adjustment) + gtk_adjustment_get_page_increment (adjustment);
+        if (value > gtk_adjustment_get_upper (adjustment) - gtk_adjustment_get_page_size (adjustment))
+            value = gtk_adjustment_get_upper (adjustment) - gtk_adjustment_get_page_size (adjustment);
         gtk_adjustment_set_value (adjustment, value);
     }
 

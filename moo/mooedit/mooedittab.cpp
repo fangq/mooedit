@@ -1,5 +1,5 @@
 /**
- * class:MooEditTab: (parent GtkVBox) (moo.doc-object-name tab): document tab object
+ * class:MooEditTab: (parent GtkBox) (moo.doc-object-name tab): document tab object
  **/
 
 #include "mooedittab-impl.h"
@@ -10,7 +10,7 @@
 
 struct MooEditTab
 {
-    GtkVBox base;
+    GtkBox base;
 
     MooEditProgress *progress;
 
@@ -251,7 +251,7 @@ _moo_edit_tab_focus_next_view (MooEditTab *tab)
         focus_chain[i++] = view;
 
     for (cur = 0; cur < 4; ++cur)
-        if (focus_chain[cur] && GTK_WIDGET_HAS_FOCUS (focus_chain[cur]))
+        if (focus_chain[cur] && gtk_widget_has_focus (GTK_WIDGET (focus_chain[cur])))
             break;
 
     cur++;
@@ -304,19 +304,19 @@ _moo_edit_tab_set_split_horizontal (MooEditTab *tab,
 
         g_assert (view1 != NULL);
 
-        has_focus = (view1 && GTK_WIDGET_HAS_FOCUS (view1)) ||
-                    (view2 && GTK_WIDGET_HAS_FOCUS (view2));
+        has_focus = (view1 && gtk_widget_has_focus (GTK_WIDGET (view1))) ||
+                    (view2 && gtk_widget_has_focus (GTK_WIDGET (view2)));
 
         if (view1)
         {
             _moo_edit_remove_view (tab->doc, view1);
-            gtk_container_remove (GTK_CONTAINER (tab->vpaned2), GTK_WIDGET (view1)->parent);
+            gtk_container_remove (GTK_CONTAINER (tab->vpaned2), gtk_widget_get_parent (GTK_WIDGET (view1)));
         }
 
         if (view2)
         {
             _moo_edit_remove_view (tab->doc, view2);
-            gtk_container_remove (GTK_CONTAINER (tab->vpaned2), GTK_WIDGET (view2)->parent);
+            gtk_container_remove (GTK_CONTAINER (tab->vpaned2), gtk_widget_get_parent (GTK_WIDGET (view2)));
         }
 
         gtk_widget_hide (tab->vpaned2);
@@ -398,19 +398,19 @@ _moo_edit_tab_set_split_vertical (MooEditTab *tab,
 
         g_assert (view1 != NULL);
 
-        has_focus = (view1 && GTK_WIDGET_HAS_FOCUS (view1)) ||
-                    (view2 && GTK_WIDGET_HAS_FOCUS (view2));
+        has_focus = (view1 && gtk_widget_has_focus (GTK_WIDGET (view1))) ||
+                    (view2 && gtk_widget_has_focus (GTK_WIDGET (view2)));
 
         if (view1)
         {
             _moo_edit_remove_view (tab->doc, view1);
-            gtk_container_remove (GTK_CONTAINER (tab->vpaned1), GTK_WIDGET (view1)->parent);
+            gtk_container_remove (GTK_CONTAINER (tab->vpaned1), gtk_widget_get_parent (GTK_WIDGET (view1)));
         }
 
         if (view2)
         {
             _moo_edit_remove_view (tab->doc, view2);
-            gtk_container_remove (GTK_CONTAINER (tab->vpaned2), GTK_WIDGET (view2)->parent);
+            gtk_container_remove (GTK_CONTAINER (tab->vpaned2), gtk_widget_get_parent (GTK_WIDGET (view2)));
         }
 
         if (has_focus)

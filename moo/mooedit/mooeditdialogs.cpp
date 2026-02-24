@@ -26,6 +26,7 @@
 #include "mooedit/mooeditsavemult-gxml.h"
 #include "mooedit/mootryencoding-gxml.h"
 #include <gtk/gtk.h>
+#include "mooutils/moo-gtk3-compat.h"
 #include <mooglib/moo-glib.h>
 #include <string.h>
 #ifdef __WIN32__
@@ -187,7 +188,7 @@ _moo_edit_open_dialog(GtkWidget* parent,
         start_folder = get_folder_from_document(current_doc);
 
     GtkWidget* toplevel = parent ? gtk_widget_get_toplevel(parent) : nullptr;
-    HWND hwnd = toplevel ? reinterpret_cast<HWND> (GDK_WINDOW_HWND(toplevel->window)) : nullptr;
+    HWND hwnd = toplevel ? reinterpret_cast<HWND> (GDK_WINDOW_HWND(gtk_widget_get_window (toplevel))) : nullptr;
     std::vector<std::string> files = moo_show_win32_file_open_dialog (hwnd, start_folder);
     if (files.empty())
         return nullptr;
@@ -205,7 +206,7 @@ _moo_edit_save_as_dialog(MooEdit*    doc,
 {
     MooEditView* view = moo_edit_get_view (doc);
     GtkWidget* toplevel = view ? gtk_widget_get_toplevel(GTK_WIDGET(view)) : nullptr;
-    HWND hwnd = toplevel ? reinterpret_cast<HWND> (GDK_WINDOW_HWND(toplevel->window)) : nullptr;
+    HWND hwnd = toplevel ? reinterpret_cast<HWND> (GDK_WINDOW_HWND(gtk_widget_get_window (toplevel))) : nullptr;
 
     std::string start_folder;
 
@@ -393,7 +394,7 @@ find_widget_for_response (GtkDialog *dialog,
     GList *l, *children;
     GtkWidget *ret = NULL;
 
-    children = gtk_container_get_children (GTK_CONTAINER (dialog->action_area));
+    children = gtk_container_get_children (GTK_CONTAINER (gtk_dialog_get_action_area (dialog)));
 
     for (l = children; ret == NULL && l != NULL; l = l->next)
     {

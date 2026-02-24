@@ -182,9 +182,9 @@ add_xid (GtkWindow  *window,
 {
     XID xid;
 
-    if (GTK_IS_WINDOW(window) && GTK_WIDGET(window)->window)
+    if (GTK_IS_WINDOW(window) && gtk_widget_get_window (GTK_WIDGET(window)))
     {
-        xid = GDK_WINDOW_XID (GTK_WIDGET(window)->window);
+        xid = GDK_WINDOW_XID (gtk_widget_get_window (GTK_WIDGET(window)));
         g_array_append_val (array, xid);
     }
 }
@@ -276,7 +276,7 @@ find_by_xid (GSList *windows, XID w)
     GSList *l;
 
     for (l = windows; l != NULL; l = l->next)
-        if (GDK_WINDOW_XID (GTK_WIDGET(l->data)->window) == w)
+        if (GDK_WINDOW_XID (gtk_widget_get_window (GTK_WIDGET(l->data))) == w)
             return (GtkWindow*) l->data;
 
     return NULL;
@@ -324,7 +324,7 @@ _moo_get_top_window (GSList *windows)
         return NULL;
     }
 
-    display = GDK_WINDOW_XDISPLAY (GTK_WIDGET(windows->data)->window);
+    display = GDK_WINDOW_XDISPLAY (gtk_widget_get_window (GTK_WIDGET(windows->data)));
 
     if (!display)
     {
@@ -394,8 +394,8 @@ static gboolean
 _moo_window_is_hidden (GtkWindow  *window)
 {
     g_return_val_if_fail (GTK_IS_WINDOW (window), FALSE);
-    return is_minimized (GDK_WINDOW_XDISPLAY (GTK_WIDGET(window)->window),
-                         GDK_WINDOW_XID (GTK_WIDGET(window)->window));
+    return is_minimized (GDK_WINDOW_XDISPLAY (gtk_widget_get_window (GTK_WIDGET(window))),
+                         GDK_WINDOW_XID (gtk_widget_get_window (GTK_WIDGET(window))));
 }
 #endif
 
@@ -407,7 +407,7 @@ _moo_window_is_hidden (GtkWindow  *window)
 
 
 #define get_handle(w) \
-    ((HWND) gdk_win32_drawable_get_handle (GTK_WIDGET(w)->window))
+    ((HWND) gdk_win32_drawable_get_handle (gtk_widget_get_window (GTK_WIDGET(w))))
 
 static gboolean
 _moo_window_is_hidden (GtkWindow  *window)
@@ -514,7 +514,7 @@ present_window_x11 (GtkWindow *window,
     if (!GTK_WIDGET_REALIZED (window))
         gtk_widget_realize (GTK_WIDGET (window));
 
-    gdk_x11_window_move_to_current_desktop (GTK_WIDGET(window)->window);
+    gdk_x11_window_move_to_current_desktop (gtk_widget_get_window (GTK_WIDGET(window)));
 
     gtk_widget_show (GTK_WIDGET (window));
 
@@ -573,7 +573,7 @@ _moo_get_toplevel_window (void)
     list = gtk_window_list_toplevels ();
 
     for (l = list; l != NULL; l = l->next)
-        if (GTK_IS_WINDOW (l->data) && GTK_WIDGET(l->data)->window)
+        if (GTK_IS_WINDOW (l->data) && gtk_widget_get_window (GTK_WIDGET(l->data)))
             windows = g_slist_prepend (windows, l->data);
 
     top = _moo_get_top_window (windows);
@@ -614,10 +614,10 @@ moo_log_window_new (void)
     xml = log_window_xml_new ();
     log = g_new (MooLogWindow, 1);
 
-    log->window = GTK_WIDGET (xml->LogWindow);
+    gtk_widget_get_window (log) = GTK_WIDGET (xml->LogWindow);
     log->textview = xml->textview;
 
-    g_signal_connect (log->window, "delete-event",
+    g_signal_connect (gtk_widget_get_window (log), "delete-event",
                       G_CALLBACK (gtk_widget_hide_on_delete), NULL);
 
     log->buf = gtk_text_view_get_buffer (log->textview);
@@ -635,7 +635,7 @@ moo_log_window_new (void)
 
     if (font)
     {
-        gtk_widget_modify_font (GTK_WIDGET (log->textview), font);
+        gtk_widget_override_font (GTK_WIDGET (log->textview), font);
         pango_font_description_free (font);
     }
 
@@ -662,7 +662,7 @@ static GtkWidget*
 moo_log_window_get_widget (void)
 {
     MooLogWindow *log = moo_log_window ();
-    return log->window;
+    return gtk_widget_get_window (log);
 }
 
 
@@ -834,7 +834,7 @@ log_func_window (const gchar    *log_domain,
 
             moo_log_window_insert (log, text, tag);
             if (flags <= G_LOG_LEVEL_WARNING)
-                gtk_window_present (GTK_WINDOW (log->window));
+                gtk_window_present (GTK_WINDOW (gtk_widget_get_window (log)));
         }
     }
 
@@ -1065,7 +1065,7 @@ moo_selection_data_get_pointer (GtkSelectionData *data,
     if (!owner || gdk_window_get_window_type (owner) == GDK_WINDOW_FOREIGN)
         return NULL;
 
-    memcpy (&result, data->data, sizeof (result));
+    memcpy (&result, gtk_selection_data_get_data (data), sizeof (result));
 
     return result;
 }

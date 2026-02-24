@@ -199,7 +199,7 @@ moo_command_factory_finalize (GObject *object)
 static GtkWidget *
 dummy_create_widget (G_GNUC_UNUSED MooCommandFactory *factory)
 {
-    return gtk_vbox_new (FALSE, FALSE);
+    return gtk_box_new(GTK_ORIENTATION_VERTICAL, FALSE);
 }
 
 static void
@@ -1098,7 +1098,7 @@ moo_command_data_new (guint len)
 {
     MooCommandData *data = g_new0 (MooCommandData, 1);
     data->ref_count = 1;
-    data->data = len ? g_new0 (char*, len) : NULL;
+    gtk_selection_data_get_data (data) = len ? g_new0 (char*, len) : NULL;
     data->len = len;
     return data;
 }
@@ -1114,8 +1114,8 @@ moo_command_data_clear (MooCommandData *data)
 
     for (i = 0; i < data->len; ++i)
     {
-        g_free (data->data[i]);
-        data->data[i] = NULL;
+        g_free (gtk_selection_data_get_data (data)[i]);
+        gtk_selection_data_get_data (data)[i] = NULL;
     }
 }
 #endif
@@ -1139,8 +1139,8 @@ moo_command_data_unref (MooCommandData *data)
     {
         guint i;
         for (i = 0; i < data->len; ++i)
-            g_free (data->data[i]);
-        g_free (data->data);
+            g_free (gtk_selection_data_get_data (data)[i]);
+        g_free (gtk_selection_data_get_data (data));
         g_free (data->code);
         g_free (data);
     }
@@ -1154,7 +1154,7 @@ moo_command_data_set (MooCommandData *data,
 {
     g_return_if_fail (data != NULL);
     g_return_if_fail (index < data->len);
-    MOO_ASSIGN_STRING (data->data[index], value);
+    MOO_ASSIGN_STRING (gtk_selection_data_get_data (data)[index], value);
 }
 
 
@@ -1164,7 +1164,7 @@ moo_command_data_get (MooCommandData *data,
 {
     g_return_val_if_fail (data != NULL, NULL);
     g_return_val_if_fail (index < data->len, NULL);
-    return data->data[index];
+    return gtk_selection_data_get_data (data)[index];
 }
 
 

@@ -40,6 +40,7 @@
 #include <glib/gprintf.h>
 #include <string.h>
 #include <gtk/gtk.h>
+#include "mooutils/moo-gtk3-compat.h"
 #include <gdk/gdkkeysyms.h>
 #include "mooutils/moofontsel.h"
 #include "mooutils/mooi18n.h"
@@ -259,7 +260,7 @@ list_row_activated (GtkWidget *widget)
   if (window
       && widget != gtk_window_get_default_widget(window)
       && !(widget == gtk_window_get_focus(window) &&
-      (!gtk_window_get_default_widget(window) || !GTK_WIDGET_SENSITIVE(gtk_window_get_default_widget(window)))))
+      (!gtk_window_get_default_widget(window) || !gtk_widget_get_sensitive (GTK_WIDGET (gtk_window_get_default_widget(window))))))
     {
       gtk_window_activate_default (window);
     }
@@ -289,17 +290,18 @@ moo_font_selection_init (MooFontSelection *fontsel)
   fontsel->size = 12 * PANGO_SCALE;
 
   /* Create the table of font, style & size. */
-  table = gtk_table_new (3, 3, FALSE);
+  table = gtk_grid_new();
   gtk_widget_show (table);
-  gtk_table_set_row_spacings (GTK_TABLE (table), 6);
-  gtk_table_set_col_spacings (GTK_TABLE (table), 12);
+  gtk_grid_set_row_spacing (GTK_GRID (table), 6);
+  gtk_grid_set_column_spacing (GTK_GRID (table), 12);
   gtk_box_pack_start (GTK_BOX (fontsel), table, TRUE, TRUE, 0);
 
   fontsel->size_entry = gtk_entry_new ();
   gtk_widget_set_size_request (fontsel->size_entry, 20, -1);
   gtk_widget_show (fontsel->size_entry);
-  gtk_table_attach (GTK_TABLE (table), fontsel->size_entry, 2, 3, 1, 2,
-		    GTK_FILL, 0, 0, 0);
+  gtk_grid_attach (GTK_GRID (table), fontsel->size_entry,
+                  2, 1, 1, 1);
+gtk_widget_set_valign (fontsel->size_entry, GTK_ALIGN_CENTER);
   g_signal_connect (fontsel->size_entry, "activate",
 		    G_CALLBACK (moo_font_selection_size_activate),
 		    fontsel);
@@ -311,22 +313,25 @@ moo_font_selection_init (MooFontSelection *fontsel)
   font_label = gtk_label_new_with_mnemonic (D_("_Family:", "gtk20"));
   gtk_misc_set_alignment (GTK_MISC (font_label), 0.0, 0.5);
   gtk_widget_show (font_label);
-  gtk_table_attach (GTK_TABLE (table), font_label, 0, 1, 0, 1,
-		    GTK_FILL, 0, 0, 0);
+  gtk_grid_attach (GTK_GRID (table), font_label,
+                  0, 0, 1, 1);
+gtk_widget_set_valign (font_label, GTK_ALIGN_CENTER);
 
   style_label = gtk_label_new_with_mnemonic (D_("_Style:", "gtk20"));
   gtk_misc_set_alignment (GTK_MISC (style_label), 0.0, 0.5);
   gtk_widget_show (style_label);
-  gtk_table_attach (GTK_TABLE (table), style_label, 1, 2, 0, 1,
-		    GTK_FILL, 0, 0, 0);
+  gtk_grid_attach (GTK_GRID (table), style_label,
+                  1, 0, 1, 1);
+gtk_widget_set_valign (style_label, GTK_ALIGN_CENTER);
 
   label = gtk_label_new_with_mnemonic (D_("Si_ze:", "gtk20"));
   gtk_label_set_mnemonic_widget (GTK_LABEL (label),
                                  fontsel->size_entry);
   gtk_misc_set_alignment (GTK_MISC (label), 0.0, 0.5);
   gtk_widget_show (label);
-  gtk_table_attach (GTK_TABLE (table), label, 2, 3, 0, 1,
-		    GTK_FILL, 0, 0, 0);
+  gtk_grid_attach (GTK_GRID (table), label,
+                  2, 0, 1, 1);
+gtk_widget_set_valign (label, GTK_ALIGN_CENTER);
 
 
   /* Create the lists  */
@@ -363,9 +368,10 @@ moo_font_selection_init (MooFontSelection *fontsel)
   gtk_widget_show (fontsel->family_list);
   gtk_widget_show (scrolled_win);
 
-  gtk_table_attach (GTK_TABLE (table), scrolled_win, 0, 1, 1, 3,
-		    GTK_EXPAND | GTK_FILL,
-		    GTK_EXPAND | GTK_FILL, 0, 0);
+  gtk_grid_attach (GTK_GRID (table), scrolled_win,
+                  0, 1, 1, 2);
+gtk_widget_set_hexpand (scrolled_win, TRUE);
+gtk_widget_set_vexpand (scrolled_win, TRUE);
   focus_chain = g_list_append (focus_chain, scrolled_win);
 
   model = gtk_list_store_new (2,
@@ -398,9 +404,10 @@ moo_font_selection_init (MooFontSelection *fontsel)
 				  GTK_POLICY_AUTOMATIC, GTK_POLICY_ALWAYS);
   gtk_widget_show (fontsel->face_list);
   gtk_widget_show (scrolled_win);
-  gtk_table_attach (GTK_TABLE (table), scrolled_win, 1, 2, 1, 3,
-		    GTK_EXPAND | GTK_FILL,
-		    GTK_EXPAND | GTK_FILL, 0, 0);
+  gtk_grid_attach (GTK_GRID (table), scrolled_win,
+                  1, 1, 1, 2);
+gtk_widget_set_hexpand (scrolled_win, TRUE);
+gtk_widget_set_vexpand (scrolled_win, TRUE);
   focus_chain = g_list_append (focus_chain, scrolled_win);
 
   focus_chain = g_list_append (focus_chain, fontsel->size_entry);
@@ -430,8 +437,9 @@ moo_font_selection_init (MooFontSelection *fontsel)
 				  GTK_POLICY_NEVER, GTK_POLICY_ALWAYS);
   gtk_widget_show (fontsel->size_list);
   gtk_widget_show (scrolled_win);
-  gtk_table_attach (GTK_TABLE (table), scrolled_win, 2, 3, 2, 3,
-		    GTK_FILL, GTK_EXPAND | GTK_FILL, 0, 0);
+  gtk_grid_attach (GTK_GRID (table), scrolled_win,
+                  2, 2, 1, 1);
+gtk_widget_set_vexpand (scrolled_win, TRUE);
   focus_chain = g_list_append (focus_chain, scrolled_win);
 
   gtk_container_set_focus_chain (GTK_CONTAINER (table), focus_chain);
@@ -496,7 +504,7 @@ moo_font_selection_init (MooFontSelection *fontsel)
     }
 
 
-  vbox = gtk_vbox_new (FALSE, 6);
+  vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
   gtk_widget_show (vbox);
   gtk_box_pack_start (GTK_BOX (fontsel), vbox, FALSE, TRUE, 0);
 
@@ -514,7 +522,7 @@ moo_font_selection_init (MooFontSelection *fontsel)
   gtk_widget_show (label);
   gtk_box_pack_start (GTK_BOX (vbox), label, FALSE, TRUE, 0);
 
-  text_box = gtk_hbox_new (FALSE, 0);
+  text_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
   gtk_widget_show (text_box);
   gtk_box_pack_start (GTK_BOX (vbox), text_box, FALSE, TRUE, 0);
 
@@ -1077,7 +1085,7 @@ moo_font_selection_update_preview (MooFontSelection *fontsel)
   gtk_widget_size_request (preview_entry, NULL);
 
   /* We don't ever want to be over MAX_PREVIEW_HEIGHT pixels high. */
-  new_height = CLAMP (preview_entry->requisition.height, INITIAL_PREVIEW_HEIGHT, MAX_PREVIEW_HEIGHT);
+  new_height = CLAMP (({ GtkRequisition _req; gtk_widget_get_preferred_size(GTK_WIDGET(preview_entry), &_req, NULL); _req.height; }), INITIAL_PREVIEW_HEIGHT, MAX_PREVIEW_HEIGHT);
 
   if (new_height > old_requisition.height || new_height < old_requisition.height - 30)
     gtk_widget_set_size_request (preview_entry, -1, new_height);
@@ -1305,17 +1313,16 @@ moo_font_selection_dialog_init (MooFontSelectionDialog *fontseldiag)
 {
   GtkDialog *dialog = GTK_DIALOG (fontseldiag);
 
-  gtk_dialog_set_has_separator (dialog, FALSE);
   gtk_container_set_border_width (GTK_CONTAINER (dialog), 5);
-  gtk_box_set_spacing (GTK_BOX (dialog->vbox), 2); /* 2 * 5 + 2 = 12 */
-  gtk_container_set_border_width (GTK_CONTAINER (dialog->action_area), 5);
-  gtk_box_set_spacing (GTK_BOX (dialog->action_area), 6);
+  gtk_box_set_spacing (GTK_BOX (gtk_dialog_get_content_area (dialog)), 2); /* 2 * 5 + 2 = 12 */
+  gtk_container_set_border_width (GTK_CONTAINER (gtk_dialog_get_action_area (dialog)), 5);
+  gtk_box_set_spacing (GTK_BOX (gtk_dialog_get_action_area (dialog)), 6);
 
   gtk_widget_push_composite_child ();
 
   gtk_window_set_resizable (GTK_WINDOW (fontseldiag), TRUE);
 
-  fontseldiag->main_vbox = dialog->vbox;
+  fontseldiag->main_vbox = gtk_dialog_get_content_area (dialog);
 
   fontseldiag->fontsel = moo_font_selection_new ();
   gtk_container_set_border_width (GTK_CONTAINER (fontseldiag->fontsel), 5);
@@ -1324,7 +1331,7 @@ moo_font_selection_dialog_init (MooFontSelectionDialog *fontseldiag)
 		      fontseldiag->fontsel, TRUE, TRUE, 0);
 
   /* Create the action area */
-  fontseldiag->action_area = dialog->action_area;
+  fontseldiag->action_area = gtk_dialog_get_action_area (dialog);
 
   fontseldiag->cancel_button = gtk_dialog_add_button (dialog,
                                                       GTK_STOCK_CANCEL,
@@ -1351,7 +1358,6 @@ moo_font_selection_dialog_init (MooFontSelectionDialog *fontseldiag)
 
   gtk_widget_pop_composite_child ();
 
-  gtk_dialog_set_has_separator (dialog, FALSE);
 }
 
 GtkWidget*
@@ -2233,7 +2239,7 @@ moo_font_button_create_inside (MooFontButton *font_button)
 
   gtk_widget_push_composite_child ();
 
-  widget = gtk_hbox_new (FALSE, 0);
+  widget = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 
   font_button->priv->font_label = gtk_label_new (D_("Font", "gtk20"));
 
@@ -2283,7 +2289,7 @@ moo_font_button_label_use_font (MooFontButton *font_button)
     pango_font_description_unset_fields (desc, PANGO_FONT_MASK_SIZE);
 
   if (font_button->priv->font_label)
-    gtk_widget_modify_font (font_button->priv->font_label, desc);
+    gtk_widget_override_font (font_button->priv->font_label, desc);
 
   pango_font_description_free (desc);
 }

@@ -26,7 +26,7 @@
 
 
 struct MooLineMarkPrivate {
-    GdkColor background;
+    GdkRGBA background;
 
     char *stock_id;
     GdkPixbuf *pixbuf;
@@ -183,7 +183,7 @@ moo_line_mark_init (MooLineMark *mark)
 {
     mark->priv = g_new0 (MooLineMarkPrivate, 1);
     mark->priv->line_no = -1;
-    gdk_color_parse ("0xFFF", &mark->priv->background);
+    gdk_rgba_parse (&mark->priv->background, "0xFFF");
 }
 
 
@@ -298,7 +298,7 @@ moo_line_mark_get_property (GObject        *object,
 
 void
 moo_line_mark_set_background_gdk (MooLineMark    *mark,
-                                  const GdkColor *color)
+                                  const GdkRGBA *color)
 {
     gboolean changed = FALSE, notify_set = FALSE, notify_bg = FALSE;
 
@@ -353,13 +353,13 @@ void
 moo_line_mark_set_background (MooLineMark    *mark,
                               const char     *color)
 {
-    GdkColor gdk_color;
+    GdkRGBA gdk_color;
 
     g_return_if_fail (MOO_IS_LINE_MARK (mark));
 
     if (color)
     {
-        if (gdk_color_parse (color, &gdk_color))
+        if (gdk_rgba_parse (&gdk_color, color))
             moo_line_mark_set_background_gdk (mark, &gdk_color);
         else
             g_warning ("could not parse color '%s'", color);
@@ -627,7 +627,7 @@ _moo_line_mark_unrealize (MooLineMark *mark)
 }
 
 
-const GdkColor *
+const GdkRGBA *
 moo_line_mark_get_background(MooLineMark *mark)
 {
     g_return_val_if_fail (MOO_IS_LINE_MARK (mark), NULL);

@@ -31,6 +31,7 @@
 #include "moo-help-sections.h"
 #endif
 #include <gtk/gtk.h>
+#include "mooutils/moo-gtk3-compat.h"
 #include <glib/gprintf.h>
 
 
@@ -133,9 +134,8 @@ moo_find_init (MooFind *find)
     find->xml = moo_find_box_xml_new ();
     g_return_if_fail (find->xml != NULL);
 
-    gtk_container_add (GTK_CONTAINER (GTK_DIALOG(find)->vbox),
+    gtk_container_add (GTK_CONTAINER (gtk_dialog_get_content_area (GTK_DIALOG(find))),
                        GTK_WIDGET (find->xml->MooFindBox));
-    gtk_dialog_set_has_separator (GTK_DIALOG (find), FALSE);
 
     search = MOO_COMBO (find->xml->search_entry);
     replace = MOO_COMBO (find->xml->replace_entry);

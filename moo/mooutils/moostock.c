@@ -20,6 +20,7 @@
 #include "moo-pixbufs.h"
 #include "mooutils/mooi18n.h"
 #include <gtk/gtk.h>
+#include "mooutils/moo-gtk3-compat.h"
 #include <string.h>
 
 #define REAL_SMALL 6

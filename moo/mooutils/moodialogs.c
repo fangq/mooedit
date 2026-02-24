@@ -14,6 +14,7 @@
  */
 
 #include <gtk/gtk.h>
+#include "mooutils/moo-gtk3-compat.h"
 #include "mooutils/moodialogs.h"
 #include "mooutils/mooprefs.h"
 #include "mooutils/mooutils-misc.h"
@@ -57,8 +58,8 @@ create_message_dialog (GtkWindow  *parent,
         gtk_dialog_set_default_response (GTK_DIALOG (dialog),
                                          default_response);
 
-    if (parent && parent->group)
-        gtk_window_group_add_window (parent->group, GTK_WINDOW (dialog));
+    if (parent && gtk_window_get_group (parent))
+        gtk_window_group_add_window (gtk_window_get_group (parent), GTK_WINDOW (dialog));
 
     return dialog;
 }
@@ -166,8 +167,8 @@ moo_position_window_real (GtkWidget  *window,
 #endif
     }
 
-    if (toplevel && GTK_WINDOW(toplevel)->group)
-        gtk_window_group_add_window (GTK_WINDOW(toplevel)->group, GTK_WINDOW (window));
+    if (toplevel && gtk_window_get_group (GTK_WINDOW (toplevel)))
+        gtk_window_group_add_window (gtk_window_get_group (GTK_WINDOW (toplevel)), GTK_WINDOW (window));
 
     if (!at_mouse && !at_coords && parent && GTK_WIDGET_REALIZED (parent))
     {
@@ -179,10 +180,10 @@ moo_position_window_real (GtkWidget  *window,
         {
             GdkWindow *parent_window = gtk_widget_get_parent_window (parent);
             gdk_window_get_origin (parent_window, &x, &y);
-            x += parent->allocation.x;
-            y += parent->allocation.y;
-            x += parent->allocation.width / 2;
-            y += parent->allocation.height / 2;
+            x += moo_widget_get_alloc(GTK_WIDGET(parent)).x;
+            y += moo_widget_get_alloc(GTK_WIDGET(parent)).y;
+            x += moo_widget_get_alloc(GTK_WIDGET(parent)).width / 2;
+            y += moo_widget_get_alloc(GTK_WIDGET(parent)).height / 2;
             at_coords = TRUE;
         }
     }
@@ -375,7 +376,7 @@ moo_overwrite_file_dialog (const char *display_name,
 
     button = gtk_button_new_with_mnemonic ("_Replace");
     gtk_button_set_image (GTK_BUTTON (button),
-                          gtk_image_new_from_stock (GTK_STOCK_SAVE_AS, GTK_ICON_SIZE_BUTTON));
+                          gtk_image_new_from_icon_name (GTK_STOCK_SAVE_AS, GTK_ICON_SIZE_BUTTON));
     gtk_widget_show (button);
     gtk_dialog_add_action_widget (GTK_DIALOG (dialog), button, GTK_RESPONSE_YES);
 
@@ -497,7 +498,7 @@ save_size (GtkWindow *window)
     if (!GTK_WIDGET_REALIZED (window))
         return FALSE;
 
-    state = gdk_window_get_state (GTK_WIDGET(window)->window);
+    state = gdk_window_get_state (gtk_widget_get_window (GTK_WIDGET(window)));
     moo_prefs_set_bool (pinfo->key_maximized,
                         state & GDK_WINDOW_STATE_MAXIMIZED);
 

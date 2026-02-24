@@ -348,7 +348,7 @@ cfunc_GObject_signal_handler_unblock (gpointer pself, G_GNUC_UNUSED lua_State *L
 
 // methods of GtkTextView
 
-// methods of GtkVBox
+// methods of GtkBox
 
 // methods of GtkWidget
 

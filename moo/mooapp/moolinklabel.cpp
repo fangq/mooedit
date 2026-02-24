@@ -19,6 +19,7 @@
 #include "mooutils/mooutils-gobject.h"
 #include "mooutils/moocompat.h"
 #include <gtk/gtk.h>
+#include "mooutils/moo-gtk3-compat.h"
 
 
 struct _MooLinkLabelPrivate {
@@ -84,10 +85,10 @@ moo_link_label_realize (GtkWidget *widget)
 
     widget = GTK_WIDGET (label);
 
-    attributes.x = widget->allocation.x;
-    attributes.y = widget->allocation.y;
-    attributes.width = widget->allocation.width;
-    attributes.height = widget->allocation.height;
+    attributes.x = moo_widget_get_alloc(widget).x;
+    attributes.y = moo_widget_get_alloc(widget).y;
+    attributes.width = moo_widget_get_alloc(widget).width;
+    attributes.height = moo_widget_get_alloc(widget).height;
     attributes.window_type = GDK_WINDOW_CHILD;
     attributes.wclass = GDK_INPUT_ONLY;
     attributes.override_redirect = TRUE;
@@ -98,7 +99,7 @@ moo_link_label_realize (GtkWidget *widget)
 
     attributes_mask = GDK_WA_X | GDK_WA_Y | GDK_WA_NOREDIR;
 
-    label->priv->window = gdk_window_new (widget->window, &attributes, attributes_mask);
+    label->priv->window = gdk_window_new (gtk_widget_get_window (widget), &attributes, attributes_mask);
     gdk_window_set_user_data (label->priv->window, widget);
 
     set_cursor (widget, label->priv->url && label->priv->text);
@@ -206,14 +207,14 @@ moo_link_label_button_press (GtkWidget      *widget,
     g_object_ref_sink (menu);
 
     item = gtk_image_menu_item_new_with_label ("Copy Link");
-    image = gtk_image_new_from_stock (GTK_STOCK_COPY, GTK_ICON_SIZE_MENU);
+    image = gtk_image_new_from_icon_name (GTK_STOCK_COPY, GTK_ICON_SIZE_MENU);
     gtk_image_menu_item_set_image (GTK_IMAGE_MENU_ITEM (item), image);
     g_signal_connect_swapped (item, "activate", G_CALLBACK (copy_activated), label);
     gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
     gtk_widget_show_all (item);
 
     item = gtk_image_menu_item_new_with_label ("Open Link");
-    image = gtk_image_new_from_stock (GTK_STOCK_JUMP_TO, GTK_ICON_SIZE_MENU);
+    image = gtk_image_new_from_icon_name (GTK_STOCK_JUMP_TO, GTK_ICON_SIZE_MENU);
     gtk_image_menu_item_set_image (GTK_IMAGE_MENU_ITEM (item), image);
     g_signal_connect_swapped (item, "activate", G_CALLBACK (open_activated), label);
     gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);

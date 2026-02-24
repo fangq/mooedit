@@ -14,7 +14,7 @@
  */
 
 /**
- * class:MooCombo: (parent GtkTable) (constructable) (moo.private 1)
+ * class:MooCombo: (parent GtkGrid) (constructable) (moo.private 1)
  **/
 
 #include "marshals.h"
@@ -24,6 +24,7 @@
 #include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
 #include <string.h>
+#include "mooutils/moo-gtk3-compat.h"
 
 
 #define MAX_POPUP_LEN 15
@@ -79,7 +80,7 @@ static void moo_combo_cell_layout_reorder               (GtkCellLayout      *cel
 
 static void     moo_combo_class_init        (MooComboClass  *klass);
 static void     moo_combo_init              (MooCombo       *combo);
-static void     moo_combo_destroy           (GtkObject      *object);
+static void     moo_combo_destroy           (GInitiallyUnowned      *object);
 static void     moo_combo_set_property      (GObject        *object,
                                              guint           prop_id,
                                              const GValue   *value,
@@ -180,7 +181,7 @@ static void
 moo_combo_class_init (MooComboClass *klass)
 {
     GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
-    GtkObjectClass *gtkobject_class = GTK_OBJECT_CLASS (klass);
+    GObjectClass *gtkobject_class = G_OBJECT_CLASS(klass);
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
     GtkBindingSet *binding_set;
 
@@ -191,7 +192,7 @@ moo_combo_class_init (MooComboClass *klass)
     gobject_class->set_property = moo_combo_set_property;
     gobject_class->get_property = moo_combo_get_property;
 
-    gtkobject_class->destroy = moo_combo_destroy;
+    GTK_WIDGET_CLASS(klass)->destroy = moo_combo_destroy;
 
     widget_class->unmap = moo_combo_unmap;
     widget_class->unrealize = moo_combo_unrealize;
@@ -255,7 +256,7 @@ moo_combo_class_init (MooComboClass *klass)
                           GDK_TYPE_EVENT | G_SIGNAL_TYPE_STATIC_SCOPE);
 
     binding_set = gtk_binding_set_by_class (klass);
-    gtk_binding_entry_add_signal (binding_set, GDK_space, GDK_CONTROL_MASK,
+    gtk_binding_entry_add_signal (binding_set, GDK_KEY_space, GDK_CONTROL_MASK,
                                   "popup", 0);
 }
 
@@ -283,16 +284,16 @@ moo_combo_init (MooCombo *combo)
     combo->priv->get_text_func = default_get_text_func;
     combo->priv->get_text_data = combo;
 
-    gtk_table_resize (GTK_TABLE (combo), 1, 2);
+    /* GTK3: gtk_grid does not need resize */
 
     combo->priv->size_group = gtk_size_group_new (GTK_SIZE_GROUP_VERTICAL);
 
     combo->entry = moo_entry_new ();
     gtk_widget_show (combo->entry);
-    gtk_table_attach (GTK_TABLE (combo), combo->entry,
-                      0, 1, 0, 1,
-                      (GtkAttachOptions) (GTK_EXPAND | GTK_FILL),
-                      (GtkAttachOptions) 0, 0, 0);
+    gtk_grid_attach (GTK_GRID (combo), combo->entry,
+                  0, 0, 1, 1);
+gtk_widget_set_hexpand (combo->entry, TRUE);
+gtk_widget_set_valign (combo->entry, GTK_ALIGN_CENTER);
     gtk_size_group_add_widget (combo->priv->size_group, combo->entry);
 
     g_signal_connect_swapped (combo->entry, "changed",
@@ -312,9 +313,10 @@ create_arrow_button (MooCombo       *combo)
     gtk_button_set_focus_on_click (GTK_BUTTON (combo->priv->button), FALSE);
     gtk_widget_show (combo->priv->button);
     gtk_size_group_add_widget (combo->priv->size_group, combo->priv->button);
-    gtk_table_attach (GTK_TABLE (combo), combo->priv->button,
-                      1, 2, 0, 1,
-                      (GtkAttachOptions) 0, (GtkAttachOptions) 0, 0, 0);
+    gtk_grid_attach (GTK_GRID (combo), combo->priv->button,
+                  1, 0, 1, 1);
+gtk_widget_set_halign (combo->priv->button, GTK_ALIGN_CENTER);
+gtk_widget_set_valign (combo->priv->button, GTK_ALIGN_CENTER);
 
     g_signal_connect_swapped (combo->priv->button, "clicked",
                               G_CALLBACK (button_clicked), combo);
@@ -332,7 +334,7 @@ create_arrow_button (MooCombo       *combo)
 
 
 static void
-moo_combo_destroy (GtkObject *object)
+moo_combo_destroy (GInitiallyUnowned *object)
 {
     MooCombo *combo = MOO_COMBO (object);
 
@@ -369,7 +371,7 @@ moo_combo_destroy (GtkObject *object)
         combo->priv->size_group = NULL;
     }
 
-    GTK_OBJECT_CLASS(moo_combo_parent_class)->destroy (object);
+    GTK_WIDGET_CLASS(moo_combo_parent_class)->destroy (object);
 }
 
 
@@ -443,7 +445,7 @@ create_popup_window (MooCombo *combo)
     gtk_widget_set_size_request (combo->priv->popup, -1, -1);
     gtk_window_set_default_size (GTK_WINDOW (combo->priv->popup), 1, 1);
     gtk_window_set_resizable (GTK_WINDOW (combo->priv->popup), FALSE);
-    gtk_widget_add_events (combo->priv->popup, GDK_KEY_PRESS_MASK | GDK_BUTTON_PRESS_MASK);
+    gtk_widget_add_events (combo->priv->popup, GDK_BUTTON_PRESS_MASK);
 
     scrolled_window = gtk_scrolled_window_new (NULL, NULL);
     gtk_widget_set_size_request (scrolled_window, -1, -1);
@@ -452,7 +454,7 @@ create_popup_window (MooCombo *combo)
     gtk_scrolled_window_set_shadow_type (GTK_SCROLLED_WINDOW (scrolled_window),
                                          GTK_SHADOW_ETCHED_IN);
     /* a nasty hack to get the treeview to size nicely */
-    gtk_widget_set_size_request (GTK_SCROLLED_WINDOW (scrolled_window)->vscrollbar, -1, 0);
+    gtk_widget_set_size_request (gtk_scrolled_window_get_vscrollbar (GTK_SCROLLED_WINDOW (scrolled_window)), -1, 0);
     gtk_scrolled_window_set_shadow_type (GTK_SCROLLED_WINDOW (scrolled_window), GTK_SHADOW_NONE);
     gtk_container_add (GTK_CONTAINER (scrolled_window), GTK_WIDGET (combo->priv->treeview));
 
@@ -535,10 +537,10 @@ entry_get_borders (GtkEntry *entry,
                           "focus-line-width", &focus_width,
                           NULL);
 
-    if (entry->has_frame)
+    if (gtk_entry_get_has_frame (entry))
     {
-        *xborder = widget->style->xthickness;
-        *yborder = widget->style->ythickness;
+        *xborder = 1 /* GTK3: use CSS padding instead */;
+        *yborder = 1 /* GTK3: use CSS padding instead */;
     }
     else
     {
@@ -581,8 +583,8 @@ moo_combo_popup_real (MooCombo *combo)
 
     gtk_widget_realize (combo->priv->popup);
 
-    if (GTK_WINDOW (window)->group)
-        gtk_window_group_add_window (GTK_WINDOW (window)->group,
+    if (gtk_window_get_group (GTK_WINDOW (window)))
+        gtk_window_group_add_window (gtk_window_get_group (GTK_WINDOW (window)),
                                      GTK_WINDOW (combo->priv->popup));
     gtk_window_set_modal (GTK_WINDOW (combo->priv->popup), TRUE);
 
@@ -591,17 +593,17 @@ moo_combo_popup_real (MooCombo *combo)
     gtk_widget_show (combo->priv->popup);
 
     gtk_widget_ensure_style (GTK_WIDGET (combo->priv->treeview));
-    gtk_widget_modify_bg (GTK_WIDGET (combo->priv->treeview), GTK_STATE_ACTIVE,
-                          &GTK_WIDGET(combo->priv->treeview)->style->base[GTK_STATE_SELECTED]);
-    gtk_widget_modify_base (GTK_WIDGET (combo->priv->treeview), GTK_STATE_ACTIVE,
-                            &GTK_WIDGET(combo->priv->treeview)->style->base[GTK_STATE_SELECTED]);
+    gtk_widget_override_background_color (GTK_WIDGET (combo->priv->treeview), GTK_STATE_ACTIVE,
+                          NULL); /* GTK3: use CSS styling instead of direct style access */
+    gtk_widget_override_background_color (GTK_WIDGET (combo->priv->treeview), GTK_STATE_ACTIVE,
+                          NULL); /* GTK3: use CSS styling instead of direct style access */
 
     gtk_grab_add (combo->priv->popup);
-    gdk_pointer_grab (combo->priv->popup->window, TRUE,
-                      (GdkEventMask) (GDK_BUTTON_PRESS_MASK |
-                              GDK_BUTTON_RELEASE_MASK |
-                              GDK_POINTER_MOTION_MASK),
-                      NULL, NULL, GDK_CURRENT_TIME);
+    /* GTK3: gdk_pointer_grab deprecated, use gdk_seat_grab or gtk_grab_add instead */
+    /* GTK3: gdk_pointer_grab deprecated, use gdk_seat_grab or gtk_grab_add instead */
+    /* GTK3: gdk_pointer_grab deprecated, use gdk_seat_grab or gtk_grab_add instead */
+    /* GTK3: gdk_pointer_grab deprecated, use gdk_seat_grab or gtk_grab_add instead */
+    /* GTK3: gdk_pointer_grab deprecated, use gdk_seat_grab or gtk_grab_add instead */
 
     g_signal_connect_swapped (combo->entry, "focus-out-event",
                               G_CALLBACK (entry_focus_out), combo);
@@ -695,7 +697,7 @@ resize_popup (MooCombo *combo)
 
     g_return_val_if_fail (GTK_WIDGET_REALIZED (combo->entry), FALSE);
 
-    gdk_window_get_origin (widget->window, &x, &y);
+    gdk_window_get_origin (gtk_widget_get_window (widget), &x, &y);
     /* XXX */
     entry_get_borders (GTK_ENTRY (combo->entry), &x_border, &y_border);
 
@@ -731,10 +733,10 @@ resize_popup (MooCombo *combo)
                                         NULL, NULL, NULL, &height);
 
     screen = gtk_widget_get_screen (widget);
-    monitor_num = gdk_screen_get_monitor_at_window (screen, widget->window);
+    monitor_num = gdk_screen_get_monitor_at_window (screen, gtk_widget_get_window (widget));
     gdk_screen_get_monitor_geometry (screen, monitor_num, &monitor);
 
-    width = MIN (GTK_WIDGET(combo)->allocation.width, monitor.width) - 2 * x_border;
+    width = MIN (moo_widget_get_alloc(GTK_WIDGET(combo)).width, monitor.width) - 2 * x_border;
     gtk_widget_style_get (GTK_WIDGET (combo->priv->treeview), "vertical-separator",
                           &vert_separator, NULL);
     gtk_widget_set_size_request (GTK_WIDGET (combo->priv->treeview), width,
@@ -787,11 +789,11 @@ static gboolean
 popup_button_press (MooCombo       *combo,
                     GdkEventButton *event)
 {
-    if (event->window == combo->priv->popup->window)
+    if (event->window == gtk_widget_get_window (combo->priv->popup))
     {
         gint width, height;
-        gdk_drawable_get_size (GDK_DRAWABLE (event->window),
-                               &width, &height);
+        width = gdk_window_get_width (gtk_widget_get_window (event));
+        height = gdk_window_get_height (gtk_widget_get_window (event));
         if (event->x < 0 || event->x >= width ||
             event->y < 0 || event->y >= height)
         {
@@ -862,45 +864,45 @@ popup_move_selection (MooCombo     *combo,
 
     switch (event->keyval)
     {
-        case GDK_Down:
-        case GDK_KP_Down:
+        case GDK_KEY_Down:
+        case GDK_KEY_KP_Down:
             if (current_item < n_items - 1)
                 new_item = current_item + 1;
             else
                 new_item = -1;
             break;
 
-        case GDK_Up:
-        case GDK_KP_Up:
+        case GDK_KEY_Up:
+        case GDK_KEY_KP_Up:
             if (current_item < 0)
                 new_item = n_items - 1;
             else
                 new_item = current_item - 1;
             break;
 
-        case GDK_Page_Down:
-        case GDK_KP_Page_Down:
+        case GDK_KEY_Page_Down:
+        case GDK_KEY_KP_Page_Down:
             new_item = current_item + MAX_POPUP_LEN - 1;
             if (new_item >= n_items)
                 new_item = n_items - 1;
             break;
 
-        case GDK_Page_Up:
-        case GDK_KP_Page_Up:
+        case GDK_KEY_Page_Up:
+        case GDK_KEY_KP_Page_Up:
             new_item = current_item - MAX_POPUP_LEN + 1;
             if (new_item < 0)
                 new_item = 0;
             break;
 
-        case GDK_Tab:
-        case GDK_KP_Tab:
+        case GDK_KEY_Tab:
+        case GDK_KEY_KP_Tab:
             if (current_item < n_items - 1)
                 new_item = current_item + 1;
             else
                 new_item = 0;
             break;
 
-        case GDK_ISO_Left_Tab:
+        case GDK_KEY_ISO_Left_Tab:
             if (current_item <= 0)
                 new_item = n_items - 1;
             else
@@ -985,25 +987,25 @@ moo_combo_popup_key_press (MooCombo    *combo,
 {
     switch (event->keyval)
     {
-        case GDK_Down:
-        case GDK_Up:
-        case GDK_KP_Down:
-        case GDK_KP_Up:
-        case GDK_Page_Down:
-        case GDK_Page_Up:
-        case GDK_Tab:
-        case GDK_KP_Tab:
-        case GDK_ISO_Left_Tab:
+        case GDK_KEY_Down:
+        case GDK_KEY_Up:
+        case GDK_KEY_KP_Down:
+        case GDK_KEY_KP_Up:
+        case GDK_KEY_Page_Down:
+        case GDK_KEY_Page_Up:
+        case GDK_KEY_Tab:
+        case GDK_KEY_KP_Tab:
+        case GDK_KEY_ISO_Left_Tab:
             popup_move_selection (combo, event);
             return TRUE;
 
-        case GDK_Escape:
+        case GDK_KEY_Escape:
             moo_combo_popdown (combo);
             return TRUE;
 
-        case GDK_Return:
-        case GDK_ISO_Enter:
-        case GDK_KP_Enter:
+        case GDK_KEY_Return:
+        case GDK_KEY_ISO_Enter:
+        case GDK_KEY_KP_Enter:
             return popup_return_key (combo);
 
         default:

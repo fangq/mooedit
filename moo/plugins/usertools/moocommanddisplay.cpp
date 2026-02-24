@@ -190,14 +190,14 @@ _moo_command_display_get (MooCommandDisplay  *display,
     data = &display->data[display->active];
     widget = gtk_notebook_get_nth_page (display->notebook, display->active);
 
-    if (_moo_command_factory_save_data (data->factory, widget, data->data))
+    if (_moo_command_factory_save_data (data->factory, widget, gtk_selection_data_get_data (data)))
         data->changed = TRUE;
 
     if (display->active == display->original && !data->changed)
         return FALSE;
 
     *factory_p = data->factory;
-    *data_p = data->data;
+    *data_p = gtk_selection_data_get_data (data);
     data->changed = FALSE;
     display->original = display->active;
 

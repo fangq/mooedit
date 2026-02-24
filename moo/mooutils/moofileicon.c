@@ -22,6 +22,7 @@
 #include "moo-pixbufs.h"
 #include <mooglib/moo-glib.h>
 #include <gtk/gtk.h>
+#include "mooutils/moo-gtk3-compat.h"
 #include <string.h>
 
 void

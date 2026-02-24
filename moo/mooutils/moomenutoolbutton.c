@@ -31,7 +31,7 @@ enum {
 static void moo_menu_tool_button_class_init (MooMenuToolButtonClass *klass);
 static void moo_menu_tool_button_init       (MooMenuToolButton      *button);
 
-static void moo_menu_tool_button_destroy    (GtkObject              *object);
+static void moo_menu_tool_button_destroy    (GInitiallyUnowned              *object);
 static void moo_menu_tool_button_toggled    (GtkToggleToolButton    *button);
 
 
@@ -41,7 +41,7 @@ G_DEFINE_TYPE(MooMenuToolButton, moo_menu_tool_button, GTK_TYPE_TOGGLE_TOOL_BUTT
 static void
 moo_menu_tool_button_class_init (MooMenuToolButtonClass *klass)
 {
-    GtkObjectClass *gtkobject_class = GTK_OBJECT_CLASS (klass);
+    GObjectClass *gtkobject_class = G_OBJECT_CLASS(klass);
     GtkToggleToolButtonClass *toggle_class = GTK_TOGGLE_TOOL_BUTTON_CLASS (klass);
     gtkobject_class->destroy = moo_menu_tool_button_destroy;
     toggle_class->toggled = moo_menu_tool_button_toggled;
@@ -55,7 +55,7 @@ moo_menu_tool_button_init (G_GNUC_UNUSED MooMenuToolButton *button)
 
 
 static void
-moo_menu_tool_button_destroy (GtkObject *object)
+moo_menu_tool_button_destroy (GInitiallyUnowned *object)
 {
     MooMenuToolButton *button = MOO_MENU_TOOL_BUTTON (object);
 
@@ -63,7 +63,7 @@ moo_menu_tool_button_destroy (GtkObject *object)
         gtk_widget_destroy (button->menu);
     button->menu = NULL;
 
-    GTK_OBJECT_CLASS (moo_menu_tool_button_parent_class)->destroy (object);
+    G_OBJECT_CLASS(moo_menu_tool_button_parent_class)->destroy (object);
 }
 
 
@@ -83,7 +83,7 @@ menu_position_func (G_GNUC_UNUSED GtkMenu *menu,
 {
     GtkRequisition req;
 
-    gdk_window_get_origin (button->window, x, y);
+    gdk_window_get_origin (gtk_widget_get_window (button), x, y);
     gtk_widget_size_request (button, &req);
 
     *x += button->allocation.x + button->allocation.width - req.width;

@@ -27,9 +27,10 @@
 #include <time.h>
 #include <string.h>
 #include <gtk/gtk.h>
+#include "mooutils/moo-gtk3-compat.h"
 
 
-static void moo_file_props_dialog_destroy   (GtkObject          *object);
+static void moo_file_props_dialog_destroy   (GInitiallyUnowned          *object);
 static void moo_file_props_dialog_show      (GtkWidget          *widget);
 static void moo_file_props_dialog_response  (GtkDialog          *dialog,
                                              int                 reponse);
@@ -41,7 +42,7 @@ G_DEFINE_TYPE(MooFilePropsDialog, _moo_file_props_dialog, GTK_TYPE_DIALOG)
 static void
 _moo_file_props_dialog_class_init (MooFilePropsDialogClass *klass)
 {
-    GtkObjectClass *gtkobject_class = GTK_OBJECT_CLASS (klass);
+    GObjectClass *gtkobject_class = G_OBJECT_CLASS(klass);
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
     GtkDialogClass *dialog_class = GTK_DIALOG_CLASS (klass);
 
@@ -61,8 +62,7 @@ _moo_file_props_dialog_init (MooFilePropsDialog *dialog)
     dialog->entry = GTK_WIDGET (dialog->xml->entry);
     dialog->table = GTK_WIDGET (dialog->xml->table);
 
-    gtk_container_add (GTK_CONTAINER(GTK_DIALOG(dialog)->vbox), dialog->notebook);
-    gtk_dialog_set_has_separator (GTK_DIALOG (dialog), FALSE);
+    gtk_container_add (GTK_CONTAINER(gtk_dialog_get_content_area (GTK_DIALOG (dialog))), dialog->notebook);
 
     gtk_dialog_add_buttons (GTK_DIALOG (dialog),
                             GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
@@ -248,14 +248,18 @@ _moo_file_props_dialog_set_file (MooFilePropsDialog *dialog,
         gtk_label_set_markup (GTK_LABEL (label), text);
         g_free (text);
         gtk_misc_set_alignment (GTK_MISC (label), 1.0, 0.5);
-        gtk_table_attach (GTK_TABLE (dialog->table), label, 0, 1, i, i+1,
-                          GTK_EXPAND | GTK_FILL, 0, 0, 0);
+        gtk_grid_attach (GTK_GRID (dialog->table), label,
+                  0, i, 1, 1);
+gtk_widget_set_hexpand (label, TRUE);
+gtk_widget_set_valign (label, GTK_ALIGN_CENTER);
 
         label = gtk_label_new (*(p++));
         gtk_label_set_selectable (GTK_LABEL (label), TRUE);
         gtk_misc_set_alignment (GTK_MISC (label), 0.0, 0.5);
-        gtk_table_attach (GTK_TABLE (dialog->table), label, 1, 2, i, i+1,
-                          GTK_EXPAND | GTK_FILL, 0, 0, 0);
+        gtk_grid_attach (GTK_GRID (dialog->table), label,
+                  1, i, 1, 1);
+gtk_widget_set_hexpand (label, TRUE);
+gtk_widget_set_valign (label, GTK_ALIGN_CENTER);
     }
 
     gtk_widget_show_all (dialog->table);
@@ -265,7 +269,7 @@ _moo_file_props_dialog_set_file (MooFilePropsDialog *dialog,
 
 
 static void
-moo_file_props_dialog_destroy (GtkObject *object)
+moo_file_props_dialog_destroy (GInitiallyUnowned *object)
 {
     MooFilePropsDialog *dialog = MOO_FILE_PROPS_DIALOG (object);
 
@@ -284,7 +288,7 @@ moo_file_props_dialog_destroy (GtkObject *object)
         dialog->table = NULL;
     }
 
-    GTK_OBJECT_CLASS(_moo_file_props_dialog_parent_class)->destroy (object);
+    G_OBJECT_CLASS(_moo_file_props_dialog_parent_class)->destroy (object);
 }
 
 

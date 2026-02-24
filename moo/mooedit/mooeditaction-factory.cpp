@@ -614,8 +614,7 @@ create_input_methods_menu_item (GtkAction *action)
     gtk_widget_show (menu);
     gtk_menu_item_set_submenu (GTK_MENU_ITEM (item), menu);
 
-    gtk_im_multicontext_append_menuitems (GTK_IM_MULTICONTEXT (GTK_TEXT_VIEW (view)->im_context),
-					  GTK_MENU_SHELL (menu));
+    /* GTK3: input method menu is handled automatically */
 
     g_object_get (gtk_widget_get_settings (GTK_WIDGET (view)),
                   "gtk-show-input-method-menu", &visible,
@@ -758,20 +757,20 @@ bidi_menu_item_activate (GtkWidget   *menuitem,
     gtk_text_buffer_begin_user_action (buffer);
 
     had_selection = gtk_text_buffer_get_selection_bounds (buffer, NULL, NULL);
-    gtk_text_buffer_delete_selection (buffer, TRUE, view->editable);
+    gtk_text_buffer_delete_selection (buffer, TRUE, gtk_text_view_get_editable (view));
 
-    if (!had_selection && view->overwrite_mode)
+    if (!had_selection && gtk_text_view_get_overwrite (view))
     {
         GtkTextIter insert, end;
         gtk_text_buffer_get_iter_at_mark (buffer, &insert, gtk_text_buffer_get_insert (buffer));
         if (!gtk_text_iter_ends_line (&insert))
         {
             gtk_text_iter_forward_cursor_positions (&end, 1);
-            gtk_text_buffer_delete_interactive (buffer, &insert, &end, view->editable);
+            gtk_text_buffer_delete_interactive (buffer, &insert, &end, gtk_text_view_get_editable (view));
         }
     }
 
-    gtk_text_buffer_insert_interactive_at_cursor (buffer, string, -1, view->editable);
+    gtk_text_buffer_insert_interactive_at_cursor (buffer, string, -1, gtk_text_view_get_editable (view));
 
     gtk_text_buffer_end_user_action (buffer);
     gtk_text_view_scroll_mark_onscreen (view, gtk_text_buffer_get_insert (buffer));

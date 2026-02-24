@@ -31,6 +31,7 @@
 #include "moo-help-sections.h"
 #endif
 #include <gtk/gtk.h>
+#include "mooutils/moo-gtk3-compat.h"
 #include <gdk/gdkkeysyms.h>
 #include <string.h>
 
@@ -817,7 +818,7 @@ _moo_accel_prefs_dialog_new (MooActionCollection *collection)
 
     page = _moo_accel_prefs_page_new (collection);
     gtk_widget_show (GTK_WIDGET (page));
-    gtk_box_pack_start (GTK_BOX (GTK_DIALOG (dialog)->vbox), GTK_WIDGET (page), TRUE, TRUE, 0);
+    gtk_box_pack_start (GTK_BOX (gtk_dialog_get_content_area (GTK_DIALOG (dialog))), GTK_WIDGET (page), TRUE, TRUE, 0);
 
 #ifdef MOO_ENABLE_HELP
     moo_help_set_id (dialog, HELP_SECTION_PREFS_ACCELS);

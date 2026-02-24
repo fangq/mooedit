@@ -23,6 +23,7 @@
 #include "mooutils/mooutils-fs.h"
 #include "mooutils/mooatom.h"
 #include <gtk/gtk.h>
+#include "mooutils/moo-gtk3-compat.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -2040,7 +2041,7 @@ popup_menu (WindowPlugin *plugin,
     }
 
     menuitem = gtk_image_menu_item_new_from_stock (GTK_STOCK_ADD, nullptr);
-    gtk_label_set_text (GTK_LABEL (GTK_BIN (menuitem)->child), "Add Group");
+    gtk_label_set_text (GTK_LABEL (gtk_bin_get_child (GTK_BIN (menuitem))), "Add Group");
     g_signal_connect (menuitem, "activate", G_CALLBACK (add_group_activated), plugin);
     gtk_menu_shell_append (GTK_MENU_SHELL (menu), menuitem);
 
@@ -2055,7 +2056,7 @@ popup_menu (WindowPlugin *plugin,
     if (single_item && ITEM_IS_GROUP (single_item))
     {
         menuitem = gtk_image_menu_item_new_from_stock (GTK_STOCK_EDIT, nullptr);
-        gtk_label_set_text (GTK_LABEL (GTK_BIN (menuitem)->child), "Rename");
+        gtk_label_set_text (GTK_LABEL (gtk_bin_get_child (GTK_BIN (menuitem))), "Rename");
         g_signal_connect (menuitem, "activate", G_CALLBACK (rename_activated), plugin);
         gtk_menu_shell_append (GTK_MENU_SHELL (menu), menuitem);
     }

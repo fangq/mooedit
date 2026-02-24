@@ -234,7 +234,7 @@ ensure_output (WindowStuff *stuff)
 static gboolean
 find_window_plugin_create (WindowStuff *stuff)
 {
-    stuff->window = MOO_WIN_PLUGIN (stuff)->window;
+    gtk_widget_get_window (stuff) = MOO_WIN_PLUGIN (stuff)->window;
     return TRUE;
 }
 
@@ -1119,8 +1119,8 @@ output_activate (WindowStuff    *stuff,
     if (!line_data || (stuff->cmd == CMD_GREP && line_data->line < 0))
         return FALSE;
 
-    editor = moo_edit_window_get_editor (stuff->window);
-    moo_editor_open_path (editor, line_data->filename, NULL, line_data->line, stuff->window);
+    editor = moo_edit_window_get_editor (gtk_widget_get_window (stuff));
+    moo_editor_open_path (editor, line_data->filename, NULL, line_data->line, gtk_widget_get_window (stuff));
 
     return TRUE;
 }

@@ -167,7 +167,7 @@ move_or_copy_files_ui (GList      *filenames,
         return FALSE;
     }
 
-    shop.hwnd = parent && parent->window ? (HWND) GDK_WINDOW_HWND (parent->window) : NULL;
+    shop.hwnd = parent && gtk_widget_get_window (parent) ? (HWND) GDK_WINDOW_HWND (gtk_widget_get_window (parent)) : NULL;
     shop.wFunc = copy ? FO_COPY : FO_MOVE;
     shop.pFrom = from;
     shop.pTo = to;

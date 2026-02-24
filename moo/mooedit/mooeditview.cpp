@@ -265,7 +265,7 @@ find_uri_atom (GdkDragContext *context)
     GdkAtom atom;
 
     atom = moo_atom_uri_list ();
-    targets = context->targets;
+    targets = gdk_drag_context_list_targets (context);
 
     while (targets)
     {
@@ -334,7 +334,9 @@ popup_position_func (GtkMenu   *menu,
 
     screen = gtk_widget_get_screen (widget);
 
-    gdk_window_get_origin (widget->window, &root_x, &root_y);
+    gdk_window_get_origin (gtk_widget_get_window (widget), &root_x, &root_y);
+    GtkAllocation alloc;
+    gtk_widget_get_allocation (widget, &alloc);
 
     gtk_text_buffer_get_iter_at_mark (gtk_text_view_get_buffer (text_view),
                                       &iter,
@@ -365,13 +367,13 @@ popup_position_func (GtkMenu   *menu,
     else
     {
         /* Just center the menu, since cursor is offscreen. */
-        *x = root_x + (widget->allocation.width / 2 - req.width / 2);
-        *y = root_y + (widget->allocation.height / 2 - req.height / 2);
+        *x = root_x + (alloc.width / 2 - req.width / 2);
+        *y = root_y + (alloc.height / 2 - req.height / 2);
     }
 
     /* Ensure sanity */
-    *x = CLAMP (*x, root_x, (root_x + widget->allocation.width));
-    *y = CLAMP (*y, root_y, (root_y + widget->allocation.height));
+    *x = CLAMP (*x, root_x, (root_x + alloc.width));
+    *y = CLAMP (*y, root_y, (root_y + alloc.height));
 
     monitor_num = gdk_screen_get_monitor_at_point (screen, *x, *y);
     gtk_menu_set_monitor (menu, monitor_num);

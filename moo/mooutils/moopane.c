@@ -14,7 +14,7 @@
  */
 
 /**
- * class:MooPane: (parent GtkObject) (moo.lua 0) (moo.private 1)
+ * class:MooPane: (parent GInitiallyUnowned) (moo.lua 0) (moo.private 1)
  **/
 
 #ifdef HAVE_CONFIG_H
@@ -37,9 +37,10 @@
 #include "moohelp.h"
 #include "mooutils-gobject.h"
 #include "mooi18n.h"
+#include "mooutils/moo-gtk3-compat.h"
 
 struct _MooPane {
-    GtkObject base;
+    GInitiallyUnowned base;
 
     char         *id;
     MooPaned     *parent;
@@ -82,7 +83,7 @@ struct _MooPane {
 };
 
 struct _MooPaneClass {
-    GtkObjectClass base_class;
+    GObjectClass base_class;
     gboolean (*remove) (MooPane *pane);
 };
 
@@ -108,17 +109,17 @@ static guint signals[NUM_SIGNALS];
 static void
 set_pane_window_icon_and_title (MooPane *pane)
 {
-    if (pane->window && pane->label)
+    if (gtk_widget_get_window (pane) && pane->label)
     {
         if (pane->label->icon_pixbuf)
-            gtk_window_set_icon (GTK_WINDOW (pane->window), pane->label->icon_pixbuf);
+            gtk_window_set_icon (GTK_WINDOW (gtk_widget_get_window (pane)), pane->label->icon_pixbuf);
         else if (pane->label->icon_stock_id)
-            _moo_window_set_icon_from_stock (GTK_WINDOW (pane->window), pane->label->icon_stock_id);
+            _moo_window_set_icon_from_stock (GTK_WINDOW (gtk_widget_get_window (pane)), pane->label->icon_stock_id);
 
         if (pane->label->window_title)
-            gtk_window_set_title (GTK_WINDOW (pane->window), pane->label->window_title);
+            gtk_window_set_title (GTK_WINDOW (gtk_widget_get_window (pane)), pane->label->window_title);
         else
-            gtk_window_set_title (GTK_WINDOW (pane->window), pane->label->label);
+            gtk_window_set_title (GTK_WINDOW (gtk_widget_get_window (pane)), pane->label->label);
     }
 }
 
@@ -370,7 +371,7 @@ moo_pane_init (MooPane *pane)
     pane->close_button = NULL;
     pane->focus_child = NULL;
 
-    pane->window = NULL;
+    gtk_widget_get_window (pane) = NULL;
     pane->keep_on_top_button = NULL;
     pane->window_child_holder = NULL;
 }
@@ -405,10 +406,10 @@ moo_pane_dispose (GObject *object)
         pane->frame = NULL;
     }
 
-    if (pane->window)
+    if (gtk_widget_get_window (pane))
     {
-        gtk_widget_destroy (pane->window);
-        pane->window = NULL;
+        gtk_widget_destroy (gtk_widget_get_window (pane));
+        gtk_widget_get_window (pane) = NULL;
     }
 
     if (pane->open_timeout)
@@ -608,17 +609,17 @@ create_frame_widget (MooPane        *pane,
     GtkWidget *vbox, *toolbar, *separator, *handle, *table, *child_holder;
     GtkWidget *handle_hbox, *frame_label;
 
-    vbox = gtk_vbox_new (FALSE, 0);
+    vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_widget_show (vbox);
 
-    toolbar = gtk_hbox_new (FALSE, 0);
+    toolbar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 
     handle = gtk_event_box_new ();
     gtk_widget_show (handle);
     gtk_box_pack_start (GTK_BOX (toolbar), handle, TRUE, TRUE, 3);
     pane->handle = handle;
 
-    handle_hbox = gtk_hbox_new (FALSE, 0);
+    handle_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_widget_show (handle_hbox);
     gtk_container_add (GTK_CONTAINER (pane->handle), handle_hbox);
 
@@ -696,7 +697,7 @@ create_frame_widget (MooPane        *pane,
     gtk_widget_show (separator);
     gtk_box_pack_start (GTK_BOX (vbox), separator, FALSE, FALSE, 0);
 
-    child_holder = gtk_vbox_new (FALSE, 0);
+    child_holder = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_widget_show (child_holder);
     gtk_box_pack_start (GTK_BOX (vbox), child_holder, TRUE, TRUE, 0);
     if (embedded)
@@ -704,7 +705,7 @@ create_frame_widget (MooPane        *pane,
     else
         pane->window_child_holder = child_holder;
 
-    table = gtk_table_new (2, 2, FALSE);
+    table = gtk_grid_new();
 
     switch (position)
     {
@@ -723,36 +724,40 @@ create_frame_widget (MooPane        *pane,
     switch (position)
     {
         case MOO_PANE_POS_LEFT:
-            gtk_table_attach (GTK_TABLE (table), separator,
-                              0, 1, 0, 1,
-                              0, GTK_FILL, 0, 0);
-            gtk_table_attach (GTK_TABLE (table), vbox,
-                              1, 2, 0, 1,
-                              GTK_EXPAND | GTK_FILL, GTK_EXPAND | GTK_FILL, 0, 0);
+            gtk_grid_attach (GTK_GRID (table), separator,
+                  0, 0, 1, 1);
+gtk_widget_set_halign (separator, GTK_ALIGN_CENTER);
+            gtk_grid_attach (GTK_GRID (table), vbox,
+                  1, 0, 1, 1);
+gtk_widget_set_hexpand (vbox, TRUE);
+gtk_widget_set_vexpand (vbox, TRUE);
             break;
         case MOO_PANE_POS_TOP:
-            gtk_table_attach (GTK_TABLE (table), separator,
-                              0, 1, 0, 1,
-                              0, GTK_FILL, 0, 0);
-            gtk_table_attach (GTK_TABLE (table), vbox,
-                              0, 1, 1, 2,
-                              GTK_EXPAND | GTK_FILL, GTK_EXPAND | GTK_FILL, 0, 0);
+            gtk_grid_attach (GTK_GRID (table), separator,
+                  0, 0, 1, 1);
+gtk_widget_set_halign (separator, GTK_ALIGN_CENTER);
+            gtk_grid_attach (GTK_GRID (table), vbox,
+                  0, 1, 1, 1);
+gtk_widget_set_hexpand (vbox, TRUE);
+gtk_widget_set_vexpand (vbox, TRUE);
             break;
         case MOO_PANE_POS_RIGHT:
-            gtk_table_attach (GTK_TABLE (table), separator,
-                              1, 2, 0, 1,
-                              0, GTK_FILL, 0, 0);
-            gtk_table_attach (GTK_TABLE (table), vbox,
-                              0, 1, 0, 1,
-                              GTK_EXPAND | GTK_FILL, GTK_EXPAND | GTK_FILL, 0, 0);
+            gtk_grid_attach (GTK_GRID (table), separator,
+                  1, 0, 1, 1);
+gtk_widget_set_halign (separator, GTK_ALIGN_CENTER);
+            gtk_grid_attach (GTK_GRID (table), vbox,
+                  0, 0, 1, 1);
+gtk_widget_set_hexpand (vbox, TRUE);
+gtk_widget_set_vexpand (vbox, TRUE);
             break;
         case MOO_PANE_POS_BOTTOM:
-            gtk_table_attach (GTK_TABLE (table), separator,
-                              0, 1, 1, 2,
-                              0, GTK_FILL, 0, 0);
-            gtk_table_attach (GTK_TABLE (table), vbox,
-                              0, 1, 0, 1,
-                              GTK_EXPAND | GTK_FILL, GTK_EXPAND | GTK_FILL, 0, 0);
+            gtk_grid_attach (GTK_GRID (table), separator,
+                  0, 1, 1, 1);
+gtk_widget_set_halign (separator, GTK_ALIGN_CENTER);
+            gtk_grid_attach (GTK_GRID (table), vbox,
+                  0, 0, 1, 1);
+gtk_widget_set_hexpand (vbox, TRUE);
+gtk_widget_set_vexpand (vbox, TRUE);
             break;
     }
 
@@ -788,10 +793,10 @@ create_label_widget (MooPanePosition position,
     {
         case MOO_PANE_POS_LEFT:
         case MOO_PANE_POS_RIGHT:
-            box = gtk_vbox_new (FALSE, SPACING_IN_BUTTON);
+            box = gtk_box_new(GTK_ORIENTATION_VERTICAL, SPACING_IN_BUTTON);
             break;
         default:
-            box = gtk_hbox_new (FALSE, SPACING_IN_BUTTON);
+            box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, SPACING_IN_BUTTON);
             break;
     }
 
@@ -1128,7 +1133,7 @@ GtkWidget *
 _moo_pane_get_window (MooPane *pane)
 {
     g_return_val_if_fail (MOO_IS_PANE (pane), NULL);
-    return pane->window;
+    return gtk_widget_get_window (pane);
 }
 
 /**
@@ -1206,10 +1211,10 @@ _moo_pane_unparent (MooPane *pane)
         pane->detach_button = NULL;
         pane->close_button = NULL;
 
-        if (pane->window)
-            gtk_widget_destroy (pane->window);
+        if (gtk_widget_get_window (pane))
+            gtk_widget_destroy (gtk_widget_get_window (pane));
 
-        pane->window = NULL;
+        gtk_widget_get_window (pane) = NULL;
         pane->keep_on_top_button = NULL;
         pane->window_child_holder = NULL;
 
@@ -1278,12 +1283,12 @@ keep_on_top_button_toggled (GtkToggleButton *button,
         GtkWidget *parent = gtk_widget_get_toplevel (GTK_WIDGET (pane->parent));
 
         if (GTK_IS_WINDOW (parent))
-            gtk_window_set_transient_for (GTK_WINDOW (pane->window),
+            gtk_window_set_transient_for (GTK_WINDOW (gtk_widget_get_window (pane)),
                                           GTK_WINDOW (parent));
     }
     else
     {
-        gtk_window_set_transient_for (GTK_WINDOW (pane->window), NULL);
+        gtk_window_set_transient_for (GTK_WINDOW (gtk_widget_get_window (pane)), NULL);
     }
 
     _moo_pane_params_changed (pane);
@@ -1295,7 +1300,7 @@ pane_window_configure (GtkWidget         *window,
                        MooPane           *pane)
 {
     g_return_val_if_fail (MOO_IS_PANE (pane), FALSE);
-    g_return_val_if_fail (pane->window == window, FALSE);
+    g_return_val_if_fail (gtk_widget_get_window (pane) == window, FALSE);
 
     pane->params->window_position.x = event->x;
     pane->params->window_position.y = event->y;
@@ -1314,16 +1319,16 @@ create_pane_window (MooPane *pane)
     GtkWidget *frame;
     GtkWindow *window;
 
-    if (pane->window)
+    if (gtk_widget_get_window (pane))
         return;
 
-    pane->window = gtk_window_new (GTK_WINDOW_TOPLEVEL);
-    window = GTK_WINDOW (pane->window);
+    gtk_widget_get_window (pane) = gtk_window_new (GTK_WINDOW_TOPLEVEL);
+    window = GTK_WINDOW (gtk_widget_get_window (pane));
 
-    moo_help_connect_keys (pane->window);
+    moo_help_connect_keys (gtk_widget_get_window (pane));
 
     set_pane_window_icon_and_title (pane);
-    gtk_window_set_type_hint (GTK_WINDOW (pane->window),
+    gtk_window_set_type_hint (GTK_WINDOW (gtk_widget_get_window (pane)),
                               GDK_WINDOW_TYPE_HINT_UTILITY);
 
     switch (_moo_paned_get_position (pane->parent))
@@ -1347,16 +1352,16 @@ create_pane_window (MooPane *pane)
 
     frame = create_frame_widget (pane, _moo_paned_get_position (pane->parent), FALSE);
     gtk_widget_show (frame);
-    gtk_container_add (GTK_CONTAINER (pane->window), frame);
+    gtk_container_add (GTK_CONTAINER (gtk_widget_get_window (pane)), frame);
 
-    g_object_set_data (G_OBJECT (pane->window), "moo-pane", pane);
+    g_object_set_data (G_OBJECT (gtk_widget_get_window (pane)), "moo-pane", pane);
     g_object_set_data (G_OBJECT (pane->keep_on_top_button), "moo-pane", pane);
 
     gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (pane->keep_on_top_button),
                                   pane->params->keep_on_top);
     g_signal_connect (pane->keep_on_top_button, "toggled",
                       G_CALLBACK (keep_on_top_button_toggled), pane);
-    g_signal_connect (pane->window, "configure-event",
+    g_signal_connect (gtk_widget_get_window (pane), "configure-event",
                       G_CALLBACK (pane_window_configure), pane);
 }
 
@@ -1391,12 +1396,12 @@ _moo_pane_detach (MooPane *pane)
     {
         GtkWidget *parent = gtk_widget_get_toplevel (GTK_WIDGET (pane->parent));
         if (GTK_IS_WINDOW (parent))
-            gtk_window_set_transient_for (GTK_WINDOW (pane->window),
+            gtk_window_set_transient_for (GTK_WINDOW (gtk_widget_get_window (pane)),
                                           GTK_WINDOW (parent));
     }
     else
     {
-        gtk_window_set_transient_for (GTK_WINDOW (pane->window), NULL);
+        gtk_window_set_transient_for (GTK_WINDOW (gtk_widget_get_window (pane)), NULL);
     }
 
     if (pane->focus_child)
@@ -1404,21 +1409,21 @@ _moo_pane_detach (MooPane *pane)
     else
         gtk_widget_child_focus (pane->child, GTK_DIR_TAB_FORWARD);
 
-    g_object_get (pane->window, "visible", &visible, NULL);
+    g_object_get (gtk_widget_get_window (pane), "visible", &visible, NULL);
 
     if (!visible &&
         pane->params->window_position.width > 0 &&
         pane->params->window_position.height > 0)
     {
-        gtk_window_move (GTK_WINDOW (pane->window),
+        gtk_window_move (GTK_WINDOW (gtk_widget_get_window (pane)),
                          pane->params->window_position.x,
                          pane->params->window_position.y);
-        gtk_window_set_default_size (GTK_WINDOW (pane->window),
+        gtk_window_set_default_size (GTK_WINDOW (gtk_widget_get_window (pane)),
                                      pane->params->window_position.width,
                                      pane->params->window_position.height);
     }
 
-    gtk_window_present (GTK_WINDOW (pane->window));
+    gtk_window_present (GTK_WINDOW (gtk_widget_get_window (pane)));
     _moo_pane_params_changed (pane);
 }
 
@@ -1441,7 +1446,7 @@ _moo_pane_attach (MooPane *pane)
 
     reparent (pane->child, pane->window_child_holder, pane->child_holder);
 
-    gtk_widget_hide (pane->window);
+    gtk_widget_hide (gtk_widget_get_window (pane));
     _moo_pane_params_changed (pane);
 }
 
@@ -1601,7 +1606,7 @@ get_pixbuf (MooIconWidget *icon)
             GdkPixbuf *pixbuf;
             guchar *pixels, *p;
             int width, height, rowstride, n_channels;
-            GdkColor *color;
+            GdkRGBA *color;
             int x, y;
 
             pixbuf = gdk_pixbuf_new_from_inline (-1, icon->data, TRUE, NULL);
@@ -1616,7 +1621,7 @@ get_pixbuf (MooIconWidget *icon)
             g_assert (n_channels == 4);
             rowstride = gdk_pixbuf_get_rowstride (pixbuf);
 
-            color = &widget->style->fg[state];
+            color = &gtk_widget_get_style (widget)->fg[state];
 
             for (x = 0; x < width; ++x)
             {
@@ -1640,7 +1645,7 @@ get_pixbuf (MooIconWidget *icon)
 
 static void
 draw_pixbuf (GtkWidget      *widget,
-             GdkEventExpose *event)
+             cairo_t *event)
 {
     GdkPixbuf *pixbuf;
     int pixbuf_width, pixbuf_height;
@@ -1652,11 +1657,11 @@ draw_pixbuf (GtkWidget      *widget,
     pixbuf_width = gdk_pixbuf_get_width (pixbuf);
     pixbuf_height = gdk_pixbuf_get_height (pixbuf);
 
-    x = widget->allocation.x + (widget->allocation.width - pixbuf_width) / 2;
-    y = widget->allocation.y + (widget->allocation.height - pixbuf_height) / 2;
+    x = moo_widget_get_alloc(widget).x + (moo_widget_get_alloc(widget).width - pixbuf_width) / 2;
+    y = moo_widget_get_alloc(widget).y + (moo_widget_get_alloc(widget).height - pixbuf_height) / 2;
 
-    gdk_draw_pixbuf (event->window,
-                     widget->style->black_gc,
+    gdk_draw_pixbuf (gtk_widget_get_window (event),
+                     gtk_widget_get_style (widget)->black_gc,
                      pixbuf,
                      0, 0, x, y, pixbuf_width, pixbuf_height,
                      GDK_RGB_DITHER_NORMAL, 0, 0);
@@ -1664,7 +1669,7 @@ draw_pixbuf (GtkWidget      *widget,
 
 static void
 draw_arrow (GtkWidget      *widget,
-            GdkEventExpose *event)
+            cairo_t *event)
 {
     GtkArrowType arrow_type;
     int x, y, width, height;
@@ -1687,13 +1692,13 @@ draw_arrow (GtkWidget      *widget,
             g_return_if_reached ();
     }
 
-    width = 3 * widget->allocation.width / 4;
-    height = 3 * widget->allocation.height / 4;
-    x = widget->allocation.x + width / 6;
-    y = widget->allocation.y + height / 6;
+    width = 3 * moo_widget_get_alloc(widget).width / 4;
+    height = 3 * moo_widget_get_alloc(widget).height / 4;
+    x = moo_widget_get_alloc(widget).x + width / 6;
+    y = moo_widget_get_alloc(widget).y + height / 6;
 
-    gtk_paint_arrow (widget->style,
-                     event->window,
+    gtk_paint_arrow (gtk_widget_get_style (widget),
+                     gtk_widget_get_window (event),
                      GTK_WIDGET_STATE (widget),
                      GTK_SHADOW_IN,
                      &event->area,
@@ -1706,7 +1711,7 @@ draw_arrow (GtkWidget      *widget,
 
 static gboolean
 moo_icon_widget_expose_event (GtkWidget      *widget,
-                              GdkEventExpose *event)
+                              cairo_t *event)
 {
     MooIconWidget *icon = (MooIconWidget*) widget;
 
@@ -1735,7 +1740,7 @@ _moo_icon_widget_class_init (MooIconWidgetClass *klass)
     object_class->dispose = moo_icon_widget_dispose;
 
     widget_class->style_set = moo_icon_widget_style_set;
-    widget_class->expose_event = moo_icon_widget_expose_event;
+    widget_class->draw = moo_icon_widget_expose_event;
 }
 
 GtkWidget *

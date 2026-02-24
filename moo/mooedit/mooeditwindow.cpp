@@ -52,6 +52,7 @@
 #include "moocpp/gobjptr.h"
 #include <string.h>
 #include <gtk/gtk.h>
+#include "mooutils/moo-gtk3-compat.h"
 #include <math.h>
 
 #include <string>
@@ -142,7 +143,7 @@ static GObject *moo_edit_window_constructor     (GType               type,
                                                  guint               n_props,
                                                  GObjectConstructParam *props);
 static void     moo_edit_window_finalize        (GObject            *object);
-static void     moo_edit_window_destroy         (GtkObject          *object);
+static void     moo_edit_window_destroy         (GtkWidget          *object);
 
 static void     moo_edit_window_set_property    (GObject            *object,
                                                  guint               prop_id,
@@ -344,7 +345,6 @@ moo_edit_window_class_init (MooEditWindowClass *klass)
 {
     guint i;
     GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
-    GtkObjectClass *gtkobject_class = GTK_OBJECT_CLASS (klass);
     MooWindowClass *window_class = MOO_WINDOW_CLASS (klass);
 
     action_checks_init ();
@@ -353,7 +353,7 @@ moo_edit_window_class_init (MooEditWindowClass *klass)
     gobject_class->finalize = moo_edit_window_finalize;
     gobject_class->set_property = moo_edit_window_set_property;
     gobject_class->get_property = moo_edit_window_get_property;
-    gtkobject_class->destroy = moo_edit_window_destroy;
+    GTK_WIDGET_CLASS(klass)->destroy = moo_edit_window_destroy;
     window_class->close = moo_edit_window_close_handler;
 
     klass->before_close = moo_edit_window_before_close;
@@ -872,7 +872,7 @@ moo_edit_window_get_editor (MooEditWindow *window)
 
 
 static void
-moo_edit_window_destroy (GtkObject *object)
+moo_edit_window_destroy (GtkWidget *object)
 {
     MooEditWindow *window = MOO_EDIT_WINDOW (object);
 
@@ -908,7 +908,7 @@ moo_edit_window_destroy (GtkObject *object)
 
     windows.erase(window);
 
-    GTK_OBJECT_CLASS(moo_edit_window_parent_class)->destroy (object);
+    GTK_WIDGET_CLASS(moo_edit_window_parent_class)->destroy (object);
 }
 
 
@@ -1668,7 +1668,7 @@ action_focus_doc (MooEditWindow *window)
     active_view = ACTIVE_VIEW (window);
     g_return_if_fail (active_view != nullptr);
 
-    if (!GTK_WIDGET_HAS_FOCUS (active_view))
+    if (!gtk_widget_has_focus (GTK_WIDGET (active_view)))
     {
         gtk_widget_grab_focus (GTK_WIDGET (active_view));
     }
@@ -1896,7 +1896,7 @@ populate_bookmark_menu (MooEditWindow *window,
     GList *children, *l;
     int pos;
 
-    children = g_list_copy (GTK_MENU_SHELL (menu)->children);
+    children = gtk_container_get_children (GTK_CONTAINER (menu));
     pos = g_list_index (children, next_bk_item);
     g_return_if_fail (pos >= 0);
 
@@ -3178,7 +3178,7 @@ _moo_edit_window_remove_doc (MooEditWindow *window,
     for (i = 0; i < views->n_elms; ++i)
     {
         MooEditView *view = views->elms[i];
-        had_focus = had_focus || GTK_WIDGET_HAS_FOCUS (view);
+        had_focus = had_focus || gtk_widget_has_focus (GTK_WIDGET (view));
     }
 
     g_signal_emit (window, signals[CLOSE_DOC], 0, doc);
@@ -3444,7 +3444,7 @@ create_tab_label (MooEditWindow *window,
 
     group = gtk_size_group_new (GTK_SIZE_GROUP_VERTICAL);
 
-    hbox = gtk_hbox_new (FALSE, 3);
+    hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 3);
     gtk_widget_show (hbox);
 
     evbox = gtk_event_box_new ();
@@ -4591,7 +4591,7 @@ populate_window_menu (MooEditWindow *window,
     guint i;
     GtkWidget *item;
 
-    children = g_list_copy (GTK_MENU_SHELL (menu)->children);
+    children = gtk_container_get_children (GTK_CONTAINER (menu));
     pos = g_list_index (children, no_docs_item);
     g_return_if_fail (pos >= 0);
 
@@ -4720,7 +4720,7 @@ notebook_drag_motion (GtkWidget          *widget,
     if (target == MOO_EDIT_TAB_ATOM)
         gtk_drag_get_data (widget, context, MOO_EDIT_TAB_ATOM, time);
     else
-        gdk_drag_status (context, context->suggested_action, time);
+        gdk_drag_status (context, gdk_drag_context_get_suggested_action (context), time);
 
     return TRUE;
 }
@@ -4768,7 +4768,7 @@ notebook_drag_data_recv (GtkWidget          *widget,
     {
         data_window_drop.set(widget, false);
 
-        if (data->target == MOO_EDIT_TAB_ATOM)
+        if (gtk_selection_data_get_target (data) == MOO_EDIT_TAB_ATOM)
         {
             GtkWidget *toplevel;
             GtkWidget *src_notebook = nullptr;
@@ -4797,14 +4797,14 @@ notebook_drag_data_recv (GtkWidget          *widget,
 
             goto out;
         }
-        else if (data->target == moo_atom_uri_list ())
+        else if (gtk_selection_data_get_target (data) == moo_atom_uri_list ())
         {
             char **uris;
             char **u;
 
             /* XXX this is wrong but works. gtk_selection_data_get_uris()
              * does not work on windows */
-            uris = g_uri_list_extract_uris ((char*) data->data);
+            uris = g_uri_list_extract_uris ((char*) gtk_selection_data_get_data (data));
 
             if (!uris)
                 goto out;
@@ -4844,7 +4844,7 @@ notebook_drag_data_recv (GtkWidget          *widget,
 
             g_free (text);
             gtk_drag_finish (context, TRUE,
-                             context->suggested_action == GDK_ACTION_MOVE,
+                             gdk_drag_context_get_suggested_action (context) == GDK_ACTION_MOVE,
                              time);
             finished = TRUE;
         }

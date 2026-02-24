@@ -24,7 +24,7 @@ typedef struct MooFileViewPrivate MooFileViewPrivate;
 
 struct _MooFileView
 {
-    GtkVBox vbox;
+    GtkBox vbox;
     GtkWidget *toolbar;
     MooFileViewPrivate *priv;
 };

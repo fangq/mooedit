@@ -27,6 +27,7 @@
 #include "mooutils/moocompat.h"
 #include <gdk/gdkkeysyms.h>
 #include <gtk/gtk.h>
+#include "mooutils/moo-gtk3-compat.h"
 
 #define MOD_MASK() (gtk_accelerator_get_default_mod_mask ())
 
@@ -765,8 +766,8 @@ completion_popup (MooFileEntryCompletion *cmpl)
 
     GTK_WIDGET_SET_CAN_FOCUS (cmpl->priv->treeview);
 
-    if (GTK_WINDOW (window)->group)
-        gtk_window_group_add_window (GTK_WINDOW (window)->group,
+    if (gtk_window_get_group (GTK_WINDOW (window)))
+        gtk_window_group_add_window (gtk_window_get_group (GTK_WINDOW (window)),
                                      GTK_WINDOW (cmpl->priv->popup));
     gtk_window_set_modal (GTK_WINDOW (cmpl->priv->popup), TRUE);
 
@@ -775,13 +776,13 @@ completion_popup (MooFileEntryCompletion *cmpl)
     gtk_widget_show (cmpl->priv->popup);
 
     gtk_widget_ensure_style (GTK_WIDGET (cmpl->priv->treeview));
-    gtk_widget_modify_bg (GTK_WIDGET (cmpl->priv->treeview), GTK_STATE_ACTIVE,
+    gtk_widget_override_background_color (GTK_WIDGET (cmpl->priv->treeview), GTK_STATE_ACTIVE,
                           &GTK_WIDGET(cmpl->priv->treeview)->style->base[GTK_STATE_SELECTED]);
-    gtk_widget_modify_base (GTK_WIDGET (cmpl->priv->treeview), GTK_STATE_ACTIVE,
+    gtk_widget_override_background_color (GTK_WIDGET (cmpl->priv->treeview), GTK_STATE_ACTIVE,
                             &GTK_WIDGET(cmpl->priv->treeview)->style->base[GTK_STATE_SELECTED]);
 
     gtk_grab_add (cmpl->priv->popup);
-    gdk_pointer_grab (cmpl->priv->popup->window, TRUE,
+    gdk_pointer_grab (cmpl->priv->popup), gtk_widget_get_window(combo->priv->popup, TRUE,
                       GDK_BUTTON_PRESS_MASK |
                               GDK_BUTTON_RELEASE_MASK |
                               GDK_POINTER_MOTION_MASK,
@@ -850,11 +851,11 @@ completion_popup_button_press (G_GNUC_UNUSED GtkWidget *popup_window,
                                GdkEventButton *event,
                                MooFileEntryCompletion   *cmpl)
 {
-    if (event->window == cmpl->priv->popup->window)
+    if (gtk_widget_get_window (event) == cmpl->priv->popup), gtk_widget_get_window(combo->priv->popup)
     {
         gint width, height;
-        gdk_drawable_get_size (GDK_DRAWABLE (event->window),
-                               &width, &height);
+        width = gdk_window_get_width (gtk_widget_get_window (event));
+        height = gdk_window_get_height (gtk_widget_get_window (event));
         if (event->x < 0 || event->x >= width ||
             event->y < 0 || event->y >= height)
         {
@@ -984,45 +985,45 @@ completion_move_selection (MooFileEntryCompletion *cmpl,
 
     switch (event->keyval)
     {
-        case GDK_Down:
-        case GDK_KP_Down:
+        case GDK_KEY_Down:
+        case GDK_KEY_KP_Down:
             if (current_item < n_items - 1)
                 new_item = current_item + 1;
             else
                 new_item = -1;
             break;
 
-        case GDK_Up:
-        case GDK_KP_Up:
+        case GDK_KEY_Up:
+        case GDK_KEY_KP_Up:
             if (current_item < 0)
                 new_item = n_items - 1;
             else
                 new_item = current_item - 1;
             break;
 
-        case GDK_Page_Down:
-        case GDK_KP_Page_Down:
+        case GDK_KEY_Page_Down:
+        case GDK_KEY_KP_Page_Down:
             new_item = current_item + COMPLETION_POPUP_LEN - 1;
             if (new_item >= n_items)
                 new_item = n_items - 1;
             break;
 
-        case GDK_Page_Up:
-        case GDK_KP_Page_Up:
+        case GDK_KEY_Page_Up:
+        case GDK_KEY_KP_Page_Up:
             new_item = current_item - COMPLETION_POPUP_LEN + 1;
             if (new_item < 0)
                 new_item = 0;
             break;
 
-        case GDK_Tab:
-        case GDK_KP_Tab:
+        case GDK_KEY_Tab:
+        case GDK_KEY_KP_Tab:
             if (current_item < n_items - 1)
                 new_item = current_item + 1;
             else
                 new_item = 0;
             break;
 
-        case GDK_ISO_Left_Tab:
+        case GDK_KEY_ISO_Left_Tab:
             if (current_item <= 0)
                 new_item = n_items - 1;
             else
@@ -1077,12 +1078,12 @@ completion_popup_key_press (G_GNUC_UNUSED GtkWidget *popup,
 {
     switch (event->keyval)
     {
-        case GDK_Down:
-        case GDK_Up:
-        case GDK_KP_Down:
-        case GDK_KP_Up:
-        case GDK_Page_Down:
-        case GDK_Page_Up:
+        case GDK_KEY_Down:
+        case GDK_KEY_Up:
+        case GDK_KEY_KP_Down:
+        case GDK_KEY_KP_Up:
+        case GDK_KEY_Page_Down:
+        case GDK_KEY_Page_Up:
             if (!(event->state & MOD_MASK()))
             {
                 completion_move_selection (cmpl, event);
@@ -1090,8 +1091,8 @@ completion_popup_key_press (G_GNUC_UNUSED GtkWidget *popup,
             }
             break;
 
-        case GDK_Tab:
-        case GDK_KP_Tab:
+        case GDK_KEY_Tab:
+        case GDK_KEY_KP_Tab:
             if (!(event->state & MOD_MASK()))
             {
                 if (cmpl->priv->walking_list)
@@ -1107,13 +1108,13 @@ completion_popup_key_press (G_GNUC_UNUSED GtkWidget *popup,
             }
             break;
 
-        case GDK_Escape:
+        case GDK_KEY_Escape:
             completion_popdown (cmpl);
             return TRUE;
 
-        case GDK_Return:
-        case GDK_ISO_Enter:
-        case GDK_KP_Enter:
+        case GDK_KEY_Return:
+        case GDK_KEY_ISO_Enter:
+        case GDK_KEY_KP_Enter:
             if (!(event->state & MOD_MASK()))
                 return completion_return_key (cmpl);
             break;
@@ -1209,7 +1210,7 @@ completion_create_popup (MooFileEntryCompletion *cmpl)
     gtk_widget_set_size_request (cmpl->priv->popup, -1, -1);
     gtk_window_set_default_size (GTK_WINDOW (cmpl->priv->popup), 1, 1);
     gtk_window_set_resizable (GTK_WINDOW (cmpl->priv->popup), FALSE);
-    gtk_widget_add_events (cmpl->priv->popup, GDK_KEY_PRESS_MASK | GDK_BUTTON_PRESS_MASK);
+    gtk_widget_add_events (cmpl->priv->popup, GDK_PRESS_MASK | GDK_BUTTON_PRESS_MASK);
 
     cell = gtk_cell_renderer_text_new ();
     cmpl->priv->column = gtk_tree_view_column_new ();
@@ -1319,10 +1320,10 @@ entry_get_borders (GtkEntry *entry,
                           "focus-line-width", &focus_width,
                           NULL);
 
-    if (entry->has_frame)
+    if (gtk_entry_get_has_frame (entry))
     {
-        *xborder = widget->style->xthickness;
-        *yborder = widget->style->ythickness;
+        *xborder = 1 /* GTK3: use CSS padding instead */;
+        *yborder = 1 /* GTK3: use CSS padding instead */;
     }
     else
     {
@@ -1359,7 +1360,7 @@ completion_resize_popup (MooFileEntryCompletion *cmpl)
         g_source_remove (cmpl->priv->resize_popup_idle);
     cmpl->priv->resize_popup_idle = 0;
 
-    gdk_window_get_origin (widget->window, &x, &y);
+    gdk_window_get_origin (gtk_widget_get_window (widget), &x, &y);
     /* XXX */
     entry_get_borders (GTK_ENTRY (cmpl->priv->entry), &x_border, &y_border);
 
@@ -1371,10 +1372,10 @@ completion_resize_popup (MooFileEntryCompletion *cmpl)
                                         NULL, NULL, NULL, &height);
 
     screen = gtk_widget_get_screen (widget);
-    monitor_num = gdk_screen_get_monitor_at_window (screen, widget->window);
+    monitor_num = gdk_screen_get_monitor_at_window (screen, gtk_widget_get_window (widget));
     gdk_screen_get_monitor_geometry (screen, monitor_num, &monitor);
 
-    width = MIN (widget->allocation.width, monitor.width) - 2 * x_border;
+    width = MIN (moo_widget_get_alloc(widget).width, monitor.width) - 2 * x_border;
     gtk_widget_style_get (GTK_WIDGET (cmpl->priv->treeview), "vertical-separator",
                           &vert_separator, NULL);
     gtk_widget_set_size_request (GTK_WIDGET (cmpl->priv->treeview), width,
@@ -1490,7 +1491,7 @@ completion_entry_key_press (GtkEntry               *entry,
     g_return_val_if_fail (entry == cmpl->priv->entry, FALSE);
 
     if (cmpl->priv->enabled &&
-        moo_accel_check_event (GTK_WIDGET (entry), event, GDK_Tab, 0))
+        moo_accel_check_event (GTK_WIDGET (entry), event, GDK_KEY_Tab, 0))
     {
         completion_tab_key (cmpl);
         return TRUE;
@@ -1572,7 +1573,7 @@ static void     moo_file_entry_get_property (GObject        *object,
                                              guint           prop_id,
                                              GValue         *value,
                                              GParamSpec     *pspec);
-static void     moo_file_entry_destroy      (GtkObject      *object);
+static void     moo_file_entry_destroy      (GInitiallyUnowned      *object);
 static gboolean moo_file_entry_key_press    (GtkWidget      *widget,
                                              GdkEventKey    *event);
 
@@ -1589,7 +1590,7 @@ static void
 _moo_file_entry_class_init (MooFileEntryClass *klass)
 {
     GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
-    GtkObjectClass *gtkobject_class = GTK_OBJECT_CLASS (klass);
+    GObjectClass *gtkobject_class = G_OBJECT_CLASS(klass);
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
 
     gobject_class->set_property = moo_file_entry_set_property;
@@ -1617,7 +1618,7 @@ _moo_file_entry_init (G_GNUC_UNUSED MooFileEntry *entry)
 
 
 static void
-moo_file_entry_destroy (GtkObject *object)
+moo_file_entry_destroy (GInitiallyUnowned *object)
 {
     MooFileEntry *entry = MOO_FILE_ENTRY (object);
 
@@ -1628,7 +1629,7 @@ moo_file_entry_destroy (GtkObject *object)
         entry->completion = NULL;
     }
 
-    GTK_OBJECT_CLASS(_moo_file_entry_parent_class)->destroy (object);
+    G_OBJECT_CLASS(_moo_file_entry_parent_class)->destroy (object);
 }
 
 

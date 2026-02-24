@@ -64,7 +64,7 @@ typedef struct _MooFontSelectionDialogClass  MooFontSelectionDialogClass;
 
 struct _MooFontSelection
 {
-  GtkVBox parent_instance;
+  GtkBox parent_instance;
 
   GtkWidget *font_entry;
   GtkWidget *family_list;

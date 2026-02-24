@@ -46,6 +46,7 @@
 #include "mooutils/mooi18n.h"
 #include <gdk/gdkkeysyms.h>
 #include <gtk/gtk.h>
+#include "mooutils/moo-gtk3-compat.h"
 
 
 #ifndef __WIN32__
@@ -174,7 +175,7 @@ static void         moo_file_view_get_property  (GObject        *object,
                                                  GValue         *value,
                                                  GParamSpec     *pspec);
 
-static void         moo_file_view_destroy       (GtkObject      *object);
+static void         moo_file_view_destroy       (GInitiallyUnowned      *object);
 static void         moo_file_view_hide          (GtkWidget      *widget);
 static gboolean     moo_file_view_key_press     (MooFileView    *fileview,
                                                  GtkWidget      *widget,
@@ -491,7 +492,7 @@ static void
 moo_file_view_class_init (MooFileViewClass *klass)
 {
     GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
-    GtkObjectClass *gtkobject_class = GTK_OBJECT_CLASS (klass);
+    GObjectClass *gtkobject_class = G_OBJECT_CLASS(klass);
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
     GtkBindingSet *binding_set;
 
@@ -808,7 +809,7 @@ moo_file_view_class_init (MooFileViewClass *klass)
     binding_set = gtk_binding_set_by_class (klass);
 
     gtk_binding_entry_add_signal (binding_set,
-                                  GDK_u, GDK_CONTROL_MASK,
+                                  GDK_KEY_u, GDK_CONTROL_MASK,
                                   "delete-to-cursor", 0);
 
     gtk_binding_entry_add_signal (binding_set,
@@ -847,35 +848,35 @@ moo_file_view_class_init (MooFileViewClass *klass)
 #endif
 
     gtk_binding_entry_add_signal (binding_set,
-                                  GDK_f, GDK_MOD1_MASK | GDK_SHIFT_MASK,
+                                  GDK_KEY_f, GDK_MOD1_MASK | GDK_SHIFT_MASK,
                                   "focus-to-filter-entry", 0);
     gtk_binding_entry_add_signal (binding_set,
-                                  GDK_b, GDK_MOD1_MASK | GDK_SHIFT_MASK,
+                                  GDK_KEY_b, GDK_MOD1_MASK | GDK_SHIFT_MASK,
                                   "focus-to-file-view", 0);
     gtk_binding_entry_add_signal (binding_set,
-                                  GDK_h, GDK_MOD1_MASK | GDK_SHIFT_MASK,
+                                  GDK_KEY_h, GDK_MOD1_MASK | GDK_SHIFT_MASK,
                                   "toggle-show-hidden", 0);
     gtk_binding_entry_add_signal (binding_set,
-                                  GDK_k, GDK_MOD1_MASK | GDK_SHIFT_MASK,
+                                  GDK_KEY_k, GDK_MOD1_MASK | GDK_SHIFT_MASK,
                                   "toggle-show-bookmarks", 0);
 
     gtk_binding_entry_add_signal (binding_set,
-                                  GDK_c, MOO_ACCEL_CTRL_MASK,
+                                  GDK_KEY_c, MOO_ACCEL_CTRL_MASK,
                                   "copy-clipboard", 0);
     gtk_binding_entry_add_signal (binding_set,
-                                  GDK_Insert, GDK_CONTROL_MASK,
+                                  GDK_KEY_Insert, GDK_CONTROL_MASK,
                                   "copy-clipboard", 0);
     gtk_binding_entry_add_signal (binding_set,
-                                  GDK_x, MOO_ACCEL_CTRL_MASK,
+                                  GDK_KEY_x, MOO_ACCEL_CTRL_MASK,
                                   "cut-clipboard", 0);
     gtk_binding_entry_add_signal (binding_set,
-                                  GDK_Delete, GDK_SHIFT_MASK,
+                                  GDK_KEY_Delete, GDK_SHIFT_MASK,
                                   "cut-clipboard", 0);
     gtk_binding_entry_add_signal (binding_set,
-                                  GDK_v, MOO_ACCEL_CTRL_MASK,
+                                  GDK_KEY_v, MOO_ACCEL_CTRL_MASK,
                                   "paste-clipboard", 0);
     gtk_binding_entry_add_signal (binding_set,
-                                  GDK_Insert, GDK_SHIFT_MASK,
+                                  GDK_KEY_Insert, GDK_SHIFT_MASK,
                                   "paste-clipboard", 0);
 }
 
@@ -917,7 +918,7 @@ moo_file_view_init (MooFileView *fileview)
 
 
 static void
-moo_file_view_destroy (GtkObject *object)
+moo_file_view_destroy (GInitiallyUnowned *object)
 {
     MooFileView *fileview = MOO_FILE_VIEW (object);
 
@@ -927,7 +928,7 @@ moo_file_view_destroy (GtkObject *object)
         fileview->priv->props_dialog = NULL;
     }
 
-    GTK_OBJECT_CLASS (moo_file_view_parent_class)->destroy (object);
+    G_OBJECT_CLASS(moo_file_view_parent_class)->destroy (object);
 }
 
 
@@ -1583,7 +1584,7 @@ create_filter_combo (G_GNUC_UNUSED MooFileView *fileview)
 {
     GtkWidget *hbox, *button, *combo;
 
-    hbox = gtk_hbox_new (FALSE, 0);
+    hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 
     button = gtk_toggle_button_new_with_label (_("Filter"));
     gtk_widget_show (button);
@@ -1595,7 +1596,7 @@ create_filter_combo (G_GNUC_UNUSED MooFileView *fileview)
 
     fileview->priv->filter_button = GTK_TOGGLE_BUTTON (button);
     fileview->priv->filter_combo = GTK_COMBO_BOX (combo);
-    fileview->priv->filter_entry = GTK_ENTRY (GTK_BIN (combo)->child);
+    fileview->priv->filter_entry = GTK_ENTRY (gtk_bin_get_child (GTK_BIN (combo)));
 
     g_signal_connect_swapped (button, "toggled",
                               G_CALLBACK (filter_button_toggled),
@@ -1604,7 +1605,7 @@ create_filter_combo (G_GNUC_UNUSED MooFileView *fileview)
                            G_CALLBACK (filter_combo_changed),
                            fileview, NULL,
                            G_CONNECT_AFTER | G_CONNECT_SWAPPED);
-    g_signal_connect_swapped (GTK_BIN (combo)->child, "activate",
+    g_signal_connect_swapped (gtk_bin_get_child (GTK_BIN (combo)), "activate",
                               G_CALLBACK (filter_entry_activate),
                               fileview);
 
@@ -3475,7 +3476,7 @@ menu_position_func (G_GNUC_UNUSED GtkMenu *menu,
         GList *rows;
     } *data = user_data;
 
-    window = GTK_WIDGET(data->fileview)->window;
+    window = gtk_widget_get_window (GTK_WIDGET(data->fileview));
     gdk_window_get_origin (window, x, y);
 
     *push_in = TRUE;
@@ -4098,7 +4099,7 @@ entry_key_press (GtkEntry       *entry,
     if (event->state & MOO_ACCEL_MODS_MASK)
         return FALSE;
 
-    if (event->keyval != GDK_Tab)
+    if (event->keyval != GDK_KEY_Tab)
     {
         if (entry_stop_tab_cycle (fileview))
             g_signal_emit_by_name (entry, "changed");
@@ -4106,14 +4107,14 @@ entry_key_press (GtkEntry       *entry,
 
     switch (event->keyval)
     {
-        case GDK_Escape:
+        case GDK_KEY_Escape:
             stop_path_entry (fileview, TRUE);
             return TRUE;
 
-        case GDK_Up:
-        case GDK_KP_Up:
-        case GDK_Down:
-        case GDK_KP_Down:
+        case GDK_KEY_Up:
+        case GDK_KEY_KP_Up:
+        case GDK_KEY_Down:
+        case GDK_KEY_KP_Down:
             filewidget = get_view_widget (fileview);
             GTK_WIDGET_CLASS(G_OBJECT_GET_CLASS (filewidget))->
                     key_press_event (filewidget, event);
@@ -4123,7 +4124,7 @@ entry_key_press (GtkEntry       *entry,
             gtk_editable_set_position (GTK_EDITABLE (entry), -1);
             return TRUE;
 
-        case GDK_Tab:
+        case GDK_KEY_Tab:
             return entry_tab_key (entry, fileview);
 
         default:
@@ -4267,208 +4268,208 @@ moo_file_view_key_press (MooFileView    *fileview,
 
     switch (event->keyval)
     {
-        case GDK_VoidSymbol:
-        case GDK_BackSpace:
-        case GDK_Tab:
-        case GDK_Linefeed:
-        case GDK_Clear:
-        case GDK_Return:
-        case GDK_Pause:
-        case GDK_Scroll_Lock:
-        case GDK_Sys_Req:
-        case GDK_Escape:
-        case GDK_Delete:
-        case GDK_Multi_key:
-        case GDK_Codeinput:
-        case GDK_SingleCandidate:
-        case GDK_MultipleCandidate:
-        case GDK_PreviousCandidate:
-        case GDK_Kanji:
-        case GDK_Muhenkan:
-        case GDK_Henkan_Mode:
-        case GDK_Romaji:
-        case GDK_Hiragana:
-        case GDK_Katakana:
-        case GDK_Hiragana_Katakana:
-        case GDK_Zenkaku:
-        case GDK_Hankaku:
-        case GDK_Zenkaku_Hankaku:
-        case GDK_Touroku:
-        case GDK_Massyo:
-        case GDK_Kana_Lock:
-        case GDK_Kana_Shift:
-        case GDK_Eisu_Shift:
-        case GDK_Eisu_toggle:
-        case GDK_Home:
-        case GDK_Left:
-        case GDK_Up:
-        case GDK_Right:
-        case GDK_Down:
-        case GDK_Page_Up:
-        case GDK_Page_Down:
-        case GDK_End:
-        case GDK_Begin:
-        case GDK_Select:
-        case GDK_Print:
-        case GDK_Execute:
-        case GDK_Insert:
-        case GDK_Undo:
-        case GDK_Redo:
-        case GDK_Menu:
-        case GDK_Find:
-        case GDK_Cancel:
-        case GDK_Help:
-        case GDK_Break:
-        case GDK_Mode_switch:
-        case GDK_Num_Lock:
-        case GDK_KP_Tab:
-        case GDK_KP_Enter:
-        case GDK_KP_F1:
-        case GDK_KP_F2:
-        case GDK_KP_F3:
-        case GDK_KP_F4:
-        case GDK_KP_Home:
-        case GDK_KP_Left:
-        case GDK_KP_Up:
-        case GDK_KP_Right:
-        case GDK_KP_Down:
-        case GDK_KP_Page_Up:
-        case GDK_KP_Page_Down:
-        case GDK_KP_End:
-        case GDK_KP_Begin:
-        case GDK_KP_Insert:
-        case GDK_KP_Delete:
-        case GDK_F1:
-        case GDK_F2:
-        case GDK_F3:
-        case GDK_F4:
-        case GDK_F5:
-        case GDK_F6:
-        case GDK_F7:
-        case GDK_F8:
-        case GDK_F9:
-        case GDK_F10:
-        case GDK_F11:
-        case GDK_F12:
-        case GDK_F13:
-        case GDK_F14:
-        case GDK_F15:
-        case GDK_F16:
-        case GDK_F17:
-        case GDK_F18:
-        case GDK_F19:
-        case GDK_F20:
-        case GDK_F21:
-        case GDK_F22:
-        case GDK_F23:
-        case GDK_F24:
-        case GDK_F25:
-        case GDK_F26:
-        case GDK_F27:
-        case GDK_F28:
-        case GDK_F29:
-        case GDK_F30:
-        case GDK_F31:
-        case GDK_F32:
-        case GDK_F33:
-        case GDK_F34:
-        case GDK_F35:
-        case GDK_Shift_L:
-        case GDK_Shift_R:
-        case GDK_Control_L:
-        case GDK_Control_R:
-        case GDK_Caps_Lock:
-        case GDK_Shift_Lock:
-        case GDK_Meta_L:
-        case GDK_Meta_R:
-        case GDK_Alt_L:
-        case GDK_Alt_R:
-        case GDK_Super_L:
-        case GDK_Super_R:
-        case GDK_Hyper_L:
-        case GDK_Hyper_R:
-        case GDK_ISO_Lock:
-        case GDK_ISO_Level2_Latch:
-        case GDK_ISO_Level3_Shift:
-        case GDK_ISO_Level3_Latch:
-        case GDK_ISO_Level3_Lock:
-        case GDK_ISO_Group_Latch:
-        case GDK_ISO_Group_Lock:
-        case GDK_ISO_Next_Group:
-        case GDK_ISO_Next_Group_Lock:
-        case GDK_ISO_Prev_Group:
-        case GDK_ISO_Prev_Group_Lock:
-        case GDK_ISO_First_Group:
-        case GDK_ISO_First_Group_Lock:
-        case GDK_ISO_Last_Group:
-        case GDK_ISO_Last_Group_Lock:
-        case GDK_ISO_Left_Tab:
-        case GDK_ISO_Move_Line_Up:
-        case GDK_ISO_Move_Line_Down:
-        case GDK_ISO_Partial_Line_Up:
-        case GDK_ISO_Partial_Line_Down:
-        case GDK_ISO_Partial_Space_Left:
-        case GDK_ISO_Partial_Space_Right:
-        case GDK_ISO_Set_Margin_Left:
-        case GDK_ISO_Set_Margin_Right:
-        case GDK_ISO_Release_Margin_Left:
-        case GDK_ISO_Release_Margin_Right:
-        case GDK_ISO_Release_Both_Margins:
-        case GDK_ISO_Fast_Cursor_Left:
-        case GDK_ISO_Fast_Cursor_Right:
-        case GDK_ISO_Fast_Cursor_Up:
-        case GDK_ISO_Fast_Cursor_Down:
-        case GDK_ISO_Continuous_Underline:
-        case GDK_ISO_Discontinuous_Underline:
-        case GDK_ISO_Emphasize:
-        case GDK_ISO_Center_Object:
-        case GDK_ISO_Enter:
-        case GDK_First_Virtual_Screen:
-        case GDK_Prev_Virtual_Screen:
-        case GDK_Next_Virtual_Screen:
-        case GDK_Last_Virtual_Screen:
-        case GDK_Terminate_Server:
-        case GDK_AccessX_Enable:
-        case GDK_AccessX_Feedback_Enable:
-        case GDK_RepeatKeys_Enable:
-        case GDK_SlowKeys_Enable:
-        case GDK_BounceKeys_Enable:
-        case GDK_StickyKeys_Enable:
-        case GDK_MouseKeys_Enable:
-        case GDK_MouseKeys_Accel_Enable:
-        case GDK_Overlay1_Enable:
-        case GDK_Overlay2_Enable:
-        case GDK_AudibleBell_Enable:
-        case GDK_Pointer_Left:
-        case GDK_Pointer_Right:
-        case GDK_Pointer_Up:
-        case GDK_Pointer_Down:
-        case GDK_Pointer_UpLeft:
-        case GDK_Pointer_UpRight:
-        case GDK_Pointer_DownLeft:
-        case GDK_Pointer_DownRight:
-        case GDK_Pointer_Button_Dflt:
-        case GDK_Pointer_Button1:
-        case GDK_Pointer_Button2:
-        case GDK_Pointer_Button3:
-        case GDK_Pointer_Button4:
-        case GDK_Pointer_Button5:
-        case GDK_Pointer_DblClick_Dflt:
-        case GDK_Pointer_DblClick1:
-        case GDK_Pointer_DblClick2:
-        case GDK_Pointer_DblClick3:
-        case GDK_Pointer_DblClick4:
-        case GDK_Pointer_DblClick5:
-        case GDK_Pointer_Drag_Dflt:
-        case GDK_Pointer_Drag1:
-        case GDK_Pointer_Drag2:
-        case GDK_Pointer_Drag3:
-        case GDK_Pointer_Drag4:
-        case GDK_Pointer_Drag5:
-        case GDK_Pointer_EnableKeys:
-        case GDK_Pointer_Accelerate:
-        case GDK_Pointer_DfltBtnNext:
-        case GDK_Pointer_DfltBtnPrev:
+        case GDK_KEY_VoidSymbol:
+        case GDK_KEY_BackSpace:
+        case GDK_KEY_Tab:
+        case GDK_KEY_Linefeed:
+        case GDK_KEY_Clear:
+        case GDK_KEY_Return:
+        case GDK_KEY_Pause:
+        case GDK_KEY_Scroll_Lock:
+        case GDK_KEY_Sys_Req:
+        case GDK_KEY_Escape:
+        case GDK_KEY_Delete:
+        case GDK_KEY_Multi_key:
+        case GDK_KEY_Codeinput:
+        case GDK_KEY_SingleCandidate:
+        case GDK_KEY_MultipleCandidate:
+        case GDK_KEY_PreviousCandidate:
+        case GDK_KEY_Kanji:
+        case GDK_KEY_Muhenkan:
+        case GDK_KEY_Henkan_Mode:
+        case GDK_KEY_Romaji:
+        case GDK_KEY_Hiragana:
+        case GDK_KEY_Katakana:
+        case GDK_KEY_Hiragana_Katakana:
+        case GDK_KEY_Zenkaku:
+        case GDK_KEY_Hankaku:
+        case GDK_KEY_Zenkaku_Hankaku:
+        case GDK_KEY_Touroku:
+        case GDK_KEY_Massyo:
+        case GDK_KEY_Kana_Lock:
+        case GDK_KEY_Kana_Shift:
+        case GDK_KEY_Eisu_Shift:
+        case GDK_KEY_Eisu_toggle:
+        case GDK_KEY_Home:
+        case GDK_KEY_Left:
+        case GDK_KEY_Up:
+        case GDK_KEY_Right:
+        case GDK_KEY_Down:
+        case GDK_KEY_Page_Up:
+        case GDK_KEY_Page_Down:
+        case GDK_KEY_End:
+        case GDK_KEY_Begin:
+        case GDK_KEY_Select:
+        case GDK_KEY_Print:
+        case GDK_KEY_Execute:
+        case GDK_KEY_Insert:
+        case GDK_KEY_Undo:
+        case GDK_KEY_Redo:
+        case GDK_KEY_Menu:
+        case GDK_KEY_Find:
+        case GDK_KEY_Cancel:
+        case GDK_KEY_Help:
+        case GDK_KEY_Break:
+        case GDK_KEY_Mode_switch:
+        case GDK_KEY_Num_Lock:
+        case GDK_KEY_KP_Tab:
+        case GDK_KEY_KP_Enter:
+        case GDK_KEY_KP_F1:
+        case GDK_KEY_KP_F2:
+        case GDK_KEY_KP_F3:
+        case GDK_KEY_KP_F4:
+        case GDK_KEY_KP_Home:
+        case GDK_KEY_KP_Left:
+        case GDK_KEY_KP_Up:
+        case GDK_KEY_KP_Right:
+        case GDK_KEY_KP_Down:
+        case GDK_KEY_KP_Page_Up:
+        case GDK_KEY_KP_Page_Down:
+        case GDK_KEY_KP_End:
+        case GDK_KEY_KP_Begin:
+        case GDK_KEY_KP_Insert:
+        case GDK_KEY_KP_Delete:
+        case GDK_KEY_F1:
+        case GDK_KEY_F2:
+        case GDK_KEY_F3:
+        case GDK_KEY_F4:
+        case GDK_KEY_F5:
+        case GDK_KEY_F6:
+        case GDK_KEY_F7:
+        case GDK_KEY_F8:
+        case GDK_KEY_F9:
+        case GDK_KEY_F10:
+        case GDK_KEY_F11:
+        case GDK_KEY_F12:
+        case GDK_KEY_F13:
+        case GDK_KEY_F14:
+        case GDK_KEY_F15:
+        case GDK_KEY_F16:
+        case GDK_KEY_F17:
+        case GDK_KEY_F18:
+        case GDK_KEY_F19:
+        case GDK_KEY_F20:
+        case GDK_KEY_F21:
+        case GDK_KEY_F22:
+        case GDK_KEY_F23:
+        case GDK_KEY_F24:
+        case GDK_KEY_F25:
+        case GDK_KEY_F26:
+        case GDK_KEY_F27:
+        case GDK_KEY_F28:
+        case GDK_KEY_F29:
+        case GDK_KEY_F30:
+        case GDK_KEY_F31:
+        case GDK_KEY_F32:
+        case GDK_KEY_F33:
+        case GDK_KEY_F34:
+        case GDK_KEY_F35:
+        case GDK_KEY_Shift_L:
+        case GDK_KEY_Shift_R:
+        case GDK_KEY_Control_L:
+        case GDK_KEY_Control_R:
+        case GDK_KEY_Caps_Lock:
+        case GDK_KEY_Shift_Lock:
+        case GDK_KEY_Meta_L:
+        case GDK_KEY_Meta_R:
+        case GDK_KEY_Alt_L:
+        case GDK_KEY_Alt_R:
+        case GDK_KEY_Super_L:
+        case GDK_KEY_Super_R:
+        case GDK_KEY_Hyper_L:
+        case GDK_KEY_Hyper_R:
+        case GDK_KEY_ISO_Lock:
+        case GDK_KEY_ISO_Level2_Latch:
+        case GDK_KEY_ISO_Level3_Shift:
+        case GDK_KEY_ISO_Level3_Latch:
+        case GDK_KEY_ISO_Level3_Lock:
+        case GDK_KEY_ISO_Group_Latch:
+        case GDK_KEY_ISO_Group_Lock:
+        case GDK_KEY_ISO_Next_Group:
+        case GDK_KEY_ISO_Next_Group_Lock:
+        case GDK_KEY_ISO_Prev_Group:
+        case GDK_KEY_ISO_Prev_Group_Lock:
+        case GDK_KEY_ISO_First_Group:
+        case GDK_KEY_ISO_First_Group_Lock:
+        case GDK_KEY_ISO_Last_Group:
+        case GDK_KEY_ISO_Last_Group_Lock:
+        case GDK_KEY_ISO_Left_Tab:
+        case GDK_KEY_ISO_Move_Line_Up:
+        case GDK_KEY_ISO_Move_Line_Down:
+        case GDK_KEY_ISO_Partial_Line_Up:
+        case GDK_KEY_ISO_Partial_Line_Down:
+        case GDK_KEY_ISO_Partial_Space_Left:
+        case GDK_KEY_ISO_Partial_Space_Right:
+        case GDK_KEY_ISO_Set_Margin_Left:
+        case GDK_KEY_ISO_Set_Margin_Right:
+        case GDK_KEY_ISO_Release_Margin_Left:
+        case GDK_KEY_ISO_Release_Margin_Right:
+        case GDK_KEY_ISO_Release_Both_Margins:
+        case GDK_KEY_ISO_Fast_Cursor_Left:
+        case GDK_KEY_ISO_Fast_Cursor_Right:
+        case GDK_KEY_ISO_Fast_Cursor_Up:
+        case GDK_KEY_ISO_Fast_Cursor_Down:
+        case GDK_KEY_ISO_Continuous_Underline:
+        case GDK_KEY_ISO_Discontinuous_Underline:
+        case GDK_KEY_ISO_Emphasize:
+        case GDK_KEY_ISO_Center_Object:
+        case GDK_KEY_ISO_Enter:
+        case GDK_KEY_First_Virtual_Screen:
+        case GDK_KEY_Prev_Virtual_Screen:
+        case GDK_KEY_Next_Virtual_Screen:
+        case GDK_KEY_Last_Virtual_Screen:
+        case GDK_KEY_Terminate_Server:
+        case GDK_KEY_AccessX_Enable:
+        case GDK_KEY_AccessX_Feedback_Enable:
+        case GDK_KEY_RepeatKeys_Enable:
+        case GDK_KEY_SlowKeys_Enable:
+        case GDK_KEY_BounceKeys_Enable:
+        case GDK_KEY_StickyKeys_Enable:
+        case GDK_KEY_MouseKeys_Enable:
+        case GDK_KEY_MouseKeys_Accel_Enable:
+        case GDK_KEY_Overlay1_Enable:
+        case GDK_KEY_Overlay2_Enable:
+        case GDK_KEY_AudibleBell_Enable:
+        case GDK_KEY_Pointer_Left:
+        case GDK_KEY_Pointer_Right:
+        case GDK_KEY_Pointer_Up:
+        case GDK_KEY_Pointer_Down:
+        case GDK_KEY_Pointer_UpLeft:
+        case GDK_KEY_Pointer_UpRight:
+        case GDK_KEY_Pointer_DownLeft:
+        case GDK_KEY_Pointer_DownRight:
+        case GDK_KEY_Pointer_Button_Dflt:
+        case GDK_KEY_Pointer_Button1:
+        case GDK_KEY_Pointer_Button2:
+        case GDK_KEY_Pointer_Button3:
+        case GDK_KEY_Pointer_Button4:
+        case GDK_KEY_Pointer_Button5:
+        case GDK_KEY_Pointer_DblClick_Dflt:
+        case GDK_KEY_Pointer_DblClick1:
+        case GDK_KEY_Pointer_DblClick2:
+        case GDK_KEY_Pointer_DblClick3:
+        case GDK_KEY_Pointer_DblClick4:
+        case GDK_KEY_Pointer_DblClick5:
+        case GDK_KEY_Pointer_Drag_Dflt:
+        case GDK_KEY_Pointer_Drag1:
+        case GDK_KEY_Pointer_Drag2:
+        case GDK_KEY_Pointer_Drag3:
+        case GDK_KEY_Pointer_Drag4:
+        case GDK_KEY_Pointer_Drag5:
+        case GDK_KEY_Pointer_EnableKeys:
+        case GDK_KEY_Pointer_Accelerate:
+        case GDK_KEY_Pointer_DfltBtnNext:
+        case GDK_KEY_Pointer_DfltBtnPrev:
         case GDK_3270_Duplicate:
         case GDK_3270_FieldMark:
         case GDK_3270_Right2:
@@ -4520,7 +4521,7 @@ moo_file_view_key_press (MooFileView    *fileview,
 
         copy = gdk_event_copy ((GdkEvent*) event);
         g_object_unref (copy->key.window);
-        copy->key.window = g_object_ref (entry->window);
+        copy->key.window = g_object_ref (gtk_widget_get_window (entry));
 
         gtk_widget_grab_focus (entry);
 

@@ -432,7 +432,7 @@ _moo_value_convert (const GValue *src,
         if (src_type == GDK_TYPE_COLOR)
         {
             char string[14];
-            const GdkColor *color = (const GdkColor*) g_value_get_boxed (src);
+            const GdkRGBA *color = (const GdkRGBA*) g_value_get_boxed (src);
 
             if (!color)
             {
@@ -549,7 +549,7 @@ _moo_value_convert (const GValue *src,
 
         if (dest_type == GDK_TYPE_COLOR)
         {
-            GdkColor color;
+            GdkRGBA color;
 
             if (!string || !string[0])
             {
@@ -557,7 +557,7 @@ _moo_value_convert (const GValue *src,
                 return TRUE;
             }
 
-            g_return_val_if_fail (gdk_color_parse (string, &color),
+            g_return_val_if_fail (gdk_rgba_parse (&color, string),
                                   FALSE);
 
             g_value_set_boxed (dest, &color);
@@ -675,10 +675,10 @@ _moo_value_equal (const GValue *a,
 
     if (type == GDK_TYPE_COLOR)
     {
-        const GdkColor *ca, *cb;
+        const GdkRGBA *ca, *cb;
 
-        ca = (const GdkColor*) g_value_get_boxed (a);
-        cb = (const GdkColor*) g_value_get_boxed (b);
+        ca = (const GdkRGBA*) g_value_get_boxed (a);
+        cb = (const GdkRGBA*) g_value_get_boxed (b);
 
         if (!ca || !cb)
             return ca == cb;
@@ -796,7 +796,7 @@ _moo_value_convert_to_enum (const GValue *val,
     return g_value_get_enum (&result);
 }
 
-const GdkColor*
+const GdkRGBA*
 _moo_value_convert_to_color (const GValue *val)
 {
     static GValue result;

@@ -347,7 +347,7 @@ _gtk_source_style_scheme_new (const gchar *id,
  * @name: color name to find.
  *
  * Returns: color which corresponds to @name in the @scheme.
- * Returned value is actual color string suitable for gdk_color_parse().
+ * Returned value is actual color string suitable for gdk_rgba_parse().
  * It may be @name or part of @name so copy it or something, if you need
  * it to stay around.
  *
@@ -363,11 +363,11 @@ get_color_by_name (GtkSourceStyleScheme *scheme,
 
 	if (name[0] == '#')
 	{
-		GdkColor dummy;
+		GdkRGBA dummy;
 
-		if (gdk_color_parse (name + 1, &dummy))
+		if (gdk_rgba_parse (name + 1, &dummy))
 			color = name + 1;
-		else if (gdk_color_parse (name, &dummy))
+		else if (gdk_rgba_parse (&dummy, name))
 			color = name;
 		else
 			g_warning ("could not parse color '%s'", name);
@@ -436,7 +436,7 @@ fix_style_colors (GtkSourceStyleScheme *scheme,
 /*
  * It's a little weird because we have named colors: styles loaded from
  * scheme file can have "#red" or "blue", and we want to give out styles
- * which have nice colors suitable for gdk_color_parse(), so that GtkSourceStyle
+ * which have nice colors suitable for gdk_rgba_parse(), so that GtkSourceStyle
  * foreground and background properties are the same as GtkTextTag's.
  * Yet we do need to preserve what we got from file in style schemes,
  * since there may be child schemes which may redefine colors or something,
@@ -522,7 +522,7 @@ _gtk_source_style_scheme_get_right_margin_style (GtkSourceStyleScheme *scheme)
 static gboolean
 get_color (GtkSourceStyle *style,
 	   gboolean        foreground,
-	   GdkColor       *dest)
+	   GdkRGBA       *dest)
 {
 	const gchar *color;
 	guint mask;
@@ -543,7 +543,7 @@ get_color (GtkSourceStyle *style,
 
 	if (style->mask & mask)
 	{
-		if (color == NULL || !gdk_color_parse (color, dest))
+		if (color == NULL || !gdk_rgba_parse (color, dest))
 		{
 			g_warning ("invalid color '%s'",
 				   color != NULL ? color : "(null)");
@@ -561,7 +561,7 @@ get_color (GtkSourceStyle *style,
  */
 gboolean
 _gtk_source_style_scheme_get_current_line_color (GtkSourceStyleScheme *scheme,
-						 GdkColor             *color)
+						 GdkRGBA             *color)
 {
 	GtkSourceStyle *style;
 
@@ -577,7 +577,7 @@ static void
 set_rc_style_color (GtkRcStyle     *rc_style,
 		    GtkRcFlags      component,
 		    GtkStateType    state,
-		    const GdkColor *color)
+		    const GdkRGBA *color)
 {
 	if (color)
 	{
@@ -613,8 +613,8 @@ set_text_style (GtkRcStyle     *rc_style,
 		GtkStateType    state,
 		gboolean       *need_set_style)
 {
-	GdkColor color;
-	GdkColor *color_ptr;
+	GdkRGBA color;
+	GdkRGBA *color_ptr;
 
 	if (get_color (style, FALSE, &color))
 	{
@@ -647,10 +647,10 @@ set_line_numbers_style (GtkRcStyle     *rc_style,
 			gboolean       *need_set_style)
 {
 	gint i;
-	GdkColor *fg_ptr = NULL;
-	GdkColor *bg_ptr = NULL;
-	GdkColor fg;
-	GdkColor bg;
+	GdkRGBA *fg_ptr = NULL;
+	GdkRGBA *bg_ptr = NULL;
+	GdkRGBA fg;
+	GdkRGBA bg;
 
 	if (get_color (style, TRUE, &fg))
 	{
@@ -675,8 +675,8 @@ static void
 apply_cursor_style (GtkSourceStyleScheme *scheme,
 		    GtkWidget            *widget)
 {
-	GdkColor primary_color, secondary_color;
-	GdkColor *primary = NULL, *secondary = NULL;
+	GdkRGBA primary_color, secondary_color;
+	GdkRGBA *primary = NULL, *secondary = NULL;
 
 	if (scheme != NULL)
 	{
