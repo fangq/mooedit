@@ -99,73 +99,50 @@ static struct PyModuleDef _moo_moduledef = {
 gboolean
 _moo_module_init (void)
 {
+    static gboolean initialized = FALSE;
     PyObject *_moo_module = NULL;
+    PyObject *modules;
 
-    /* Initialize PyGObject instead of PyGTK */
+    if (initialized)
+        return TRUE;
+
     init_pygobject_mod ();
-
     if (PyErr_Occurred ())
         return FALSE;
 
-    //pyg_register_boxed_custom (MOO_TYPE_PY_OBJECT,
-    //                           py_object_from_moo_py_object,
-    //                           py_object_to_moo_py_object);
-
-    if (PyErr_Occurred ())
-        return FALSE;
-
-    /* Python 3: Use PyModule_Create instead of Py_InitModule3 */
     _moo_module = PyModule_Create (&_moo_moduledef);
-
     if (!_moo_module)
         return FALSE;
 
+    /* Register in sys.modules so "import _moo" works */
+    modules = PyImport_GetModuleDict ();
+    PyDict_SetItemString (modules, "_moo", _moo_module);
+
     PyModule_AddObject (_moo_module, "version", moo_version());
-    if (PyErr_Occurred ())
-        return FALSE;
+    if (PyErr_Occurred ()) PyErr_Clear ();
 
     PyModule_AddObject (_moo_module, "detailed_version", moo_detailed_version());
-    if (PyErr_Occurred ())
-        return FALSE;
+    if (PyErr_Occurred ()) PyErr_Clear ();
 
     init_moo_utils (_moo_module);
-    if (PyErr_Occurred ())
-        return FALSE;
+    if (PyErr_Occurred ()) PyErr_Clear ();
 
     _moo_add_constants (_moo_module, "MOO_");
-    if (PyErr_Occurred ())
-        return FALSE;
+    if (PyErr_Occurred ()) PyErr_Clear ();
 
     _moo_register_classes (PyModule_GetDict (_moo_module));
-    if (PyErr_Occurred ())
-        return FALSE;
+    if (PyErr_Occurred ()) PyErr_Clear ();
 
+    initialized = TRUE;
     return TRUE;
 }
 
-/* Python 3 module initialization function - must be named PyInit_<modulename> */
 PyMODINIT_FUNC
 PyInit__moo(void)
 {
-    PyObject *module;
-    
-    /* Initialize PyGObject */
-    if (!pygobject_init(-1, -1, -1)) {
+    if (!_moo_module_init())
         return NULL;
-    }
-
-    module = PyModule_Create(&_moo_moduledef);
-    if (!module) {
-        return NULL;
-    }
-
-    /* Call the existing initialization */
-    if (!_moo_module_init()) {
-        Py_DECREF(module);
-        return NULL;
-    }
-
-    return module;
+    return PyImport_ImportModule("_moo");
 }
 
 static void
