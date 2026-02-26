@@ -305,7 +305,7 @@ _moo_edit_filter_free (MooEditFilter *filter)
         {
             case MOO_EDIT_FILTER_GLOBS:
             case MOO_EDIT_FILTER_LANGS:
-                g_slist_foreach (filter->u.langs, (GFunc) g_free, NULL);
+                g_slist_foreach (filter->u.langs, (GFunc)(void(*)(void)) g_free, NULL);
                 g_slist_free (filter->u.langs);
                 break;
             case MOO_EDIT_FILTER_REGEX:
@@ -447,8 +447,7 @@ filter_settings_store_new (void)
 static void
 filter_settings_store_free (FilterSettingsStore *store)
 {
-    g_slist_foreach (store->settings, (GFunc) filter_setting_free, NULL);
-    g_slist_free (store->settings);
+    g_slist_free_full (store->settings, (GDestroyNotify) filter_setting_free);
     g_free (store);
 }
 

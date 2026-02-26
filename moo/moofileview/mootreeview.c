@@ -150,8 +150,7 @@ moo_tree_view_finalize  (GObject      *object)
     if (view->active)
         disconnect_child (view);
 
-    g_slist_foreach (view->children, (GFunc) child_free, NULL);
-    g_slist_free (view->children);
+    g_slist_free_full (view->children, (GDestroyNotify) child_free);
 
     G_OBJECT_CLASS (_moo_tree_view_parent_class)->finalize (object);
 }

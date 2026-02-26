@@ -673,7 +673,7 @@ _gtk_source_language_define_language_styles (GtkSourceLanguage *lang)
 	{
 		force_styles (def_lang);
 		g_hash_table_foreach (def_lang->priv->styles,
-				      (GHFunc) copy_style_info,
+				      (GHFunc)(void(*)(void)) copy_style_info,
 				      lang->priv->styles);
 	}
 }
@@ -767,7 +767,7 @@ get_style_ids (GtkSourceLanguage *language)
 	data.ids_array = ids_array;
 
 	g_hash_table_foreach (language->priv->styles,
-			      (GHFunc) add_style_id,
+			      (GHFunc)(void(*)(void)) add_style_id,
 			      &data);
 
 	g_free (data.language_id);

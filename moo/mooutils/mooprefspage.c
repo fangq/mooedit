@@ -293,20 +293,20 @@ moo_prefs_page_init_sig (MooPrefsPage *page)
     if (page->priv->init)
         page->priv->init (page);
 
-    g_slist_foreach (page->priv->widgets, (GFunc) setting_init, NULL);
-    g_slist_foreach (page->priv->children, (GFunc) moo_prefs_page_init_sig, NULL);
+    g_slist_foreach (page->priv->widgets, (GFunc)(void(*)(void)) setting_init, NULL);
+    g_slist_foreach (page->priv->children, (GFunc)(void(*)(void)) moo_prefs_page_init_sig, NULL);
 }
 
 
 static void
 moo_prefs_page_apply (MooPrefsPage *page)
 {
-    g_slist_foreach (page->priv->widgets, (GFunc) setting_apply, NULL);
+    g_slist_foreach (page->priv->widgets, (GFunc)(void(*)(void)) setting_apply, NULL);
 
     if (page->priv->apply && page->priv->ui_initialized)
         page->priv->apply (page);
 
-    g_slist_foreach (page->priv->children, (GFunc) moo_prefs_page_apply, NULL);
+    g_slist_foreach (page->priv->children, (GFunc)(void(*)(void)) moo_prefs_page_apply, NULL);
 }
 
 

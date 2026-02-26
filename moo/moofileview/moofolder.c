@@ -248,7 +248,7 @@ _moo_folder_mem_usage (MooFolder *folder)
 {
     gsize mem = 0;
     mem += sizeof (MooFolderImpl);
-    g_hash_table_foreach (folder->impl->files, (GHFunc) add_file_size, &mem);
+    g_hash_table_foreach (folder->impl->files, (GHFunc)(void(*)(void)) add_file_size, &mem);
     return mem;
 }
 
@@ -1008,8 +1008,8 @@ moo_folder_do_reload (MooFolderImpl *impl)
     for (l = deleted; l != NULL; l = l->next)
         file_deleted (impl, l->data);
 
-    g_slist_foreach (new, (GFunc) g_free, NULL);
-    g_slist_foreach (deleted, (GFunc) g_free, NULL);
+    g_slist_foreach (new, (GFunc)(void(*)(void)) g_free, NULL);
+    g_slist_foreach (deleted, (GFunc)(void(*)(void)) g_free, NULL);
     g_slist_free (new);
     g_slist_free (deleted);
     g_hash_table_destroy (files);
@@ -1168,7 +1168,7 @@ _moo_folder_get_path (MooFolder *folder)
 static void
 files_list_free (GSList **list)
 {
-    g_slist_foreach (*list, (GFunc) _moo_file_unref, NULL);
+    g_slist_foreach (*list, (GFunc)(void(*)(void)) _moo_file_unref, NULL);
     g_slist_free (*list);
     *list = NULL;
 }
@@ -1187,7 +1187,7 @@ hash_table_to_file_list (GHashTable *files)
 {
     GSList *list = NULL;
     g_return_val_if_fail (files != NULL, NULL);
-    g_hash_table_foreach (files, (GHFunc) prepend_file, &list);
+    g_hash_table_foreach (files, (GHFunc)(void(*)(void)) prepend_file, &list);
     return list;
 }
 
@@ -1219,7 +1219,7 @@ get_unique (GHashTable *table1,
 
     data.list = NULL;
     data.table2 = table2;
-    g_hash_table_foreach (table1, (GHFunc) check_unique, &data);
+    g_hash_table_foreach (table1, (GHFunc)(void(*)(void)) check_unique, &data);
 
     *only_1 = data.list;
 }

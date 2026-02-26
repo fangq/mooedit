@@ -111,21 +111,21 @@ moo_entry_get_type (void)
             sizeof (MooEntryClass),
             NULL,		/* base_init */
             NULL,		/* base_finalize */
-            (GClassInitFunc) moo_entry_class_init,
+            (GClassInitFunc)(void(*)(void)) moo_entry_class_init,
             NULL,		/* class_finalize */
             NULL,		/* class_data */
             sizeof (MooEntry),
             0,
-            (GInstanceInitFunc) moo_entry_init,
+            (GInstanceInitFunc)(void(*)(void)) moo_entry_init,
             NULL
         };
 
         static const GInterfaceInfo editable_info = {
-            (GInterfaceInitFunc) moo_entry_editable_init, NULL, NULL
+            (GInterfaceInitFunc)(void(*)(void)) moo_entry_editable_init, NULL, NULL
         };
 
         static const GInterfaceInfo undo_ops_info = {
-            (GInterfaceInitFunc) moo_entry_undo_ops_init, NULL, NULL
+            (GInterfaceInitFunc)(void(*)(void)) moo_entry_undo_ops_init, NULL, NULL
         };
 
         type = g_type_register_static (GTK_TYPE_ENTRY, "MooEntry", &info, (GTypeFlags) 0);

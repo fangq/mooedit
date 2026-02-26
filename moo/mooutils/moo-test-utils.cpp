@@ -502,7 +502,7 @@ moo_test_coverage_write (const char *filename)
     g_return_if_fail (filename != NULL);
 
     content = g_string_new (NULL);
-    g_hash_table_foreach (called_functions, (GHFunc) add_func, content);
+    g_hash_table_foreach (called_functions, (GHFunc)(void(*)(void)) add_func, content);
 
     if (!g_file_set_contents (filename, content->str, -1, &error))
     {

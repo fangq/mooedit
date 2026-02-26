@@ -463,7 +463,7 @@ command_page_init (MooPrefsPage    *page,
     column = gtk_tree_view_column_new ();
     gtk_tree_view_column_pack_start (column, cell, TRUE);
     gtk_tree_view_column_set_cell_data_func (column, cell,
-                                             (GtkTreeCellDataFunc) name_data_func,
+                                             (GtkTreeCellDataFunc)(void(*)(void)) name_data_func,
                                              NULL, NULL);
     gtk_tree_view_append_column (gxml->treeview, column);
     g_object_set (cell, "editable", TRUE, nullptr);
@@ -531,8 +531,7 @@ command_page_apply (MooPrefsPage *page)
     _moo_edit_save_user_tools (page_get_type (page), list);
     _moo_edit_load_user_tools_type (page_get_type (page));
 
-    g_slist_foreach (list, (GFunc) _moo_user_tool_info_unref, NULL);
-    g_slist_free (list);
+    g_slist_free_full (list, (GDestroyNotify) _moo_user_tool_info_unref);
 
     set_changed (page, FALSE);
 }

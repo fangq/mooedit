@@ -16,6 +16,8 @@
 #ifndef MOO_PLUGIN_MACRO_H
 #define MOO_PLUGIN_MACRO_H
 
+
+#include "mooutils/mootype-macros.h"  /* for MOO_IGNORE_CAST_FUNCTION_TYPE */
 #include <mooedit/mooplugin.h>
 
 
@@ -93,12 +95,12 @@ name__##_plugin_get_type (void)                                             \
             sizeof (Name__##PluginClass),                                   \
             (GBaseInitFunc) NULL,                                           \
             (GBaseFinalizeFunc) NULL,                                       \
-            (GClassInitFunc) name__##_plugin_class_init,                    \
+            (GClassInitFunc)(void(*)(void)) name__##_plugin_class_init,                    \
             (GClassFinalizeFunc) NULL,                                      \
             NULL,   /* class_data */                                        \
             sizeof (Name__##Plugin),                                        \
             0,      /* n_preallocs */                                       \
-            (GInstanceInitFunc) name__##_plugin_instance_init,              \
+            (GInstanceInitFunc)(void(*)(void)) name__##_plugin_instance_init,              \
             NULL    /* value_table */                                       \
         };                                                                  \
                                                                             \
@@ -153,7 +155,7 @@ name__##_window_plugin_get_type (void)                                          
             sizeof (Name__##WindowPluginClass),                                 \
             (GBaseInitFunc) NULL,                                               \
             (GBaseFinalizeFunc) NULL,                                           \
-            (GClassInitFunc) name__##_window_plugin_class_init,                 \
+            (GClassInitFunc)(void(*)(void)) name__##_window_plugin_class_init,                 \
             (GClassFinalizeFunc) NULL,                                          \
             NULL,   /* class_data */                                            \
             sizeof (Name__##WindowPlugin),                                      \
@@ -202,7 +204,7 @@ name__##_doc_plugin_get_type (void)                                         \
             sizeof (Name__##DocPluginClass),                                \
             (GBaseInitFunc) NULL,                                           \
             (GBaseFinalizeFunc) NULL,                                       \
-            (GClassInitFunc) name__##_doc_plugin_class_init,                \
+            (GClassInitFunc)(void(*)(void)) name__##_doc_plugin_class_init,                \
             (GClassFinalizeFunc) NULL,                                      \
             NULL,   /* class_data */                                        \
             sizeof (Name__##DocPlugin),                                     \

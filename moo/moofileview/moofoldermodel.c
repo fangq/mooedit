@@ -57,17 +57,17 @@ _moo_folder_model_get_type (void)
             sizeof (MooFolderClass),
             NULL, /* base_init; */
             NULL, /* base_finalize; */
-            (GClassInitFunc) moo_folder_model_class_init,
+            (GClassInitFunc)(void(*)(void)) moo_folder_model_class_init,
             NULL, /* class_finalize; */
             NULL, /* class_data; */
             sizeof (MooFolder),
             0, /* n_preallocs; */
-            (GInstanceInitFunc) moo_folder_model_init,
+            (GInstanceInitFunc)(void(*)(void)) moo_folder_model_init,
             NULL /* value_table; */
         };
 
         static GInterfaceInfo tree_model_info = {
-            (GInterfaceInitFunc) moo_folder_model_tree_iface_init,
+            (GInterfaceInitFunc)(void(*)(void)) moo_folder_model_tree_iface_init,
             NULL, /* interface_finalize; */
             NULL /* interface_data; */
         };
@@ -244,8 +244,7 @@ _moo_folder_model_set_folder (MooFolderModel *model,
 
         files = _moo_folder_list_files (folder);
         moo_folder_model_add_files (model, files);
-        g_slist_foreach (files, (GFunc) _moo_file_unref, NULL);
-        g_slist_free (files);
+        g_slist_free_full (files, (GDestroyNotify) _moo_file_unref);
     }
 
     g_object_notify (G_OBJECT (model), "folder");
@@ -398,8 +397,7 @@ moo_folder_model_disconnect_folder (MooFolderModel *model)
 
         files = file_list_get_slist (model->priv->files);
         moo_folder_model_remove_files (model, files);
-        g_slist_foreach (files, (GFunc) _moo_file_unref, NULL);
-        g_slist_free (files);
+        g_slist_free_full (files, (GDestroyNotify) _moo_file_unref);
 
         g_object_unref (model->priv->folder);
         model->priv->folder = NULL;
@@ -418,21 +416,21 @@ static void
 moo_folder_model_add_files (MooFolderModel *model,
                             GSList         *files)
 {
-    g_slist_foreach (files, (GFunc) model_add_moo_file, model);
+    g_slist_foreach (files, (GFunc)(void(*)(void)) model_add_moo_file, model);
 }
 
 static void
 moo_folder_model_change_files (MooFolderModel *model,
                                GSList         *files)
 {
-    g_slist_foreach (files, (GFunc) model_change_moo_file, model);
+    g_slist_foreach (files, (GFunc)(void(*)(void)) model_change_moo_file, model);
 }
 
 static void
 moo_folder_model_remove_files (MooFolderModel *model,
                                GSList         *files)
 {
-    g_slist_foreach (files, (GFunc) model_remove_moo_file, model);
+    g_slist_foreach (files, (GFunc)(void(*)(void)) model_remove_moo_file, model);
 }
 
 

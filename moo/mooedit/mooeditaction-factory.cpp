@@ -421,13 +421,13 @@ error:
 
     if (doc_conditions)
     {
-        g_ptr_array_foreach (doc_conditions, (GFunc) g_free, NULL);
+        g_ptr_array_foreach (doc_conditions, (GFunc)(void(*)(void)) g_free, NULL);
         g_ptr_array_free (doc_conditions, TRUE);
     }
 
     if (view_conditions)
     {
-        g_ptr_array_foreach (view_conditions, (GFunc) g_free, NULL);
+        g_ptr_array_foreach (view_conditions, (GFunc)(void(*)(void)) g_free, NULL);
         g_ptr_array_free (view_conditions, TRUE);
     }
 
@@ -589,7 +589,7 @@ _moo_edit_add_class_actions (MooEdit *edit)
         actions = get_actions_hash (type);
 
         if (actions)
-            g_hash_table_foreach (actions, (GHFunc) add_action, edit);
+            g_hash_table_foreach (actions, (GHFunc)(void(*)(void)) add_action, edit);
 
         if (type == MOO_TYPE_EDIT)
             break;

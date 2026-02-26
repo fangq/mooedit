@@ -286,7 +286,7 @@ _moo_accel_prefs_page_init (MooAccelPrefsPage *page)
     gtk_tree_view_append_column (page->gxml->treeview, column);
     gtk_tree_view_column_set_sort_column_id (column, COLUMN_GLOBAL);
     gtk_tree_view_column_set_cell_data_func (column, renderer,
-                                             (GtkTreeCellDataFunc) global_cell_data_func,
+                                             (GtkTreeCellDataFunc)(void(*)(void)) global_cell_data_func,
                                              NULL, NULL);
     g_signal_connect_swapped (renderer, "toggled",
                               G_CALLBACK (global_cell_toggled),
@@ -374,7 +374,7 @@ static void
 moo_accel_prefs_page_apply (MooPrefsPage *prefs_page)
 {
     MooAccelPrefsPage *page = MOO_ACCEL_PREFS_PAGE (prefs_page);
-    g_hash_table_foreach (page->changed, (GHFunc) apply_one, NULL);
+    g_hash_table_foreach (page->changed, (GHFunc)(void(*)(void)) apply_one, NULL);
     g_hash_table_foreach_remove (page->changed, (GHRFunc) gtk_true, NULL);
     gtk_tree_model_foreach (GTK_TREE_MODEL (page->store),
                             (GtkTreeModelForeachFunc) apply_global,

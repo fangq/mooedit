@@ -610,7 +610,7 @@ moo_html_clear (GtkTextView *view)
 
     buffer = gtk_text_view_get_buffer (view);
     table = gtk_text_buffer_get_tag_table (buffer);
-    g_slist_foreach (data->href_tags, (GFunc) remove_tag, table);
+    g_slist_foreach (data->href_tags, (GFunc)(void(*)(void)) remove_tag, table);
     g_slist_free (data->href_tags);
     data->href_tags = nullptr;
 

@@ -199,8 +199,7 @@ string_list_copy (GSList *list)
 static void
 string_list_free (GSList *list)
 {
-    g_slist_foreach (list, (GFunc) g_free, NULL);
-    g_slist_free (list);
+    g_slist_free_full (list, (GDestroyNotify) g_free);
 }
 
 
@@ -292,8 +291,7 @@ get_lang_by_extension (MooLangMgr *mgr,
     if (!found)
         lang = NULL;
 
-    g_slist_foreach (langs, (GFunc) g_object_unref, NULL);
-    g_slist_free (langs);
+    g_slist_free_full (langs, (GDestroyNotify) g_object_unref);
     g_free (basename);
     return lang;
 }
@@ -494,8 +492,7 @@ get_lang_for_mime_type (MooLangMgr *mgr,
         string_list_free (mimetypes);
     }
 
-    g_slist_foreach (langs, (GFunc) g_object_unref, NULL);
-    g_slist_free (langs);
+    g_slist_free_full (langs, (GDestroyNotify) g_object_unref);
     return found ? lang : NULL;
 }
 
@@ -693,7 +690,7 @@ moo_lang_mgr_list_schemes (MooLangMgr *mgr)
     g_return_val_if_fail (MOO_IS_LANG_MGR (mgr), NULL);
 
     read_schemes (mgr);
-    g_hash_table_foreach (mgr->schemes, (GHFunc) prepend_scheme, &list);
+    g_hash_table_foreach (mgr->schemes, (GHFunc)(void(*)(void)) prepend_scheme, &list);
 
     return list;
 }
@@ -1101,5 +1098,5 @@ _moo_lang_mgr_save_config (MooLangMgr *mgr)
     data.mgr = mgr;
     data.xml = xml;
     data.root = NULL;
-    g_hash_table_foreach (mgr->langs, (GHFunc) save_one, &data);
+    g_hash_table_foreach (mgr->langs, (GHFunc)(void(*)(void)) save_one, &data);
 }

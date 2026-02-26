@@ -897,7 +897,7 @@ moo_edit_window_destroy (GtkWidget *object)
         GSList *list, *l;
 
         moo_edit_window_abort_jobs (window);
-        g_slist_foreach (window->priv->jobs, (GFunc) g_free, nullptr);
+        g_slist_foreach (window->priv->jobs, (GFunc)(void(*)(void)) g_free, nullptr);
         g_slist_free (window->priv->jobs);
         window->priv->jobs = nullptr;
 
@@ -4076,9 +4076,9 @@ create_lang_action (MooEditWindow *window)
     g_signal_connect_swapped (menu_mgr, "radio-set-active",
                               G_CALLBACK (lang_item_activated), window);
 
-    g_slist_foreach (langs, (GFunc) g_object_unref, nullptr);
+    g_slist_foreach (langs, (GFunc)(void(*)(void)) g_object_unref, nullptr);
     g_slist_free (langs);
-    g_slist_foreach (sections, (GFunc) g_free, nullptr);
+    g_slist_foreach (sections, (GFunc)(void(*)(void)) g_free, nullptr);
     g_slist_free (sections);
 
     moo_bind_bool_property (action, "sensitive", window, "has-open-document", FALSE);
@@ -4191,7 +4191,7 @@ moo_edit_window_check_actions (MooEditWindow *window)
     data.doc = ACTIVE_DOC (window);
 
     g_hash_table_foreach (action_checks,
-                          (GHFunc) check_action_hash_cb,
+                          (GHFunc)(void(*)(void)) check_action_hash_cb,
                           &data);
 }
 
@@ -4434,7 +4434,7 @@ moo_edit_window_add_stop_client (MooEditWindow  *window,
 
     had_clients = window->priv->stop_clients != nullptr;
     window->priv->stop_clients = g_slist_prepend (window->priv->stop_clients, client);
-    g_object_weak_ref (client, (GWeakNotify) client_died, window);
+    g_object_weak_ref (client, (GWeakNotify)(void(*)(void)) client_died, window);
     g_signal_connect (client, "job-started", G_CALLBACK (client_job_started), window);
     g_signal_connect (client, "job-finished", G_CALLBACK (client_job_finished), window);
 
@@ -4457,7 +4457,7 @@ moo_edit_window_remove_stop_client (MooEditWindow  *window,
 
     if (G_IS_OBJECT (client))
     {
-        g_object_weak_unref (client, (GWeakNotify) client_died, window);
+        g_object_weak_unref (client, (GWeakNotify)(void(*)(void)) client_died, window);
         g_signal_handlers_disconnect_by_func (client, (gpointer)client_job_started, window);
         g_signal_handlers_disconnect_by_func (client, (gpointer)client_job_finished, window);
     }

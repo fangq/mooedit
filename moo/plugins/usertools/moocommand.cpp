@@ -175,7 +175,7 @@ moo_command_list_factories (void)
     GSList *list = NULL;
 
     if (registered_factories)
-        g_hash_table_foreach (registered_factories, (GHFunc) add_factory_hash_cb, &list);
+        g_hash_table_foreach (registered_factories, (GHFunc)(void(*)(void)) add_factory_hash_cb, &list);
 
     return g_slist_reverse (list);
 }
@@ -1335,7 +1335,7 @@ moo_command_filter_list (void)
     GSList *ids = NULL;
 
     if (registered_filters)
-        g_hash_table_foreach (registered_filters, (GHFunc) prepend_filter_info, &list);
+        g_hash_table_foreach (registered_filters, (GHFunc)(void(*)(void)) prepend_filter_info, &list);
 
     list = g_slist_sort (list, (GCompareFunc) compare_filter_names);
 

@@ -148,11 +148,9 @@ moo_output_filter_regex_dispose (GObject *object)
     moo_file_line_data_free (filter->priv->line);
     filter->priv->line = NULL;
 
-    g_slist_foreach (filter->priv->file_stack, (GFunc) g_free, NULL);
-    g_slist_free (filter->priv->file_stack);
+    g_slist_free_full (filter->priv->file_stack, (GDestroyNotify) g_free);
     filter->priv->file_stack = NULL;
-    g_slist_foreach (filter->priv->dir_stack, (GFunc) g_free, NULL);
-    g_slist_free (filter->priv->dir_stack);
+    g_slist_free_full (filter->priv->dir_stack, (GDestroyNotify) g_free);
     filter->priv->dir_stack = NULL;
 
     G_OBJECT_CLASS (_moo_output_filter_regex_parent_class)->dispose (object);
@@ -687,8 +685,7 @@ pattern_info_free (PatternInfo *pattern)
         if (pattern->re)
             g_regex_unref (pattern->re);
         g_match_info_free (pattern->mi);
-        g_slist_foreach (pattern->actions, (GFunc) action_info_free, NULL);
-        g_slist_free (pattern->actions);
+        g_slist_free_full (pattern->actions, (GDestroyNotify) action_info_free);
         g_free (pattern->style);
         g_free (pattern);
     }
@@ -941,8 +938,7 @@ parse_match_node (MooMarkupNode *node,
     return pattern_info;
 
 error:
-    g_slist_foreach (actions, (GFunc) action_info_free, NULL);
-    g_slist_free (actions);
+    g_slist_free_full (actions, (GDestroyNotify) action_info_free);
     return NULL;
 }
 
@@ -1005,8 +1001,7 @@ parse_filter_node (MooMarkupNode *elm,
     return info;
 
 error:
-    g_slist_foreach (patterns, (GFunc) pattern_info_free, NULL);
-    g_slist_free (patterns);
+    g_slist_free_full (patterns, (GDestroyNotify) pattern_info_free);
     return NULL;
 }
 

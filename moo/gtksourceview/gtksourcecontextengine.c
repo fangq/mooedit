@@ -566,7 +566,7 @@ unhighlight_region (GtkSourceContextEngine *ce,
 	if (gtk_text_iter_equal (start, end))
 		return;
 
-	g_hash_table_foreach (ce->priv->tags, (GHFunc) unhighlight_region_cb, &data);
+	g_hash_table_foreach (ce->priv->tags, (GHFunc)(void(*)(void)) unhighlight_region_cb, &data);
 }
 
 #define MAX_STYLE_DEPENDENCY_DEPTH	50
@@ -2209,7 +2209,7 @@ remove_tags_hash_cb (G_GNUC_UNUSED gpointer style,
 static void
 destroy_tags_hash (GtkSourceContextEngine *ce)
 {
-	g_hash_table_foreach (ce->priv->tags, (GHFunc) remove_tags_hash_cb,
+	g_hash_table_foreach (ce->priv->tags, (GHFunc)(void(*)(void)) remove_tags_hash_cb,
                               gtk_text_buffer_get_tag_table (ce->priv->buffer));
 	g_hash_table_destroy (ce->priv->tags);
 	ce->priv->tags = NULL;
@@ -2396,7 +2396,7 @@ gtk_source_context_engine_set_style_scheme (GtkSourceEngine      *engine,
 		g_object_unref (ce->priv->style_scheme);
 
 	ce->priv->style_scheme = g_object_ref (scheme);
-	g_hash_table_foreach (ce->priv->tags, (GHFunc) set_tag_style_hash_cb, ce);
+	g_hash_table_foreach (ce->priv->tags, (GHFunc)(void(*)(void)) set_tag_style_hash_cb, ce);
 }
 
 static void
@@ -3442,7 +3442,7 @@ context_unref (Context *context)
 		else
 		{
 			g_hash_table_foreach (ptr->u.hash,
-					      (GHFunc) context_unref_hash_cb,
+					      (GHFunc)(void(*)(void)) context_unref_hash_cb,
 					      NULL);
 			g_hash_table_destroy (ptr->u.hash);
 		}
@@ -3507,7 +3507,7 @@ context_freeze (Context *ctx)
 		else
 		{
 			g_hash_table_foreach (ptr->u.hash,
-					      (GHFunc) context_freeze_hash_cb,
+					      (GHFunc)(void(*)(void)) context_freeze_hash_cb,
 					      NULL);
 		}
 	}
@@ -3549,10 +3549,9 @@ context_thaw (Context *ctx)
 		{
 			GSList *children = NULL;
 			g_hash_table_foreach (ptr->u.hash,
-					      (GHFunc) get_child_contexts_hash_cb,
+					      (GHFunc)(void(*)(void)) get_child_contexts_hash_cb,
 					      &children);
-			g_slist_foreach (children, (GFunc) context_thaw, NULL);
-			g_slist_free (children);
+			g_slist_free_full (children, (GDestroyNotify) context_thaw);
 		}
 
 		ptr = next;
@@ -5849,8 +5848,7 @@ context_definition_unref (ContextDefinition *definition)
 	g_free (definition->default_style);
 	regex_unref (definition->reg_all);
 
-	g_slist_foreach (definition->children, (GFunc) definition_child_free, NULL);
-	g_slist_free (definition->children);
+	g_slist_free_full (definition->children, (GDestroyNotify) definition_child_free);
 	g_slice_free (ContextDefinition, definition);
 }
 
@@ -6318,7 +6316,7 @@ _gtk_source_context_data_finish_parse (GtkSourceContextData *ctx_data,
 	data.ctx_data = ctx_data;
 	data.error = NULL;
 
-	g_hash_table_foreach (ctx_data->definitions, (GHFunc) resolve_reference, &data);
+	g_hash_table_foreach (ctx_data->definitions, (GHFunc)(void(*)(void)) resolve_reference, &data);
 
 	if (data.error != NULL)
 	{
@@ -6406,7 +6404,7 @@ _gtk_source_context_data_set_escape_char (GtkSourceContextData *ctx_data,
 	escaped = g_regex_escape_string (buf, 1);
 	pattern = g_strdup_printf ("%s.", escaped);
 
-	g_hash_table_foreach (ctx_data->definitions, (GHFunc) prepend_definition, &definitions);
+	g_hash_table_foreach (ctx_data->definitions, (GHFunc)(void(*)(void)) prepend_definition, &definitions);
 	definitions = g_slist_reverse (definitions);
 
 	if (!_gtk_source_context_data_define_context (ctx_data, "gtk-source-context-engine-escape",
@@ -6424,7 +6422,7 @@ _gtk_source_context_data_set_escape_char (GtkSourceContextData *ctx_data,
 						      &error))
 		goto out;
 
-	g_slist_foreach (definitions, (GFunc) add_escape_ref, ctx_data);
+	g_slist_foreach (definitions, (GFunc)(void(*)(void)) add_escape_ref, ctx_data);
 
 out:
 	if (error)
@@ -6508,7 +6506,7 @@ check_context (Context *context)
 			data.parent = context;
 			data.definition = ptr->definition;
 			g_hash_table_foreach (ptr->u.hash,
-					      (GHFunc) check_context_hash_cb,
+					      (GHFunc)(void(*)(void)) check_context_hash_cb,
 					      &data);
 		}
 	}
@@ -6726,7 +6724,7 @@ get_context_ptr_mem (ContextPtr *ptr,
 		else
 		{
 			info->ctx_mem += get_hash_table_mem (ptr->u.hash);
-			g_hash_table_foreach (ptr->u.hash, (GHFunc) get_context_mem_cb, info);
+			g_hash_table_foreach (ptr->u.hash, (GHFunc)(void(*)(void)) get_context_mem_cb, info);
 		}
 
 		get_context_ptr_mem (ptr->next, info);
@@ -6764,7 +6762,7 @@ get_definitions_mem (GtkSourceContextEngine *ce,
 	info->def_mem += sizeof (GtkSourceContextData);
 	info->def_mem += get_hash_table_mem (ce->priv->ctx_data->definitions);
 	g_hash_table_foreach (ce->priv->ctx_data->definitions,
-			      (GHFunc) get_def_mem_cb,
+			      (GHFunc)(void(*)(void)) get_def_mem_cb,
 			      info);
 }
 

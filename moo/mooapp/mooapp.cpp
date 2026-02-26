@@ -164,12 +164,12 @@ moo_app_get_type (void)
             sizeof (MooAppClass),
             (GBaseInitFunc) NULL,
             (GBaseFinalizeFunc) NULL,
-            (GClassInitFunc) moo_app_class_init,
+            (GClassInitFunc)(void(*)(void)) moo_app_class_init,
             (GClassFinalizeFunc) NULL,
             NULL,   /* class_data */
             sizeof (MooApp),
             0,      /* n_preallocs */
-            (GInstanceInitFunc) moo_app_instance_init,
+            (GInstanceInitFunc)(void(*)(void)) moo_app_instance_init,
             NULL    /* value_table */
         };
 

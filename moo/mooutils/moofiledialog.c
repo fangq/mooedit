@@ -205,8 +205,7 @@ moo_file_dialog_get_property (GObject        *object,
 static void
 string_slist_free (GSList *list)
 {
-    g_slist_foreach (list, (GFunc) g_free, NULL);
-    g_slist_free (list);
+    g_slist_free_full (list, (GDestroyNotify) g_free);
 }
 
 

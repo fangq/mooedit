@@ -178,9 +178,9 @@ moo_ipc_register_client (GObject        *object,
     }
 
     if (ids)
-        g_object_weak_unref (object, (GWeakNotify) client_died, ids);
+        g_object_weak_unref (object, (GWeakNotify)(void(*)(void)) client_died, ids);
     ids = g_slist_prepend (ids, g_strdup (id));
-    g_object_weak_ref (object, (GWeakNotify) client_died, ids);
+    g_object_weak_ref (object, (GWeakNotify)(void(*)(void)) client_died, ids);
     g_object_set_qdata (object, ipc_data.ids_quark, ids);
 
     info = client_info_new (object, callback);
@@ -210,10 +210,10 @@ moo_ipc_unregister_client (GObject    *object,
     }
 
     g_free (l->data);
-    g_object_weak_unref (object, (GWeakNotify) client_died, ids);
+    g_object_weak_unref (object, (GWeakNotify)(void(*)(void)) client_died, ids);
     ids = g_slist_delete_link (ids, l);
     if (ids)
-        g_object_weak_ref (object, (GWeakNotify) client_died, ids);
+        g_object_weak_ref (object, (GWeakNotify)(void(*)(void)) client_died, ids);
     g_object_set_qdata (object, ipc_data.ids_quark, ids);
 
     unregister_client (id, object);

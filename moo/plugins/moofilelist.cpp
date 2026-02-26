@@ -847,7 +847,7 @@ ui_config_free (UIConfig *cfg)
 {
     if (cfg)
     {
-        g_slist_foreach (cfg->expanded_rows, (GFunc) gtk_tree_path_free, nullptr);
+        g_slist_foreach (cfg->expanded_rows, (GFunc)(void(*)(void)) gtk_tree_path_free, nullptr);
         g_slist_free (cfg->expanded_rows);
         gtk_tree_path_free (cfg->selected_row);
         g_free (cfg);
@@ -1853,7 +1853,7 @@ get_selected_rows (WindowPlugin *plugin)
 static void
 path_list_free (GList *paths)
 {
-    g_list_foreach (paths, (GFunc) gtk_tree_path_free, nullptr);
+    g_list_foreach (paths, (GFunc)(void(*)(void)) gtk_tree_path_free, nullptr);
     g_list_free (paths);
 }
 
@@ -2094,7 +2094,7 @@ treeview_button_press (GtkTreeView    *treeview,
     if (path)
         gtk_tree_path_free (path);
 
-    g_list_foreach (selected, (GFunc) gtk_tree_path_free, nullptr);
+    g_list_foreach (selected, (GFunc)(void(*)(void)) gtk_tree_path_free, nullptr);
     g_list_free (selected);
 
     return TRUE;
@@ -2163,13 +2163,13 @@ create_treeview (WindowPlugin *plugin)
     cell = gtk_cell_renderer_pixbuf_new ();
     gtk_tree_view_column_pack_start (plugin->column, cell, FALSE);
     gtk_tree_view_column_set_cell_data_func (plugin->column, cell,
-                                             (GtkTreeCellDataFunc) pixbuf_data_func,
+                                             (GtkTreeCellDataFunc)(void(*)(void)) pixbuf_data_func,
                                              nullptr, nullptr);
 
     plugin->text_cell = gtk_cell_renderer_text_new ();
     gtk_tree_view_column_pack_start (plugin->column, plugin->text_cell, TRUE);
     gtk_tree_view_column_set_cell_data_func (plugin->column, plugin->text_cell,
-                                             (GtkTreeCellDataFunc) text_data_func,
+                                             (GtkTreeCellDataFunc)(void(*)(void)) text_data_func,
                                              nullptr, nullptr);
     g_signal_connect (plugin->text_cell, "edited",
                       G_CALLBACK (text_cell_edited), plugin);

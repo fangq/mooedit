@@ -201,7 +201,7 @@ got_data (GIOChannel *io)
     g_io_channel_read_chars (io, buf, 1, NULL, NULL);
     moo_static_mutex_unlock (&queue_lock);
 
-    g_hash_table_foreach (data, (GHFunc) invoke_callback, NULL);
+    g_hash_table_foreach (data, (GHFunc)(void(*)(void)) invoke_callback, NULL);
     g_hash_table_destroy (data);
 
     return TRUE;

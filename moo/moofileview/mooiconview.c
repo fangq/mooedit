@@ -2940,9 +2940,7 @@ init_selection (MooIconView *view)
 static void
 free_selection (MooIconView *view)
 {
-    g_slist_foreach (view->priv->selection->selected,
-                     (GFunc) gtk_tree_row_reference_free, NULL);
-    g_slist_free (view->priv->selection->selected);
+    g_slist_free_full (view->priv->selection->selected, (GDestroyNotify) gtk_tree_row_reference_free);
     g_free (view->priv->selection);
     view->priv->selection = NULL;
 }
@@ -2966,9 +2964,7 @@ selection_clear (MooIconView *view)
 {
     if (view->priv->selection && view->priv->selection->selected)
     {
-        g_slist_foreach (view->priv->selection->selected,
-                         (GFunc) gtk_tree_row_reference_free, NULL);
-        g_slist_free (view->priv->selection->selected);
+        g_slist_free_full (view->priv->selection->selected, (GDestroyNotify) gtk_tree_row_reference_free);
         view->priv->selection->selected = NULL;
         selection_changed (view);
     }
@@ -3390,9 +3386,7 @@ moo_icon_view_select_all (MooIconView *view)
         return;
 
     selection = view->priv->selection;
-    g_slist_foreach (selection->selected,
-                     (GFunc) gtk_tree_row_reference_free, NULL);
-    g_slist_free (selection->selected);
+    g_slist_free_full (selection->selected, (GDestroyNotify) gtk_tree_row_reference_free);
     selection->selected = NULL;
 
     gtk_tree_model_get_iter_first (view->priv->model, &iter);
@@ -3429,9 +3423,7 @@ _moo_icon_view_unselect_all (MooIconView *view)
 
     g_return_if_fail (selection->mode != GTK_SELECTION_BROWSE);
 
-    g_slist_foreach (selection->selected,
-                     (GFunc) gtk_tree_row_reference_free, NULL);
-    g_slist_free (selection->selected);
+    g_slist_free_full (selection->selected, (GDestroyNotify) gtk_tree_row_reference_free);
     selection->selected = NULL;
 
     gtk_widget_queue_draw (GTK_WIDGET (view));

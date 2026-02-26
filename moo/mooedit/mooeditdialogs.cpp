@@ -347,7 +347,7 @@ files_treeview_init (GtkTreeView *treeview, GtkWidget *dialog, MooEditArray *doc
     cell = gtk_cell_renderer_text_new ();
     gtk_tree_view_column_pack_start (column, cell, TRUE);
     gtk_tree_view_column_set_cell_data_func (column, cell,
-                                             (GtkTreeCellDataFunc) name_data_func,
+                                             (GtkTreeCellDataFunc)(void(*)(void)) name_data_func,
                                              NULL, NULL);
 
     g_object_set_data (G_OBJECT (store), "moo-dialog", dialog);

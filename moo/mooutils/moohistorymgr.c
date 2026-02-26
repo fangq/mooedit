@@ -1341,8 +1341,7 @@ open_selected (GtkTreeView *tree_view)
     if (items)
         data->callback (items, gtk_selection_data_get_data (data));
 
-    g_slist_foreach (items, (GFunc) moo_history_item_free, NULL);
-    g_slist_free (items);
+    g_slist_free_full (items, (GDestroyNotify) moo_history_item_free);
 }
 
 static GtkWidget *

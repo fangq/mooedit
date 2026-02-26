@@ -386,8 +386,7 @@ moo_ctags_doc_plugin_update (MooCtagsDocPlugin *plugin)
         else if ((list = moo_ctags_parse_file (filename, NULL)))
             process_entries (plugin, list, NULL);
 
-        g_slist_foreach (list, (GFunc) _moo_ctags_entry_unref, NULL);
-        g_slist_free (list);
+        g_slist_free_full (list, (GDestroyNotify) _moo_ctags_entry_unref);
         g_free (lang_id);
     }
 

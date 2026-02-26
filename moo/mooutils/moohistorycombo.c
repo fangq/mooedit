@@ -176,7 +176,7 @@ moo_history_combo_init (MooHistoryCombo *combo)
     g_object_set (cell, "single-paragraph-mode", TRUE, NULL);
     gtk_cell_layout_pack_start (GTK_CELL_LAYOUT (combo), cell, TRUE);
     gtk_cell_layout_set_cell_data_func (GTK_CELL_LAYOUT (combo), cell,
-                                        (GtkCellLayoutDataFunc) cell_data_func,
+                                        (GtkCellLayoutDataFunc)(void(*)(void)) cell_data_func,
                                         combo, NULL);
 
     combo->priv->list = moo_history_list_new (NULL);

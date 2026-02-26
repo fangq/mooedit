@@ -204,7 +204,7 @@ moo_closure_signal_new (gpointer    object,
                           moo_closure_signal_call,
                           moo_closure_signal_destroy);
 
-    cl->object = _moo_object_ptr_new (G_OBJECT (object), (GWeakNotify) object_died, cl);
+    cl->object = _moo_object_ptr_new (G_OBJECT (object), (GWeakNotify)(void(*)(void)) object_died, cl);
     cl->proxy = (gpointer (*) (gpointer)) proxy_func;
     cl->signal = g_strdup (signal);
 
@@ -276,7 +276,7 @@ moo_closure_simple_new (gpointer    object,
                           moo_closure_simple_call,
                           moo_closure_simple_destroy);
     cl->object = _moo_object_ptr_new (G_OBJECT (object),
-                                      (GWeakNotify) closure_simple_object_died,
+                                      (GWeakNotify)(void(*)(void)) closure_simple_object_died,
                                       cl);
     cl->callback = (void (*) (gpointer)) callback;
     cl->proxy = (gpointer (*) (gpointer)) proxy_func;
@@ -333,7 +333,7 @@ _moo_object_ptr_new (GObject    *object,
     ptr->notify = notify;
     ptr->notify_data = data;
 
-    g_object_weak_ref (object, (GWeakNotify) object_ptr_object_died, ptr);
+    g_object_weak_ref (object, (GWeakNotify)(void(*)(void)) object_ptr_object_died, ptr);
 
     return ptr;
 }
@@ -345,7 +345,7 @@ _moo_object_ptr_die (MooObjectPtr *ptr)
     if (ptr)
     {
         if (ptr->target)
-            g_object_weak_unref (ptr->target, (GWeakNotify) object_ptr_object_died, ptr);
+            g_object_weak_unref (ptr->target, (GWeakNotify)(void(*)(void)) object_ptr_object_died, ptr);
         ptr->target = NULL;
     }
 }

@@ -156,7 +156,7 @@ _moo_ctags_view_init (MooCtagsView *view)
     cell = gtk_cell_renderer_text_new ();
     gtk_tree_view_column_pack_start (column, cell, TRUE);
     gtk_tree_view_column_set_cell_data_func (column, cell,
-                                             (GtkTreeCellDataFunc) data_func,
+                                             (GtkTreeCellDataFunc)(void(*)(void)) data_func,
                                              NULL, NULL);
 }
 

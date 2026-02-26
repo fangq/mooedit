@@ -315,7 +315,7 @@ _moo_get_top_window (GSList *windows)
     }
 
     xids = g_array_new (FALSE, FALSE, sizeof (XID));
-    g_slist_foreach (windows, (GFunc) add_xid, xids);
+    g_slist_foreach (windows, (GFunc)(void(*)(void)) add_xid, xids);
 
     if (!xids->len)
     {

@@ -389,12 +389,11 @@ scheme_combo_init (GtkComboBox *combo)
     gtk_cell_layout_clear (GTK_CELL_LAYOUT (combo));
     gtk_cell_layout_pack_start (GTK_CELL_LAYOUT (combo), cell, TRUE);
     gtk_cell_layout_set_cell_data_func (GTK_CELL_LAYOUT (combo), cell,
-                                        (GtkCellLayoutDataFunc) scheme_combo_data_func,
+                                        (GtkCellLayoutDataFunc)(void(*)(void)) scheme_combo_data_func,
                                         NULL, NULL);
 
     g_object_unref (store);
-    g_slist_foreach (list, (GFunc) g_object_unref, NULL);
-    g_slist_free (list);
+    g_slist_free_full (list, (GDestroyNotify) g_object_unref);
 }
 
 
@@ -526,8 +525,7 @@ list_to_string (GSList  *list,
 
     if (free_list)
     {
-        g_slist_foreach (list, (GFunc) g_free, NULL);
-        g_slist_free (list);
+        g_slist_free_full (list, (GDestroyNotify) g_free);
     }
 
     return g_string_free (string, FALSE);
@@ -618,8 +616,7 @@ create_lang_model (void)
         sections = g_slist_delete_link (sections, sections);
     }
 
-    g_slist_foreach (langs, (GFunc) g_object_unref, NULL);
-    g_slist_free (langs);
+    g_slist_free_full (langs, (GDestroyNotify) g_object_unref);
     return GTK_TREE_MODEL (store);
 }
 
@@ -936,8 +933,7 @@ populate_filter_settings_store (GtkListStore *store)
         l = l->next->next;
     }
 
-    g_slist_foreach (strings, (GFunc) g_free, NULL);
-    g_slist_free (strings);
+    g_slist_free_full (strings, (GDestroyNotify) g_free);
 }
 
 
@@ -1009,7 +1005,7 @@ create_filter_column (GtkTreeView  *treeview,
         g_object_set (cell, "icon-name", "dialog-error", nullptr);
         gtk_tree_view_column_pack_start (column, cell, FALSE);
         gtk_tree_view_column_set_cell_data_func (column, cell,
-                                                 (GtkTreeCellDataFunc) filter_icon_data_func,
+                                                 (GtkTreeCellDataFunc)(void(*)(void)) filter_icon_data_func,
                                                  NULL, NULL);
     }
 
@@ -1092,8 +1088,7 @@ apply_filter_settings (PrefsFiltersXml *gxml)
     _moo_edit_filter_settings_set_strings (strings);
     filter_store_set_modified (G_OBJECT (model), FALSE);
 
-    g_slist_foreach (strings, (GFunc) g_free, NULL);
-    g_slist_free (strings);
+    g_slist_free_full (strings, (GDestroyNotify) g_free);
 }
 
 

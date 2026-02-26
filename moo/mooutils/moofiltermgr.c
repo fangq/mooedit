@@ -247,7 +247,7 @@ static GSList*
 mgr_list_user_ids (MooFilterMgr *mgr)
 {
     GSList *list = NULL;
-    g_hash_table_foreach (mgr->priv->named_stores, (GHFunc) prepend_id, &list);
+    g_hash_table_foreach (mgr->priv->named_stores, (GHFunc)(void(*)(void)) prepend_id, &list);
     return g_slist_reverse (list);
 }
 
@@ -1136,8 +1136,7 @@ mgr_do_save (MooFilterMgr *mgr)
 
     mgr->priv->changed = FALSE;
 
-    g_slist_foreach (user_ids, (GFunc) g_free, NULL);
-    g_slist_free (user_ids);
+    g_slist_free_full (user_ids, (GDestroyNotify) g_free);
     return FALSE;
 }
 

@@ -40,7 +40,7 @@ moo_edit_ops_get_type (void)
             sizeof (MooEditOpsIface), /* class_size */
             NULL, /* base_init */
             NULL, /* base_finalize */
-            (GClassInitFunc) moo_edit_ops_class_init, /* class_init */
+            (GClassInitFunc)(void(*)(void)) moo_edit_ops_class_init, /* class_init */
             NULL
         };
 
@@ -362,7 +362,7 @@ moo_undo_ops_get_type (void)
     {
         GTypeInfo type_info = {
             sizeof (MooUndoOpsIface), NULL, NULL,
-            (GClassInitFunc) moo_undo_ops_class_init,
+            (GClassInitFunc)(void(*)(void)) moo_undo_ops_class_init,
             NULL
         };
 

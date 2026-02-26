@@ -314,7 +314,7 @@ moo_prefs_list_keys (MooPrefsKind prefs_kind)
 
     data.list = NULL;
     data.prefs_kind = prefs_kind;
-    g_hash_table_foreach (prefs->data, (GHFunc) prepend_key, &data);
+    g_hash_table_foreach (prefs->data, (GHFunc)(void(*)(void)) prepend_key, &data);
 
     return g_slist_sort (data.list, (GCompareFunc) strcmp);
 }
@@ -806,7 +806,7 @@ sync_xml (MooPrefsKind prefs_kind)
     data.keys = g_ptr_array_new ();
 
     g_hash_table_foreach (prefs->data,
-                          (GHFunc) collect_item,
+                          (GHFunc)(void(*)(void)) collect_item,
                           &data);
 
     if (data.keys->len > 0)

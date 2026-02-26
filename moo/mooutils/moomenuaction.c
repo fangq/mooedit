@@ -233,7 +233,7 @@ moo_menu_action_finalize (GObject *object)
     MooMenuAction *action = MOO_MENU_ACTION (object);
 
     if (action->data && action->is_object)
-        g_object_weak_unref (G_OBJECT (action->data), (GWeakNotify) data_destroyed, action);
+        g_object_weak_unref (G_OBJECT (action->data), (GWeakNotify)(void(*)(void)) data_destroyed, action);
 
     G_OBJECT_CLASS(moo_menu_action_parent_class)->finalize (object);
 }
@@ -256,13 +256,13 @@ moo_menu_action_set_menu_data (MooMenuAction  *action,
     g_return_if_fail (MOO_IS_MENU_ACTION (action));
 
     if (action->data && action->is_object)
-        g_object_weak_unref (G_OBJECT (action->data), (GWeakNotify) data_destroyed, action);
+        g_object_weak_unref (G_OBJECT (action->data), (GWeakNotify)(void(*)(void)) data_destroyed, action);
 
     action->data = data;
     action->is_object = is_object;
 
     if (action->data && action->is_object)
-        g_object_weak_ref (G_OBJECT (action->data), (GWeakNotify) data_destroyed, action);
+        g_object_weak_ref (G_OBJECT (action->data), (GWeakNotify)(void(*)(void)) data_destroyed, action);
 }
 
 

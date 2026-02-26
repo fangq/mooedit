@@ -1640,13 +1640,13 @@ static GtkWidget   *create_treeview     (MooFileView    *fileview)
     cell = gtk_cell_renderer_pixbuf_new ();
     gtk_tree_view_column_pack_start (column, cell, FALSE);
     gtk_tree_view_column_set_cell_data_func (column, cell,
-                                             (GtkTreeCellDataFunc) icon_data_func,
+                                             (GtkTreeCellDataFunc)(void(*)(void)) icon_data_func,
                                              fileview, NULL);
 
     cell = gtk_cell_renderer_text_new ();
     gtk_tree_view_column_pack_start (column, cell, TRUE);
     gtk_tree_view_column_set_cell_data_func (column, cell,
-                                             (GtkTreeCellDataFunc) name_data_func,
+                                             (GtkTreeCellDataFunc)(void(*)(void)) name_data_func,
                                              fileview, NULL);
 
 #ifdef USE_SIZE_AND_STUFF
@@ -1657,7 +1657,7 @@ static GtkWidget   *create_treeview     (MooFileView    *fileview)
     cell = gtk_cell_renderer_text_new ();
     gtk_tree_view_column_pack_start (column, cell, FALSE);
     gtk_tree_view_column_set_cell_data_func (column, cell,
-                                             (GtkTreeCellDataFunc) size_data_func,
+                                             (GtkTreeCellDataFunc)(void(*)(void)) size_data_func,
                                              fileview, NULL);
 
     column = gtk_tree_view_column_new ();
@@ -1667,7 +1667,7 @@ static GtkWidget   *create_treeview     (MooFileView    *fileview)
     cell = gtk_cell_renderer_text_new ();
     gtk_tree_view_column_pack_start (column, cell, FALSE);
     gtk_tree_view_column_set_cell_data_func (column, cell,
-                                             (GtkTreeCellDataFunc) date_data_func,
+                                             (GtkTreeCellDataFunc)(void(*)(void)) date_data_func,
                                              fileview, NULL);
 #endif
 
@@ -2096,8 +2096,8 @@ history_init (MooFileView *fileview)
 static void
 history_clear (MooFileView *fileview)
 {
-    g_slist_foreach (fileview->priv->history->back, (GFunc) g_free, NULL);
-    g_slist_foreach (fileview->priv->history->fwd, (GFunc) g_free, NULL);
+    g_slist_foreach (fileview->priv->history->back, (GFunc)(void(*)(void)) g_free, NULL);
+    g_slist_foreach (fileview->priv->history->fwd, (GFunc)(void(*)(void)) g_free, NULL);
     g_slist_free (fileview->priv->history->back);
     g_slist_free (fileview->priv->history->fwd);
     fileview->priv->history->back = NULL;
@@ -2208,8 +2208,7 @@ history_add (MooFileView    *fileview,
     if (hist->fwd)
     {
         could_go_forward = TRUE;
-        g_slist_foreach (hist->fwd, (GFunc) g_free, NULL);
-        g_slist_free (hist->fwd);
+        g_slist_free_full (hist->fwd, (GDestroyNotify) g_free);
         hist->fwd = NULL;
     }
 
@@ -2809,8 +2808,7 @@ file_view_paste_clipboard (MooFileView *fileview)
             copy_files (fileview, filenames, destdir);
         }
 
-        g_list_foreach (filenames, (GFunc) g_free, NULL);
-        g_list_free (filenames);
+        g_list_free_full (filenames, (GDestroyNotify) g_free);
 
         goto out;
     }
@@ -2839,8 +2837,7 @@ file_view_paste_clipboard (MooFileView *fileview)
             copy_files (fileview, filenames, destdir);
 
         g_strfreev (uris);
-        g_list_foreach (filenames, (GFunc) g_free, NULL);
-        g_list_free (filenames);
+        g_list_free_full (filenames, (GDestroyNotify) g_free);
 
         goto out;
     }
@@ -3543,8 +3540,7 @@ moo_file_view_popup_menu (GtkWidget *widget)
 
     selected = _moo_tree_view_get_selected_rows (fileview->priv->view);
     do_popup (fileview, NULL, selected);
-    g_list_foreach (selected, (GFunc) gtk_tree_path_free, NULL);
-    g_list_free (selected);
+    g_list_free_full (selected, (GDestroyNotify) gtk_tree_path_free);
 
     return TRUE;
 }
@@ -3578,8 +3574,7 @@ file_list_button_press (MooFileView    *fileview,
     selected = _moo_tree_view_get_selected_rows (view);
     do_popup (fileview, event, selected);
     gtk_tree_path_free (filter_path);
-    g_list_foreach (selected, (GFunc) gtk_tree_path_free, NULL);
-    g_list_free (selected);
+    g_list_free_full (selected, (GDestroyNotify) gtk_tree_path_free);
 
     return TRUE;
 }
@@ -5812,8 +5807,7 @@ link_files (G_GNUC_UNUSED MooFileView *fileview,
 static void
 free_string_list (GList *list)
 {
-    g_list_foreach (list, (GFunc) g_free, NULL);
-    g_list_free (list);
+    g_list_free_full (list, (GDestroyNotify) g_free);
 }
 
 

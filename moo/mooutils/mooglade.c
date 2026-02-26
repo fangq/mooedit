@@ -1068,7 +1068,7 @@ widget_props_free (WidgetProps *props)
 
         if (props->custom_props)
         {
-            g_ptr_array_foreach (props->custom_props, (GFunc) g_free, NULL);
+            g_ptr_array_foreach (props->custom_props, (GFunc)(void(*)(void)) g_free, NULL);
             g_ptr_array_free (props->custom_props, TRUE);
         }
 
@@ -1618,7 +1618,7 @@ widget_props_new (MooMarkupNode  *node,
         data.result = TRUE;
         data.ignore_errors = ignore_errors;
         data.error = error;
-        g_hash_table_foreach (add_props, (GHFunc) widget_props_add_one, &data);
+        g_hash_table_foreach (add_props, (GHFunc)(void(*)(void)) widget_props_add_one, &data);
 
         if (!data.result)
             goto error;
@@ -2411,7 +2411,7 @@ moo_glade_xml_add_widget (MooGladeXML    *xml,
 
     g_assert (!g_hash_table_lookup (xml->priv->widgets, id));
     g_hash_table_insert (xml->priv->widgets, g_strdup (id), widget);
-    g_object_weak_ref (G_OBJECT (widget), (GWeakNotify) widget_destroyed, xml);
+    g_object_weak_ref (G_OBJECT (widget), (GWeakNotify)(void(*)(void)) widget_destroyed, xml);
 
     return TRUE;
 }
@@ -2447,7 +2447,7 @@ unref_widget (G_GNUC_UNUSED gpointer key,
               GObject     *widget,
               MooGladeXML *xml)
 {
-    g_object_weak_unref (widget, (GWeakNotify) widget_destroyed, xml);
+    g_object_weak_unref (widget, (GWeakNotify)(void(*)(void)) widget_destroyed, xml);
 }
 
 static void
@@ -2459,7 +2459,7 @@ moo_glade_xml_dispose (GObject *object)
     {
         moo_glade_xml_cleanup (xml);
         g_hash_table_foreach (xml->priv->widgets,
-                              (GHFunc) unref_widget, xml);
+                              (GHFunc)(void(*)(void)) unref_widget, xml);
         g_hash_table_destroy (xml->priv->widgets);
         g_free (xml->priv->translation_domain);
         g_free (xml->priv->root_id);

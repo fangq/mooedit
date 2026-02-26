@@ -19,15 +19,30 @@
 #include <glib-object.h>
 #include <mooutils/mooonce.h>
 
+/* Suppress -Wcast-function-type for GLib type registration casts.
+ * GLib itself relies on these casts at the ABI level (see G_DEFINE_TYPE). */
+#if defined(__GNUC__) && __GNUC__ >= 8
+#define MOO_IGNORE_CAST_FUNCTION_TYPE_BEGIN \
+    _Pragma("GCC diagnostic push") \
+    _Pragma("GCC diagnostic ignored \"-Wcast-function-type\"")
+#define MOO_IGNORE_CAST_FUNCTION_TYPE_END \
+    _Pragma("GCC diagnostic pop")
+#else
+#define MOO_IGNORE_CAST_FUNCTION_TYPE_BEGIN
+#define MOO_IGNORE_CAST_FUNCTION_TYPE_END
+#endif
+
 #define _MOO_REGISTER_TYPE(TypeName,type_name,TYPE_PARENT,flags)                            \
+    MOO_IGNORE_CAST_FUNCTION_TYPE_BEGIN                                                      \
     g_define_type_id =                                                                      \
         g_type_register_static_simple (TYPE_PARENT,                                         \
                                        g_intern_static_string (#TypeName),                  \
                                        sizeof (TypeName##Class),                            \
-                                       (GClassInitFunc) type_name##_class_intern_init,      \
+                                       (GClassInitFunc)(void(*)(void)) type_name##_class_intern_init, \
                                        sizeof (TypeName),                                   \
-                                       (GInstanceInitFunc) type_name##_init,                \
-                                       (GTypeFlags) flags);
+                                       (GInstanceInitFunc)(void(*)(void)) type_name##_init,       \
+                                       (GTypeFlags) flags);                                       \
+    MOO_IGNORE_CAST_FUNCTION_TYPE_END
 
 #define MOO_DEFINE_TYPE_STATIC_WITH_CODE(TypeName,type_name,TYPE_PARENT,code)               \
                                                                                             \

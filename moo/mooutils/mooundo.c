@@ -401,7 +401,7 @@ action_group_free (ActionGroup *group,
 {
     if (group)
     {
-        g_queue_foreach (group->actions, (GFunc) wrapper_free, doc);
+        g_queue_foreach (group->actions, (GFunc)(void(*)(void)) wrapper_free, doc);
         g_queue_free (group->actions);
         g_free (group);
     }
@@ -421,7 +421,7 @@ static void
 action_stack_free (GSList **stack,
                    gpointer doc)
 {
-    g_slist_foreach (*stack, (GFunc) action_group_free, doc);
+    g_slist_foreach (*stack, (GFunc)(void(*)(void)) action_group_free, doc);
     g_slist_free (*stack);
     *stack = NULL;
 }

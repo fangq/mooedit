@@ -228,7 +228,7 @@ static gboolean
 debug_timeout (MooFileSystem *fs)
 {
     gsize mem[2] = {0, 0};
-    g_hash_table_foreach (fs->priv->folders, (GHFunc) calc_mem_hash_cb, mem);
+    g_hash_table_foreach (fs->priv->folders, (GHFunc)(void(*)(void)) calc_mem_hash_cb, mem);
     g_print ("%" G_GSIZE_FORMAT " bytes in %" G_GSIZE_FORMAT " files\n", mem[0], mem[1]);
     return TRUE;
 }
@@ -256,7 +256,7 @@ moo_file_system_dispose (GObject *object)
     {
         g_hash_table_destroy (fs->priv->folders);
         g_hash_table_destroy (fs->priv->cache.paths);
-        g_queue_foreach (fs->priv->cache.queue, (GFunc) _moo_folder_impl_free, NULL);
+        g_queue_foreach (fs->priv->cache.queue, (GFunc)(void(*)(void)) _moo_folder_impl_free, NULL);
         g_queue_free (fs->priv->cache.queue);
 
         if (fs->priv->fam)
@@ -283,7 +283,7 @@ _moo_file_system_create (void)
     {
         fs_instance = MOO_FILE_SYSTEM (g_object_new (MOO_TYPE_FILE_SYSTEM, (const char*) NULL));
         g_object_weak_ref (G_OBJECT (fs_instance),
-                           (GWeakNotify) g_nullify_pointer, &fs_instance);
+                           (GWeakNotify)(void(*)(void)) g_nullify_pointer, &fs_instance);
         return fs_instance;
     }
     else

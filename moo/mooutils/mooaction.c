@@ -92,12 +92,12 @@ type_name##_get_type (void)                                                 \
             sizeof (TypeName##Class),                                       \
             (GBaseInitFunc) NULL,                                           \
             (GBaseFinalizeFunc) NULL,                                       \
-            (GClassInitFunc) type_name##_class_intern_init,                 \
+            (GClassInitFunc)(void(*)(void)) type_name##_class_intern_init,                 \
             (GClassFinalizeFunc) NULL,                                      \
             NULL,   /* class_data */                                        \
             sizeof (TypeName),                                              \
             0,      /* n_preallocs */                                       \
-            (GInstanceInitFunc) type_name##_init,                           \
+            (GInstanceInitFunc)(void(*)(void)) type_name##_init,                           \
             NULL    /* value_table */                                       \
         };                                                                  \
                                                                             \

@@ -137,7 +137,7 @@ moo_action_base_get_type (void)
             sizeof (MooActionBaseClass), /* class_size */
             NULL, /* base_init */
             NULL, /* base_finalize */
-            (GClassInitFunc) class_init,
+            (GClassInitFunc)(void(*)(void)) class_init,
             NULL, /* class_finalize */
             NULL, /* class_data */
             0,
@@ -387,7 +387,7 @@ sync_proxies_use_underline (gpointer action,
     GSList *proxies;
 
     proxies = g_slist_copy (gtk_action_get_proxies (GTK_ACTION (action)));
-    g_slist_foreach (proxies, (GFunc) g_object_ref, NULL);
+    g_slist_foreach (proxies, (GFunc)(void(*)(void)) g_object_ref, NULL);
 
     while (proxies)
     {

@@ -60,10 +60,8 @@ moo_file_view_tool_action_finalize (GObject *object)
 {
     ToolAction *action = (ToolAction*) object;
 
-    g_slist_foreach (action->extensions, (GFunc) g_free, NULL);
-    g_slist_free (action->extensions);
-    g_slist_foreach (action->mimetypes, (GFunc) g_free, NULL);
-    g_slist_free (action->mimetypes);
+    g_slist_free_full (action->extensions, (GDestroyNotify) g_free);
+    g_slist_free_full (action->mimetypes, (GDestroyNotify) g_free);
     g_free (action->command);
 
     G_OBJECT_CLASS (_moo_file_view_tool_action_parent_class)->finalize (object);
@@ -163,8 +161,7 @@ tools_info_free (ToolsInfo *info)
 {
     if (info)
     {
-        g_slist_foreach (info->actions, (GFunc) g_object_unref, NULL);
-        g_slist_free (info->actions);
+        g_slist_free_full (info->actions, (GDestroyNotify) g_object_unref);
         g_free (info);
     }
 }
@@ -436,6 +433,5 @@ _moo_file_view_tools_check (MooFileView *fileview)
     for (l = info->actions; l != NULL; l = l->next)
         action_check (l->data, files);
 
-    g_list_foreach (files, (GFunc) _moo_file_unref, NULL);
-    g_list_free (files);
+    g_list_free_full (files, (GDestroyNotify) _moo_file_unref);
 }

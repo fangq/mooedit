@@ -959,7 +959,7 @@ init_editor_dialog (BkEditorXml *xml)
     /* Column label in file selector bookmark editor */
     column = gtk_tree_view_column_new_with_attributes (C_("fileview-bookmark-editor", "Icon"), cell, NULL);
     gtk_tree_view_column_set_cell_data_func (column, cell,
-                                             (GtkTreeCellDataFunc) icon_data_func,
+                                             (GtkTreeCellDataFunc)(void(*)(void)) icon_data_func,
                                              NULL, NULL);
     gtk_tree_view_append_column (xml->treeview, column);
     g_object_set_data (G_OBJECT (xml->treeview),
@@ -975,7 +975,7 @@ init_editor_dialog (BkEditorXml *xml)
     /* Column label in file selector bookmark editor */
     column = gtk_tree_view_column_new_with_attributes (C_("fileview-bookmark-editor", "Label"), cell, NULL);
     gtk_tree_view_column_set_cell_data_func (column, cell,
-                                             (GtkTreeCellDataFunc) label_data_func,
+                                             (GtkTreeCellDataFunc)(void(*)(void)) label_data_func,
                                              NULL, NULL);
     gtk_tree_view_append_column (xml->treeview, column);
     g_object_set_data (G_OBJECT (xml->treeview),
@@ -993,7 +993,7 @@ init_editor_dialog (BkEditorXml *xml)
     /* Column label in file selector bookmark editor */
     column = gtk_tree_view_column_new_with_attributes (C_("fileview-bookmark-editor", "Path"), cell, NULL);
     gtk_tree_view_column_set_cell_data_func (column, cell,
-                                             (GtkTreeCellDataFunc) path_data_func,
+                                             (GtkTreeCellDataFunc)(void(*)(void)) path_data_func,
                                              NULL, NULL);
     gtk_tree_view_append_column (xml->treeview, column);
     g_object_set_data (G_OBJECT (xml->treeview),
@@ -1204,8 +1204,8 @@ delete_clicked (BkEditorXml *xml)
                        "moo-bookmarks-modified",
                        GINT_TO_POINTER (TRUE));
 
-    g_list_foreach (paths, (GFunc) gtk_tree_path_free, NULL);
-    g_list_foreach (rows, (GFunc) gtk_tree_row_reference_free, NULL);
+    g_list_foreach (paths, (GFunc)(void(*)(void)) gtk_tree_path_free, NULL);
+    g_list_foreach (rows, (GFunc)(void(*)(void)) gtk_tree_row_reference_free, NULL);
     g_list_free (paths);
     g_list_free (rows);
 }
@@ -1426,13 +1426,13 @@ init_icon_combo (GtkComboBox *combo,
     cell = gtk_cell_renderer_pixbuf_new ();
     gtk_cell_layout_pack_start (GTK_CELL_LAYOUT (combo), cell, FALSE);
     gtk_cell_layout_set_cell_data_func (GTK_CELL_LAYOUT (combo), cell,
-                                        (GtkCellLayoutDataFunc) combo_icon_data_func,
+                                        (GtkCellLayoutDataFunc)(void(*)(void)) combo_icon_data_func,
                                         NULL, NULL);
 
     cell = gtk_cell_renderer_text_new ();
     gtk_cell_layout_pack_start (GTK_CELL_LAYOUT (combo), cell, FALSE);
     gtk_cell_layout_set_cell_data_func (GTK_CELL_LAYOUT (combo), cell,
-                                        (GtkCellLayoutDataFunc) combo_label_data_func,
+                                        (GtkCellLayoutDataFunc)(void(*)(void)) combo_label_data_func,
                                         NULL, NULL);
 
     g_signal_connect (combo, "changed",
@@ -1575,8 +1575,7 @@ fill_icon_store (GtkListStore       *store,
     gtk_list_store_append (store, &iter);
     gtk_list_store_set (store, &iter, ICON_COLUMN_LABEL, "None", -1);
 
-    g_slist_foreach (stock_ids, (GFunc) g_free, NULL);
-    g_slist_free (stock_ids);
+    g_slist_free_full (stock_ids, (GDestroyNotify) g_free);
 }
 
 

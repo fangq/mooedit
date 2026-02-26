@@ -2116,7 +2116,7 @@ moo_text_view_unrealize (GtkWidget *widget)
 {
     MooTextView *view = MOO_TEXT_VIEW (widget);
 
-    g_slist_foreach (view->priv->line_marks, (GFunc) _moo_line_mark_unrealize, NULL);
+    g_slist_foreach (view->priv->line_marks, (GFunc)(void(*)(void)) _moo_line_mark_unrealize, NULL);
     g_object_set_data (G_OBJECT (widget), "moo-line-mark-icons", NULL);
     g_object_set_data (G_OBJECT (widget), "moo-line-mark-colors", NULL);
 

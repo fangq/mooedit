@@ -1751,7 +1751,7 @@ _gtk_source_language_file_parse_version2 (GtkSourceLanguage       *language,
 					    (GHRFunc) steal_styles_mapping,
 					    language->priv->styles);
 
-	g_queue_foreach (replacements, (GFunc) _gtk_source_context_replace_free, NULL);
+	g_queue_foreach (replacements, (GFunc)(void(*)(void)) _gtk_source_context_replace_free, NULL);
 	g_queue_free (replacements);
 	g_hash_table_destroy (loaded_lang_ids);
 	g_hash_table_destroy (defined_regexes);

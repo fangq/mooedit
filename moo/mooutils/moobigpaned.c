@@ -1621,7 +1621,7 @@ config_free (MooBigPanedConfig *config)
 
         for (pos = 0; pos < 4; pos++)
         {
-            g_slist_foreach (config->paned[pos].order, (GFunc) g_free, NULL);
+            g_slist_foreach (config->paned[pos].order, (GFunc)(void(*)(void)) g_free, NULL);
             g_slist_free (config->paned[pos].order);
             g_free (config->paned[pos].active);
         }
@@ -1863,7 +1863,7 @@ config_serialize (MooBigPanedConfig *config)
         paned_config_serialize (&config->paned[pos], string);
     }
 
-    g_hash_table_foreach (config->panes, (GHFunc) pane_config_serialize, string);
+    g_hash_table_foreach (config->panes, (GHFunc)(void(*)(void)) pane_config_serialize, string);
 
     return g_string_free (string, FALSE);
 }

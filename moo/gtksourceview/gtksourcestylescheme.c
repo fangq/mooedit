@@ -84,7 +84,7 @@ gtk_source_style_scheme_finalize (GObject *object)
 
 	if (scheme->priv->authors != NULL)
 	{
-		g_ptr_array_foreach (scheme->priv->authors, (GFunc)g_free, NULL);
+		g_ptr_array_foreach (scheme->priv->authors, (GFunc)(void(*)(void)) g_free, NULL);
 		g_ptr_array_free (scheme->priv->authors, TRUE);
 	}
 

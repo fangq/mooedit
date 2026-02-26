@@ -593,8 +593,7 @@ node_free (Node *node)
 {
     if (node)
     {
-        g_slist_foreach (node->children, (GFunc) node_free, NULL);
-        g_slist_free (node->children);
+        g_slist_free_full (node->children, (GDestroyNotify) node_free);
         node->children = NULL;
 
         switch (node->type)
@@ -1684,7 +1683,7 @@ static GSList*
 hash_table_list_values (GHashTable *hash_table)
 {
     GSList *list = NULL;
-    g_hash_table_foreach (hash_table, (GHFunc) prepend_value, &list);
+    g_hash_table_foreach (hash_table, (GHFunc)(void(*)(void)) prepend_value, &list);
     return list;
 }
 

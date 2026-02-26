@@ -760,7 +760,7 @@ setup_combo (GtkComboBox      *combo,
     gtk_cell_layout_set_attributes (GTK_CELL_LAYOUT (combo), cell,
                                     "text", COLUMN_DISPLAY, NULL);
     gtk_cell_layout_set_cell_data_func (GTK_CELL_LAYOUT (combo), cell,
-                                        (GtkCellLayoutDataFunc) cell_data_func,
+                                        (GtkCellLayoutDataFunc)(void(*)(void)) cell_data_func,
 					NULL, NULL);
 
     if (use_separators)

@@ -145,18 +145,18 @@ moo_combo_get_type (void)
             sizeof (MooComboClass),
             NULL,		/* base_init */
             NULL,		/* base_finalize */
-            (GClassInitFunc) moo_combo_class_init,
+            (GClassInitFunc)(void(*)(void)) moo_combo_class_init,
             NULL,		/* class_finalize */
             NULL,		/* class_data */
             sizeof (MooCombo),
             0,
-            (GInstanceInitFunc) moo_combo_init,
+            (GInstanceInitFunc)(void(*)(void)) moo_combo_init,
             NULL
         };
 
         static const GInterfaceInfo cell_layout_info =
         {
-            (GInterfaceInitFunc) moo_combo_cell_layout_init,
+            (GInterfaceInitFunc)(void(*)(void)) moo_combo_cell_layout_init,
             NULL,
             NULL
         };

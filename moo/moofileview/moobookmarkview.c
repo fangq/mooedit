@@ -113,7 +113,7 @@ _moo_bookmark_view_init (MooBookmarkView *view)
     cell = gtk_cell_renderer_pixbuf_new ();
     gtk_tree_view_column_pack_start (column, cell, FALSE);
     gtk_tree_view_column_set_cell_data_func (column, cell,
-                                             (GtkTreeCellDataFunc) icon_data_func,
+                                             (GtkTreeCellDataFunc)(void(*)(void)) icon_data_func,
                                              NULL, NULL);
 
     /* Label */
@@ -121,7 +121,7 @@ _moo_bookmark_view_init (MooBookmarkView *view)
     g_object_set (cell, "xpad", 6, NULL);
     gtk_tree_view_column_pack_start (column, cell, FALSE);
     gtk_tree_view_column_set_cell_data_func (column, cell,
-                                             (GtkTreeCellDataFunc) label_data_func,
+                                             (GtkTreeCellDataFunc)(void(*)(void)) label_data_func,
                                              NULL, NULL);
 }
 

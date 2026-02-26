@@ -131,7 +131,7 @@ moo_plugin_get_type (void)
             sizeof (MooPluginClass),
             (GBaseInitFunc) NULL,
             (GBaseFinalizeFunc) NULL,
-            (GClassInitFunc) moo_plugin_class_init,
+            (GClassInitFunc)(void(*)(void)) moo_plugin_class_init,
             (GClassFinalizeFunc) NULL,
             NULL,   /* class_data */
             sizeof (MooPlugin),
@@ -158,7 +158,7 @@ moo_win_plugin_get_type (void)
             sizeof (MooWinPluginClass),
             (GBaseInitFunc) NULL,
             (GBaseFinalizeFunc) NULL,
-            (GClassInitFunc) some_plugin_class_init,
+            (GClassInitFunc)(void(*)(void)) some_plugin_class_init,
             (GClassFinalizeFunc) NULL,
             NULL,   /* class_data */
             sizeof (MooWinPlugin),
@@ -185,7 +185,7 @@ moo_doc_plugin_get_type (void)
             sizeof (MooDocPluginClass),
             (GBaseInitFunc) NULL,
             (GBaseFinalizeFunc) NULL,
-            (GClassInitFunc) some_plugin_class_init,
+            (GClassInitFunc)(void(*)(void)) some_plugin_class_init,
             (GClassFinalizeFunc) NULL,
             NULL,   /* class_data */
             sizeof (MooDocPlugin),
@@ -974,7 +974,7 @@ moo_plugin_shutdown (void)
         return;
 
     list = g_slist_copy (plugin_store->list);
-    g_slist_foreach (list, (GFunc) g_object_ref, NULL);
+    g_slist_foreach (list, (GFunc)(void(*)(void)) g_object_ref, NULL);
 
     while (list)
     {
@@ -1312,8 +1312,7 @@ sync_pages (MooPrefsDialog *dialog)
     g_object_set_data_full (G_OBJECT (dialog), "moo-plugin-prefs-pages",
                             plugin_pages, (GDestroyNotify) g_slist_free);
 
-    g_slist_foreach (plugin_ids, (GFunc) g_free, NULL);
-    g_slist_free (plugin_ids);
+    g_slist_free_full (plugin_ids, (GDestroyNotify) g_free);
     g_slist_free (plugins);
 }
 
@@ -1530,7 +1529,7 @@ moo_plugin_list_methods (gpointer plugin)
     if (!meths)
         return NULL;
 
-    g_hash_table_foreach (meths, (GHFunc) prepend_meth_name, &list);
+    g_hash_table_foreach (meths, (GHFunc)(void(*)(void)) prepend_meth_name, &list);
     return list;
 }
 

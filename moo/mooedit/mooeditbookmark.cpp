@@ -124,9 +124,8 @@ update_bookmarks (MooEdit *edit)
         else
             new_ = g_slist_prepend (new_, l->data);
 
-    g_slist_foreach (deleted, (GFunc) disconnect_bookmark, NULL);
-    g_slist_foreach (deleted, (GFunc) g_object_unref, NULL);
-    g_slist_free (deleted);
+    g_slist_foreach (deleted, (GFunc)(void(*)(void)) disconnect_bookmark, NULL);
+    g_slist_free_full (deleted, (GDestroyNotify) g_object_unref);
 
     new_ = g_slist_sort (new_, (GCompareFunc) cmp_bookmarks);
     old = new_;

@@ -389,8 +389,7 @@ connection_free (Connection *conn)
 static void
 input_channel_shutdown (InputChannel *ch)
 {
-    g_slist_foreach (ch->connections, (GFunc) connection_free, NULL);
-    g_slist_free (ch->connections);
+    g_slist_free_full (ch->connections, (GDestroyNotify) connection_free);
     ch->connections = NULL;
 
     if (ch->io_watch)

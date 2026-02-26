@@ -643,9 +643,7 @@ moo_window_dispose (GObject *object)
             g_object_unref (window->priv->actions);
         }
 
-        g_slist_foreach (window->priv->global_accels,
-                         (GFunc) accel_entry_free, NULL);
-        g_slist_free (window->priv->global_accels);
+        g_slist_free_full (window->priv->global_accels, (GDestroyNotify) accel_entry_free);
 
         if (window->priv->update_accels_idle)
             g_source_remove (window->priv->update_accels_idle);
@@ -709,8 +707,7 @@ update_accels (MooWindow *window)
 
     window->priv->update_accels_idle = 0;
 
-    g_slist_foreach (window->priv->global_accels, (GFunc) accel_entry_free, NULL);
-    g_slist_free (window->priv->global_accels);
+    g_slist_free_full (window->priv->global_accels, (GDestroyNotify) accel_entry_free);
     window->priv->global_accels = NULL;
 
     for (l = moo_action_collection_get_groups (window->priv->actions); l != NULL; l = l->next)
@@ -1890,8 +1887,8 @@ moo_window_create_class_actions (MooWindow *window)
 
         if (store)
         {
-            g_hash_table_foreach (store->groups, (GHFunc) add_group, window);
-            g_hash_table_foreach (store->actions, (GHFunc) add_action, window);
+            g_hash_table_foreach (store->groups, (GHFunc)(void(*)(void)) add_group, window);
+            g_hash_table_foreach (store->actions, (GHFunc)(void(*)(void)) add_action, window);
         }
 
         if (type == MOO_TYPE_WINDOW)

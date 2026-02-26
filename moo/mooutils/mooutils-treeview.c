@@ -1229,7 +1229,7 @@ _moo_tree_view_setup_expander (GtkTreeView       *tree_view,
     cell = g_object_new (MOO_TYPE_EXPANDER_CELL, (const char*) NULL);
     gtk_tree_view_column_pack_start (column, cell, FALSE);
     gtk_tree_view_column_set_cell_data_func (column, cell,
-                                             (GtkTreeCellDataFunc) expander_cell_data_func,
+                                             (GtkTreeCellDataFunc)(void(*)(void)) expander_cell_data_func,
                                              tree_view, NULL);
 
     data = g_slice_new0 (ExpanderData);

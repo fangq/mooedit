@@ -110,7 +110,7 @@ list_type##_foreach (ListType      *list,                               \
                      gpointer       user_data)                          \
 {                                                                       \
     g_##glisttype##_foreach ((GListType*) list,                         \
-                             (GFunc) func, user_data);                  \
+                             (GFunc)(void(*)(void)) func, user_data);                  \
 }
 
 #define MOO_DEFINE_LIST_COPY_FUNC(ListType, list_type, elm_copy_func)   \
@@ -162,7 +162,7 @@ element##_queue_foreach (Element##Queue *queue,                         \
                          T *data)                                       \
 {                                                                       \
     g_queue_foreach (element##_queue_to_gqueue (queue),                 \
-                     (GFunc) func, data);                               \
+                     (GFunc)(void(*)(void)) func, data);                               \
 }                                                                       \
                                                                         \
 G_INLINE_FUNC void                                                      \
@@ -171,7 +171,7 @@ element##_queue_foreach (Element##Queue *queue,                         \
                          void *)                                        \
 {                                                                       \
     g_queue_foreach (element##_queue_to_gqueue (queue),                 \
-                     (GFunc) func, NULL);                               \
+                     (GFunc)(void(*)(void)) func, NULL);                               \
 }
 #else
 #define _MOO_DEFINE_QUEUE_FOREACH(Element, element)                     \
@@ -181,7 +181,7 @@ element##_queue_foreach (Element##Queue *queue,                         \
                          void *data)                                    \
 {                                                                       \
     g_queue_foreach (element##_queue_to_gqueue (queue),                 \
-                     (GFunc) func, data);                               \
+                     (GFunc)(void(*)(void)) func, data);                               \
 }
 #endif
 

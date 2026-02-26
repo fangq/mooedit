@@ -291,7 +291,7 @@ moo_file_entry_completion_finalize (GObject *object)
         }
 
         g_object_weak_unref (G_OBJECT (cmpl->priv->entry),
-                             (GWeakNotify) completion_entry_destroyed,
+                             (GWeakNotify)(void(*)(void)) completion_entry_destroyed,
                              cmpl);
     }
 
@@ -1231,7 +1231,7 @@ completion_create_popup (MooFileEntryCompletion *cmpl)
     cmpl->priv->column = gtk_tree_view_column_new ();
     gtk_tree_view_column_pack_start (cmpl->priv->column, cell, TRUE);
     gtk_tree_view_column_set_cell_data_func (cmpl->priv->column, cell,
-                                             (GtkTreeCellDataFunc) completion_cell_data_func,
+                                             (GtkTreeCellDataFunc)(void(*)(void)) completion_cell_data_func,
                                              cmpl, NULL);
 
     cmpl->priv->treeview = GTK_TREE_VIEW (gtk_tree_view_new_with_model (cmpl->priv->model));
@@ -1474,7 +1474,7 @@ _moo_file_entry_completion_set_entry (MooFileEntryCompletion *cmpl,
         }
 
         g_object_weak_unref (G_OBJECT (cmpl->priv->entry),
-                             (GWeakNotify) completion_entry_destroyed,
+                             (GWeakNotify)(void(*)(void)) completion_entry_destroyed,
                              cmpl);
     }
 
@@ -1483,7 +1483,7 @@ _moo_file_entry_completion_set_entry (MooFileEntryCompletion *cmpl,
     if (cmpl->priv->entry)
     {
         g_object_weak_ref (G_OBJECT (cmpl->priv->entry),
-                           (GWeakNotify) completion_entry_destroyed,
+                           (GWeakNotify)(void(*)(void)) completion_entry_destroyed,
                            cmpl);
         if (!cmpl->priv->managed)
         {

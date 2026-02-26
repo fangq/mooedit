@@ -2093,8 +2093,7 @@ hf_format_free (HFFormat *format)
 {
     if (format)
     {
-        g_slist_foreach (format->chunks, (GFunc) hf_format_chunk_free, NULL);
-        g_slist_free (format->chunks);
+        g_slist_free_full (format->chunks, (GDestroyNotify) hf_format_chunk_free);
         g_slice_free (HFFormat, format);
     }
 }

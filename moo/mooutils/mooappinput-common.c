@@ -92,8 +92,7 @@ moo_app_input_free (MooAppInput *ch)
 {
     g_return_if_fail (ch != NULL);
 
-    g_slist_foreach (ch->pipes, (GFunc) _moo_app_input_channel_free, NULL);
-    g_slist_free (ch->pipes);
+    g_slist_free_full (ch->pipes, (GDestroyNotify) _moo_app_input_channel_free);
 
     g_free (ch->main_path);
     g_free (ch->appname);

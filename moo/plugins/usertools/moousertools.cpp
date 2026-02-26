@@ -1086,11 +1086,10 @@ generate_real_list (MooUserToolType  type,
         list = list->next;
     }
 
-    g_hash_table_foreach (sys_ids, (GHFunc) add_deleted, &real_list);
+    g_hash_table_foreach (sys_ids, (GHFunc)(void(*)(void)) add_deleted, &real_list);
 
     g_hash_table_destroy (sys_ids);
-    g_slist_foreach (sys_list, (GFunc) _moo_user_tool_info_unref, NULL);
-    g_slist_free (sys_list);
+    g_slist_free_full (sys_list, (GDestroyNotify) _moo_user_tool_info_unref);
 
     return g_slist_reverse (real_list);
 }
