@@ -1975,7 +1975,7 @@ drag_select_finish (MooIconView *view)
 {
     if (view->priv->drag_select)
     {
-        if (GTK_WIDGET_DRAWABLE (view))
+        if (gtk_widget_is_drawable (view))
         {
             GdkRectangle rect;
             get_drag_select_rect (view, &rect);

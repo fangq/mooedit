@@ -321,13 +321,13 @@ add_arrow (GdkPixbuf     *original,
     if (!arrow)
     {
         arrow = gdk_pixbuf_new_from_inline (-1, SYMLINK_ARROW, TRUE, NULL);
-        g_return_val_if_fail (arrow != NULL, GDK_KEY_PIXBUF (g_object_ref (original)));
+        g_return_val_if_fail (arrow != NULL, GDK_PIXBUF (g_object_ref (original)));
     }
 
     if (!small_arrow)
     {
         small_arrow = gdk_pixbuf_new_from_inline (-1, SYMLINK_ARROW_SMALL, TRUE, NULL);
-        g_return_val_if_fail (arrow != NULL, GDK_KEY_PIXBUF (g_object_ref (original)));
+        g_return_val_if_fail (arrow != NULL, GDK_PIXBUF (g_object_ref (original)));
     }
 
     if (size == GTK_ICON_SIZE_MENU)
@@ -336,7 +336,7 @@ add_arrow (GdkPixbuf     *original,
         emblem = arrow;
 
     pixbuf = gdk_pixbuf_copy (original);
-    g_return_val_if_fail (pixbuf != NULL, GDK_KEY_PIXBUF (g_object_ref (original)));
+    g_return_val_if_fail (pixbuf != NULL, GDK_PIXBUF (g_object_ref (original)));
 
     gdk_pixbuf_composite (emblem, pixbuf,
                           0,
@@ -359,7 +359,7 @@ add_emblem (GdkPixbuf     *original,
             GtkIconSize    size)
 {
     g_assert (flags == MOO_ICON_EMBLEM_LINK);
-    g_assert (GDK_KEY_IS_PIXBUF (original));
+    g_assert (GDK_IS_PIXBUF (original));
     return add_arrow (original, size);
 }
 

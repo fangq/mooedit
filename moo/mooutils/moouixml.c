@@ -2197,7 +2197,7 @@ create_tool_item (MooUiXml       *xml,
         if (_moo_action_get_has_submenu (action))
         {
             tool_item = GTK_WIDGET (gtk_menu_tool_button_new (NULL, NULL));
-            gtk_action_connect_proxy (action, tool_item);
+            gtk_activatable_set_related_action (action, tool_item);
         }
         else
         {
@@ -2317,7 +2317,7 @@ create_toolbar (MooUiXml       *xml,
     g_return_val_if_fail (toplevel->node != NULL, FALSE);
 
     toplevel->widget = gtk_toolbar_new ();
-    gtk_toolbar_set_tooltips (GTK_TOOLBAR (toplevel->widget), TRUE);
+    /* GTK3: gtk_toolbar_set_tooltips removed — tooltips always enabled */
     xml_connect_toplevel (xml, toplevel);
 
     return fill_toolbar (xml, toplevel,

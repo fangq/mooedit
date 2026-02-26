@@ -2263,7 +2263,7 @@ moo_font_button_create_inside (MooFontButton *font_button)
 static void
 moo_font_button_update_inside (MooFontButton *font_button)
 {
-  if (GTK_WIDGET_REALIZED (font_button))
+  if (gtk_widget_get_realized (GTK_WIDGET (font_button)))
     {
       if (font_button->priv->inside)
         gtk_container_remove (GTK_CONTAINER (font_button), font_button->priv->inside);
@@ -2302,7 +2302,7 @@ moo_font_button_update_font_info (MooFontButton *font_button)
   gchar *style;
   gchar *family_style;
 
-  if (!GTK_WIDGET_REALIZED (font_button))
+  if (!gtk_widget_get_realized (GTK_WIDGET (font_button)))
     return;
 
   if (!font_button->priv->inside)

@@ -1494,7 +1494,7 @@ create_toolbar (MooFileView *fileview)
     g_return_val_if_fail (toolbar != NULL, NULL);
     fileview->toolbar = GTK_WIDGET (toolbar);
 
-    gtk_toolbar_set_tooltips (toolbar, TRUE);
+    /* GTK3: gtk_toolbar_set_tooltips removed — tooltips always enabled */
     gtk_toolbar_set_style (toolbar, GTK_TOOLBAR_ICONS);
     gtk_toolbar_set_icon_size (toolbar, GTK_ICON_SIZE_MENU);
 

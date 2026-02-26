@@ -1638,7 +1638,7 @@ icon_store_find_pixbuf (GtkListStore       *store,
 {
     GtkTreeModel *model = GTK_TREE_MODEL (store);
 
-    g_return_if_fail (GDK_KEY_IS_PIXBUF (pixbuf));
+    g_return_if_fail (GDK_IS_PIXBUF (pixbuf));
 
     if (gtk_tree_model_get_iter_first (model, iter)) do
     {

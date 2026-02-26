@@ -520,7 +520,7 @@ moo_line_mark_set_pixbuf (MooLineMark    *mark,
                           GdkPixbuf      *pixbuf)
 {
     g_return_if_fail (MOO_IS_LINE_MARK (mark));
-    g_return_if_fail (!pixbuf || GDK_KEY_IS_PIXBUF (pixbuf));
+    g_return_if_fail (!pixbuf || GDK_IS_PIXBUF (pixbuf));
 
     if (pixbuf != mark->priv->pixbuf)
     {

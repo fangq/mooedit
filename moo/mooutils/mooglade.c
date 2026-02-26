@@ -601,19 +601,13 @@ set_special_props (MooGladeXML    *xml,
 
     if (props->mask & PROP_ENABLE_TOOLTIPS)
     {
-        if (GTK_IS_TOOLBAR (widget))
-            gtk_toolbar_set_tooltips (GTK_TOOLBAR (widget), TRUE);
-        else
-            g_warning ("oops");
+        /* GTK3: gtk_toolbar_set_tooltips removed — tooltips always enabled */
     }
 
     if (props->mask & PROP_HISTORY)
     {
-        if (GTK_IS_OPTION_MENU (widget))
-            gtk_option_menu_set_history (GTK_OPTION_MENU (widget),
-                                         props->history);
-        else
-            g_warning ("oops");
+        /* GTK3: GtkOptionMenu removed — history property not applicable */
+        (void) widget;
     }
 
     if (props->mask & PROP_RADIO_GROUP)
@@ -730,7 +724,7 @@ moo_glade_xml_create_widget (MooGladeXML *xml,
             }
             else if (type == G_TYPE_NONE /* GTK3: removed */)
             {
-                widget = gtk_list_item_new_with_label (props->label);
+                widget = gtk_label_new (props->label) /* GTK3: GtkListItem removed, using GtkLabel */;
             }
             else
             {
@@ -934,11 +928,7 @@ pack_children (MooGladeXML    *xml,
             gtk_menu_item_set_submenu (GTK_MENU_ITEM (parent_widget), widget);
             packed = TRUE;
         }
-        else if (GTK_IS_OPTION_MENU (parent_widget) && GTK_IS_MENU (widget))
-        {
-            gtk_option_menu_set_menu (GTK_OPTION_MENU (parent_widget), widget);
-            packed = TRUE;
-        }
+        /* GTK3: GtkOptionMenu removed */
         else if (child->widget->props->mask & PROP_RESPONSE_ID)
         {
             Child *parent = child->parent_node->parent_node;
@@ -1436,7 +1426,7 @@ widget_props_add (WidgetProps  *props,
     else if (!strcmp (name, "label") &&
               (GTK_IS_MENU_ITEM_CLASS (klass) ||
                       GTK_IS_CHECK_BUTTON_CLASS (klass) ||
-                      GTK_IS_LIST_ITEM_CLASS (klass)))
+                      FALSE /* GTK3: GtkListItem removed */))
     {
         props->label = g_strdup (value);
         props->mask |= PROP_LABEL;
@@ -1447,7 +1437,7 @@ widget_props_add (WidgetProps  *props,
         props->mask |= PROP_USE_UNDERLINE;
     }
     else if (!strcmp (name, "use_stock") &&
-              GTK_IS_IMAGE_MENU_ITEM_CLASS (klass))
+              FALSE /* GTK3: GtkImageMenuItem deprecated */)
     {
         props->mask |= PROP_USE_STOCK;
     }
@@ -1457,7 +1447,7 @@ widget_props_add (WidgetProps  *props,
         props->mask |= PROP_ENABLE_TOOLTIPS;
     }
     else if (!strcmp (name, "history") &&
-              GTK_IS_OPTION_MENU_CLASS (klass))
+              FALSE /* GTK3: GtkOptionMenu removed */)
     {
         props->mask |= PROP_HISTORY;
         props->history = parse_int (value);

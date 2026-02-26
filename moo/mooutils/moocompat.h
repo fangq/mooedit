@@ -13,7 +13,7 @@
 #ifndef GTK_WIDGET_VISIBLE
 #endif
 
-#ifndef GTK_WIDGET_DRAWABLE
+#ifndef gtk_widget_is_drawable
 #endif
 
 #ifndef GTK_WIDGET_SENSITIVE
@@ -52,13 +52,13 @@ _moo_noop_gtk_toolbar_set_tooltips (G_GNUC_UNUSED GtkToolbar *toolbar,
 #if defined(GTK_DISABLE_DEPRECATED)
 
 inline static void
-_moo_gtk_action_connect_proxy (GtkAction *action,
+_moo_gtk_activatable_set_related_action (GtkAction *action,
                                GtkWidget *proxy)
 {
     gtk_activatable_set_related_action (GTK_ACTIVATABLE (proxy), action);
 }
 
-#define gtk_action_connect_proxy _moo_gtk_action_connect_proxy
+#define gtk_activatable_set_related_action _moo_gtk_activatable_set_related_action
 
 #endif /* GTK_DISABLE_DEPRECATED */
 
