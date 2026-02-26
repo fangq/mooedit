@@ -26,6 +26,16 @@
 #include <string.h>
 #include "mooutils/moo-gtk3-compat.h"
 
+/* GTK3 helper: get background color from style context */
+static inline const GdkRGBA *
+_moo_get_style_bg (gpointer widget, GtkStateFlags state)
+{
+    static GdkRGBA color;
+    GtkStyleContext *ctx = gtk_widget_get_style_context (GTK_WIDGET (widget));
+    gtk_style_context_get_background_color (ctx, state, &color);
+    return &color;
+}
+
 
 #define MAX_POPUP_LEN 15
 
@@ -80,7 +90,7 @@ static void moo_combo_cell_layout_reorder               (GtkCellLayout      *cel
 
 static void     moo_combo_class_init        (MooComboClass  *klass);
 static void     moo_combo_init              (MooCombo       *combo);
-static void     moo_combo_destroy           (GInitiallyUnowned      *object);
+static void moo_combo_destroy (GtkWidget *object);
 static void     moo_combo_set_property      (GObject        *object,
                                              guint           prop_id,
                                              const GValue   *value,
@@ -181,9 +191,12 @@ static void
 moo_combo_class_init (MooComboClass *klass)
 {
     GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
-    GObjectClass *gtkobject_class = G_OBJECT_CLASS(klass);
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
     GtkBindingSet *binding_set;
+
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
 
     g_type_class_add_private (klass, sizeof (MooComboPrivate));
 
@@ -333,8 +346,7 @@ gtk_widget_set_valign (combo->priv->button, GTK_ALIGN_CENTER);
 }
 
 
-static void
-moo_combo_destroy (GInitiallyUnowned *object)
+static void moo_combo_destroy (GtkWidget *object)
 {
     MooCombo *combo = MOO_COMBO (object);
 
@@ -592,10 +604,10 @@ moo_combo_popup_real (MooCombo *combo)
 
     gtk_widget_show (combo->priv->popup);
 
-    gtk_widget_ensure_style (GTK_WIDGET (combo->priv->treeview));
-    gtk_widget_override_background_color (GTK_WIDGET (combo->priv->treeview), GTK_STATE_ACTIVE,
+    /* GTK3: ensure-style call removed (no longer needed) */
+    gtk_widget_override_background_color (GTK_WIDGET (combo->priv->treeview), GTK_STATE_FLAG_ACTIVE,
                           NULL); /* GTK3: use CSS styling instead of direct style access */
-    gtk_widget_override_background_color (GTK_WIDGET (combo->priv->treeview), GTK_STATE_ACTIVE,
+    gtk_widget_override_background_color (GTK_WIDGET (combo->priv->treeview), GTK_STATE_FLAG_ACTIVE,
                           NULL); /* GTK3: use CSS styling instead of direct style access */
 
     gtk_grab_add (combo->priv->popup);
@@ -695,7 +707,7 @@ resize_popup (MooCombo *combo)
     int separator_height = 0, vert_separator = 0;
     int selected;
 
-    g_return_val_if_fail (GTK_WIDGET_REALIZED (combo->entry), FALSE);
+    g_return_val_if_fail (gtk_widget_get_realized (GTK_WIDGET (combo->entry)), FALSE);
 
     gdk_window_get_origin (gtk_widget_get_window (widget), &x, &y);
     /* XXX */
@@ -792,8 +804,8 @@ popup_button_press (MooCombo       *combo,
     if (event->window == gtk_widget_get_window (combo->priv->popup))
     {
         gint width, height;
-        width = gdk_window_get_width (gtk_widget_get_window (event));
-        height = gdk_window_get_height (gtk_widget_get_window (event));
+        width = gdk_window_get_width (event->window);
+        height = gdk_window_get_height (event->window);
         if (event->x < 0 || event->x >= width ||
             event->y < 0 || event->y >= height)
         {
@@ -1208,7 +1220,7 @@ gboolean
 moo_combo_popup_shown (MooCombo       *combo)
 {
     g_return_val_if_fail (MOO_IS_COMBO (combo), FALSE);
-    return combo->priv->popup && GTK_WIDGET_MAPPED (combo->priv->popup);
+    return combo->priv->popup && gtk_widget_get_mapped (GTK_WIDGET (combo->priv->popup));
 }
 
 

@@ -137,6 +137,10 @@ moo_menu_mgr_class_init (MooMenuMgrClass *klass)
 
     gobject_class->finalize = moo_menu_mgr_finalize;
 
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
+
     g_type_class_add_private (klass, sizeof (MooMenuMgrPrivate));
 
     signals[RADIO_SET_ACTIVE] =

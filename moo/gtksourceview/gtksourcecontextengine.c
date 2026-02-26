@@ -28,6 +28,15 @@
 #include <mooglib/moo-glib.h>
 #include <string.h>
 
+/* GTK3 workaround: GLib/GObject headers may #define parent as
+ * parent_instance, which breaks struct fields named 'parent'
+ * in Context, Segment, DefinitionChild, BTNode, etc.
+ * We must #undef it here since this file uses ->parent extensively. */
+#ifdef parent
+#undef parent
+#endif
+
+
 #undef DEBUG
 #undef ENABLE_DEBUG
 #undef ENABLE_PROFILE

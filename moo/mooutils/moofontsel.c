@@ -254,7 +254,7 @@ list_row_activated (GtkWidget *widget)
   GtkWindow *window;
 
   window = GTK_WINDOW (gtk_widget_get_toplevel (GTK_WIDGET (widget)));
-  if (!GTK_WIDGET_TOPLEVEL (window))
+  if (!gtk_widget_is_toplevel (GTK_WIDGET (window)))
     window = NULL;
 
   if (window
@@ -1068,24 +1068,24 @@ moo_font_selection_get_font_description (MooFontSelection *fontsel)
 static void
 moo_font_selection_update_preview (MooFontSelection *fontsel)
 {
-  GtkRcStyle *rc_style;
-  gint new_height;
   GtkRequisition old_requisition;
   GtkWidget *preview_entry = fontsel->preview_entry;
   const gchar *text;
+  PangoFontDescription *font_desc;
+  gint new_height;
 
-  gtk_widget_get_child_requisition (preview_entry, &old_requisition);
+  gtk_widget_get_preferred_size (preview_entry, &old_requisition, NULL);
 
-  rc_style = gtk_rc_style_new ();
-  rc_style->font_desc = moo_font_selection_get_font_description (fontsel);
-
-  gtk_widget_modify_style (preview_entry, rc_style);
-  g_object_unref (rc_style);
-
-  gtk_widget_size_request (preview_entry, NULL);
+  font_desc = moo_font_selection_get_font_description (fontsel);
+  gtk_widget_override_font (preview_entry, font_desc);
+  pango_font_description_free (font_desc);
 
   /* We don't ever want to be over MAX_PREVIEW_HEIGHT pixels high. */
-  new_height = CLAMP (({ GtkRequisition _req; gtk_widget_get_preferred_size(GTK_WIDGET(preview_entry), &_req, NULL); _req.height; }), INITIAL_PREVIEW_HEIGHT, MAX_PREVIEW_HEIGHT);
+  {
+    GtkRequisition req;
+    gtk_widget_get_preferred_size (GTK_WIDGET (preview_entry), &req, NULL);
+    new_height = CLAMP (req.height, INITIAL_PREVIEW_HEIGHT, MAX_PREVIEW_HEIGHT);
+  }
 
   if (new_height > old_requisition.height || new_height < old_requisition.height - 30)
     gtk_widget_set_size_request (preview_entry, -1, new_height);
@@ -2173,7 +2173,7 @@ moo_font_button_clicked (GtkButton *button)
       moo_font_selection_set_filter_visible (MOO_FONT_SELECTION (font_dialog->fontsel),
                                              font_button->priv->filter_visible);
 
-      if (GTK_WIDGET_TOPLEVEL (parent) && GTK_IS_WINDOW (parent))
+      if (gtk_widget_is_toplevel (GTK_WIDGET (parent)) && GTK_IS_WINDOW (parent))
         {
           if (GTK_WINDOW (parent) != gtk_window_get_transient_for (GTK_WINDOW (font_dialog)))
             gtk_window_set_transient_for (GTK_WINDOW (font_dialog), GTK_WINDOW (parent));
@@ -2190,7 +2190,7 @@ moo_font_button_clicked (GtkButton *button)
                                 G_CALLBACK (dialog_destroy), font_button);
     }
 
-  if (!GTK_WIDGET_VISIBLE (font_button->priv->font_dialog))
+  if (!gtk_widget_get_visible (GTK_WIDGET (font_button->priv->font_dialog)))
     {
       font_dialog = MOO_FONT_SELECTION_DIALOG (font_button->priv->font_dialog);
 

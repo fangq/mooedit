@@ -321,13 +321,13 @@ add_arrow (GdkPixbuf     *original,
     if (!arrow)
     {
         arrow = gdk_pixbuf_new_from_inline (-1, SYMLINK_ARROW, TRUE, NULL);
-        g_return_val_if_fail (arrow != NULL, GDK_PIXBUF (g_object_ref (original)));
+        g_return_val_if_fail (arrow != NULL, GDK_KEY_PIXBUF (g_object_ref (original)));
     }
 
     if (!small_arrow)
     {
         small_arrow = gdk_pixbuf_new_from_inline (-1, SYMLINK_ARROW_SMALL, TRUE, NULL);
-        g_return_val_if_fail (arrow != NULL, GDK_PIXBUF (g_object_ref (original)));
+        g_return_val_if_fail (arrow != NULL, GDK_KEY_PIXBUF (g_object_ref (original)));
     }
 
     if (size == GTK_ICON_SIZE_MENU)
@@ -336,7 +336,7 @@ add_arrow (GdkPixbuf     *original,
         emblem = arrow;
 
     pixbuf = gdk_pixbuf_copy (original);
-    g_return_val_if_fail (pixbuf != NULL, GDK_PIXBUF (g_object_ref (original)));
+    g_return_val_if_fail (pixbuf != NULL, GDK_KEY_PIXBUF (g_object_ref (original)));
 
     gdk_pixbuf_composite (emblem, pixbuf,
                           0,
@@ -359,7 +359,7 @@ add_emblem (GdkPixbuf     *original,
             GtkIconSize    size)
 {
     g_assert (flags == MOO_ICON_EMBLEM_LINK);
-    g_assert (GDK_IS_PIXBUF (original));
+    g_assert (GDK_KEY_IS_PIXBUF (original));
     return add_arrow (original, size);
 }
 
@@ -420,7 +420,7 @@ get_stock_icon (GtkWidget   *widget,
                 const char  *stock_id,
                 GtkIconSize  size)
 {
-    return gtk_widget_render_icon (widget, stock_id, size, NULL);
+    return gtk_widget_render_icon_pixbuf (widget, stock_id, size);
 }
 
 
@@ -450,7 +450,7 @@ create_named_icon (GtkIconTheme   *icon_theme,
 
     if (!pixbuf && fallback_stock)
     {
-        pixbuf = gtk_widget_render_icon (widget, fallback_stock, size, NULL);
+        pixbuf = gtk_widget_render_icon_pixbuf (widget, fallback_stock, size);
         if (!pixbuf)
             moo_dmsg ("could not load stock '%s' icon", fallback_stock);
     }
@@ -484,7 +484,7 @@ create_broken_link_icon (G_GNUC_UNUSED GtkIconTheme *icon_theme,
                          GtkIconSize   size)
 {
     /* XXX */
-    return gtk_widget_render_icon (widget, GTK_STOCK_MISSING_IMAGE, size, NULL);
+    return gtk_widget_render_icon_pixbuf (widget, "image-missing", size);
 }
 
 static GdkPixbuf *
@@ -493,7 +493,7 @@ create_broken_icon (G_GNUC_UNUSED GtkIconTheme *icon_theme,
                     GtkIconSize     size)
 {
     /* XXX */
-    return gtk_widget_render_icon (widget, GTK_STOCK_MISSING_IMAGE, size, NULL);
+    return gtk_widget_render_icon_pixbuf (widget, "image-missing", size);
 }
 
 static GdkPixbuf *
@@ -515,18 +515,18 @@ create_special_icon (GtkWidget   *widget,
     switch (type)
     {
         case MOO_ICON_HOME:
-            return create_named_icon (icon_theme, widget, size, pixel_size, GTK_STOCK_HOME,
+            return create_named_icon (icon_theme, widget, size, pixel_size, "go-home",
                                       "user-home", "gnome-fs-home", "folder_home", NULL);
         case MOO_ICON_DESKTOP:
-            return create_named_icon (icon_theme, widget, size, pixel_size, GTK_STOCK_DIRECTORY,
+            return create_named_icon (icon_theme, widget, size, pixel_size, "folder",
                                       "user-desktop", "gnome-fs-desktop", "desktop",
                                       "folder", "gnome-fs-directory", NULL);
         case MOO_ICON_TRASH:
-            return create_named_icon (icon_theme, widget, size, pixel_size, GTK_STOCK_DIRECTORY,
+            return create_named_icon (icon_theme, widget, size, pixel_size, "folder",
                                       "user-trash", "gnome-fs-trash-full", "trashcan_full",
                                       "folder", "gnome-fs-directory", NULL);
         case MOO_ICON_DIRECTORY:
-            return create_named_icon (icon_theme, widget, size, pixel_size, GTK_STOCK_DIRECTORY,
+            return create_named_icon (icon_theme, widget, size, pixel_size, "folder",
                                       "folder", "gnome-fs-directory", NULL);
 
         case MOO_ICON_BROKEN_LINK:
@@ -535,7 +535,7 @@ create_special_icon (GtkWidget   *widget,
             return create_broken_icon (icon_theme, widget, size);
 
         case MOO_ICON_BLOCK_DEVICE:
-            return create_named_icon (icon_theme, widget, size, pixel_size, GTK_STOCK_HARDDISK,
+            return create_named_icon (icon_theme, widget, size, pixel_size, "drive-harddisk",
                                       "drive-harddisk", "gnome-fs-blockdev", "blockdevice", NULL);
         case MOO_ICON_CHARACTER_DEVICE:
             return create_named_icon (icon_theme, widget, size, pixel_size, NULL,

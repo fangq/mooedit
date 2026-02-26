@@ -300,6 +300,10 @@ moo_edit_action_class_init (MooEditActionClass *klass)
     klass->check_visible = moo_edit_action_check_visible_real;
     klass->check_sensitive = moo_edit_action_check_sensitive_real;
 
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
+
     g_type_class_add_private (klass, sizeof (MooEditActionPrivate));
 
     g_object_class_install_property (gobject_class,

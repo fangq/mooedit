@@ -103,6 +103,10 @@ moo_history_combo_class_init (MooHistoryComboClass *klass)
 
     moo_history_combo_parent_class = g_type_class_peek_parent (klass);
 
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
+
     g_type_class_add_private (klass, sizeof (MooHistoryComboPrivate));
 
     gobject_class->dispose = moo_history_combo_dispose;
@@ -422,7 +426,7 @@ moo_history_combo_changed (MooCombo *combo)
 {
     MooHistoryCombo *hist_combo = MOO_HISTORY_COMBO (combo);
 
-    if (!GTK_WIDGET_MAPPED (combo))
+    if (!gtk_widget_get_mapped (GTK_WIDGET (combo)))
         return;
 
     if (!hist_combo->priv->enable_completion &&

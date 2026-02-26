@@ -58,14 +58,14 @@ set_cursor (GtkWidget *widget,
 {
     MooLinkLabel *label = MOO_LINK_LABEL (widget);
 
-    if (!GTK_WIDGET_REALIZED (widget))
+    if (!gtk_widget_get_realized (widget))
         return;
 
     if (hand)
     {
-        GdkCursor *cursor = gdk_cursor_new (GDK_HAND2);
+        GdkCursor *cursor = gdk_cursor_new_for_display (gdk_display_get_default (), GDK_HAND2);
         gdk_window_set_cursor (label->priv->window, cursor);
-        gdk_cursor_unref (cursor);
+        g_object_unref (cursor);
     }
     else
     {
@@ -207,14 +207,14 @@ moo_link_label_button_press (GtkWidget      *widget,
     g_object_ref_sink (menu);
 
     item = gtk_image_menu_item_new_with_label ("Copy Link");
-    image = gtk_image_new_from_icon_name (GTK_STOCK_COPY, GTK_ICON_SIZE_MENU);
+    image = gtk_image_new_from_icon_name ("edit-copy", GTK_ICON_SIZE_MENU);
     gtk_image_menu_item_set_image (GTK_IMAGE_MENU_ITEM (item), image);
     g_signal_connect_swapped (item, "activate", G_CALLBACK (copy_activated), label);
     gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
     gtk_widget_show_all (item);
 
     item = gtk_image_menu_item_new_with_label ("Open Link");
-    image = gtk_image_new_from_icon_name (GTK_STOCK_JUMP_TO, GTK_ICON_SIZE_MENU);
+    image = gtk_image_new_from_icon_name ("go-jump", GTK_ICON_SIZE_MENU);
     gtk_image_menu_item_set_image (GTK_IMAGE_MENU_ITEM (item), image);
     g_signal_connect_swapped (item, "activate", G_CALLBACK (open_activated), label);
     gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
@@ -353,7 +353,7 @@ moo_link_label_update (MooLinkLabel *label)
         GValue val;
         val.g_type = 0;
         g_value_init (&val, GDK_TYPE_COLOR);
-        gtk_widget_ensure_style (GTK_WIDGET (label));
+        /* GTK3: ensure-style call removed (no longer needed) */
         gtk_widget_style_get_property (GTK_WIDGET (label), "link-color", &val);
         color = _moo_value_convert_to_string (&val);
         g_value_unset (&val);

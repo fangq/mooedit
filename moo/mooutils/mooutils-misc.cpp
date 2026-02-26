@@ -511,7 +511,7 @@ static void
 present_window_x11 (GtkWindow *window,
                      guint32   stamp)
 {
-    if (!GTK_WIDGET_REALIZED (window))
+    if (!gtk_widget_get_realized (GTK_WIDGET (window)))
         gtk_widget_realize (GTK_WIDGET (window));
 
     gdk_x11_window_move_to_current_desktop (gtk_widget_get_window (GTK_WIDGET(window)));
@@ -519,9 +519,9 @@ present_window_x11 (GtkWindow *window,
     gtk_widget_show (GTK_WIDGET (window));
 
     if (!stamp)
-        stamp = gdk_x11_get_server_time (GTK_WIDGET (window)->window);
+        stamp = gdk_x11_get_server_time (gtk_widget_get_window (GTK_WIDGET (window)));
 
-    gdk_window_focus (GTK_WIDGET (window)->window, stamp);
+    gdk_window_focus (gtk_widget_get_window (GTK_WIDGET (window)), stamp);
 }
 #endif
 
@@ -551,8 +551,7 @@ _moo_window_set_icon_from_stock (GtkWindow  *window,
     g_return_if_fail (GTK_IS_WINDOW (window));
     g_return_if_fail (name != NULL);
 
-    icon = gtk_widget_render_icon (GTK_WIDGET (window), name,
-                                   GTK_ICON_SIZE_BUTTON, 0);
+    icon = gtk_widget_render_icon_pixbuf (GTK_WIDGET (window), name, GTK_ICON_SIZE_BUTTON);
 
     if (icon)
     {
@@ -614,10 +613,10 @@ moo_log_window_new (void)
     xml = log_window_xml_new ();
     log = g_new (MooLogWindow, 1);
 
-    gtk_widget_get_window (log) = GTK_WIDGET (xml->LogWindow);
+    log->window = GTK_WIDGET (xml->LogWindow);
     log->textview = xml->textview;
 
-    g_signal_connect (gtk_widget_get_window (log), "delete-event",
+    g_signal_connect (log->window, "delete-event",
                       G_CALLBACK (gtk_widget_hide_on_delete), NULL);
 
     log->buf = gtk_text_view_get_buffer (log->textview);
@@ -662,7 +661,7 @@ static GtkWidget*
 moo_log_window_get_widget (void)
 {
     MooLogWindow *log = moo_log_window ();
-    return gtk_widget_get_window (log);
+    return log->window;
 }
 
 
@@ -834,7 +833,7 @@ log_func_window (const gchar    *log_domain,
 
             moo_log_window_insert (log, text, tag);
             if (flags <= G_LOG_LEVEL_WARNING)
-                gtk_window_present (GTK_WINDOW (gtk_widget_get_window (log)));
+                gtk_window_present (GTK_WINDOW (log->window));
         }
     }
 
@@ -1056,11 +1055,11 @@ moo_selection_data_get_pointer (GtkSelectionData *data,
     gpointer result = NULL;
 
     g_return_val_if_fail (data != NULL, NULL);
-    g_return_val_if_fail (data->target == type, NULL);
-    g_return_val_if_fail (data->length == sizeof (result), NULL);
+    g_return_val_if_fail (gtk_selection_data_get_target (data) == type, NULL);
+    g_return_val_if_fail (gtk_selection_data_get_length (data) == sizeof (result), NULL);
 
     /* If we can get the owner, the selection is in-process */
-    owner = gdk_selection_owner_get_for_display (data->display, data->selection);
+    owner = gdk_selection_owner_get_for_display (gtk_selection_data_get_display (data), gtk_selection_data_get_selection (data));
 
     if (!owner || gdk_window_get_window_type (owner) == GDK_WINDOW_FOREIGN)
         return NULL;
@@ -1082,7 +1081,7 @@ _moo_get_modifiers (GtkWidget *widget)
     GdkDisplay *display;
 
     g_return_val_if_fail (GTK_IS_WIDGET (widget), GdkModifierType (0));
-    g_return_val_if_fail (GTK_WIDGET_REALIZED (widget), GdkModifierType (0));
+    g_return_val_if_fail (gtk_widget_get_realized (widget), GdkModifierType (0));
 
     display = gtk_widget_get_display (widget);
     g_return_val_if_fail (display != NULL, GdkModifierType (0));
@@ -1101,10 +1100,16 @@ static void
 accel_label_set_string (GtkWidget  *accel_label,
                         const char *label)
 {
+    guint accel_key = 0;
+    GdkModifierType accel_mods = (GdkModifierType) 0;
+
     g_return_if_fail (GTK_IS_ACCEL_LABEL (accel_label));
-    g_free (GTK_ACCEL_LABEL(accel_label)->accel_string);
-    GTK_ACCEL_LABEL(accel_label)->accel_string = g_strdup (label);
-    gtk_widget_queue_resize (accel_label);
+
+    if (label && label[0])
+        gtk_accelerator_parse (label, &accel_key, &accel_mods);
+
+    gtk_accel_label_set_accel (GTK_ACCEL_LABEL (accel_label),
+                               accel_key, accel_mods);
 }
 
 static void

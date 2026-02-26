@@ -53,6 +53,10 @@ moo_edit_view_class_init (MooEditViewClass *klass)
     textview_class->line_mark_clicked = moo_edit_view_line_mark_clicked;
     textview_class->apply_style_scheme = moo_edit_view_apply_style_scheme;
 
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
+
     g_type_class_add_private (klass, sizeof (MooEditViewPrivate));
 }
 
@@ -330,7 +334,7 @@ popup_position_func (GtkMenu   *menu,
     text_view = GTK_TEXT_VIEW (user_data);
     widget = GTK_WIDGET (text_view);
 
-    g_return_if_fail (GTK_WIDGET_REALIZED (text_view));
+    g_return_if_fail (gtk_widget_get_realized (GTK_WIDGET (text_view)));
 
     screen = gtk_widget_get_screen (widget);
 

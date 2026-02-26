@@ -170,7 +170,7 @@ moo_edit_prefs_page_new_1 (MooEditor *editor)
     return prefs_page_new (editor,
                            /* Label of a Preferences dialog page, remove the part before and including | */
                            Q_("PreferencesPage|General"),
-                           GTK_STOCK_EDIT,
+                           "gtk-edit",
                            page_general_init_ui,
                            page_general_init,
                            page_general_apply);
@@ -208,7 +208,7 @@ moo_edit_prefs_page_new_5 (MooEditor *editor)
     return prefs_page_new (editor,
                            /* Label of a Preferences dialog page, remove the part before and including | */
                            Q_("PreferencesPage|File Filters"),
-                           GTK_STOCK_EDIT,
+                           "gtk-edit",
                            page_filters_init_ui,
                            page_filters_init,
                            page_filters_apply);
@@ -263,7 +263,7 @@ moo_edit_prefs_page_new_2 (MooEditor *editor)
     return prefs_page_new (editor,
                            /* Label of a Preferences dialog page, remove the part before and including | */
                            Q_("PreferencesPage|View"),
-                           GTK_STOCK_EDIT,
+                           "gtk-edit",
                            page_view_init_ui,
                            page_view_init,
                            page_view_apply);
@@ -313,7 +313,7 @@ moo_edit_prefs_page_new_3 (MooEditor *editor)
     return prefs_page_new (editor,
                            /* Label of a Preferences dialog page, remove the part before and including | */
                            Q_("PreferencesPage|File"),
-                           GTK_STOCK_EDIT,
+                           "gtk-edit",
                            page_file_init_ui,
                            page_file_init,
                            page_file_apply);
@@ -355,7 +355,7 @@ moo_edit_prefs_page_new_4 (MooEditor *editor)
     return prefs_page_new (editor,
                            /* Label of a Preferences dialog page, remove the part before and including | */
                            Q_("PreferencesPage|Languages"),
-                           GTK_STOCK_EDIT,
+                           "gtk-edit",
                            page_langs_init_ui,
                            page_langs_init,
                            page_langs_apply);
@@ -1006,7 +1006,7 @@ create_filter_column (GtkTreeView  *treeview,
     if (column_id == FILTER_COLUMN_FILTER)
     {
         cell = gtk_cell_renderer_pixbuf_new ();
-        g_object_set (cell, "stock-id", GTK_STOCK_DIALOG_ERROR, nullptr);
+        g_object_set (cell, "icon-name", "dialog-error", nullptr);
         gtk_tree_view_column_pack_start (column, cell, FALSE);
         gtk_tree_view_column_set_cell_data_func (column, cell,
                                                  (GtkTreeCellDataFunc) filter_icon_data_func,

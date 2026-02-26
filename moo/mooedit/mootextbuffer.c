@@ -182,6 +182,10 @@ moo_text_buffer_class_init (MooTextBufferClass *klass)
 
     klass->cursor_moved = moo_text_buffer_cursor_moved;
 
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
+
     g_type_class_add_private (klass, sizeof (MooTextBufferPrivate));
 
     g_object_class_install_property (gobject_class,

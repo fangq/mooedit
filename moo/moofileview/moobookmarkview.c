@@ -245,12 +245,12 @@ icon_data_func (G_GNUC_UNUSED GtkTreeViewColumn *column,
     if (!bookmark)
         g_object_set (cell,
                       "pixbuf", NULL,
-                      "stock-id", NULL,
+                      "icon-name", NULL,
                       NULL);
     else
         g_object_set (cell,
                       "pixbuf", bookmark->pixbuf,
-                      "stock-id", bookmark->icon_stock_id,
+                      "icon-name", bookmark->icon_stock_id,
                       "stock-size", GTK_ICON_SIZE_LARGE_TOOLBAR,
                       NULL);
 

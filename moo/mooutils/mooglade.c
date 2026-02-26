@@ -2633,7 +2633,6 @@ get_type_by_name (const char *name)
     if (!types)
     {
 #define add_type(class_name, func) g_hash_table_insert (types, g_strdup (class_name), (gpointer) func)
-
         types = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
 
         add_type ("MooFontButton", moo_font_button_get_type);
@@ -2693,7 +2692,7 @@ get_type_by_name (const char *name)
         add_type ("GtkColorButton", gtk_color_button_get_type);
         add_type ("GtkColorSelection", gtk_color_selection_get_type);
         add_type ("GtkColorSelectionDialog", gtk_color_selection_dialog_get_type);
-        add_type ("GtkCombo", G_TYPE_NONE /* GTK3: removed */ ? 0 : );
+        add_type ("GtkCombo", 0 /* GTK3: removed */);
         add_type ("GtkContainer", gtk_container_get_type);
         add_type ("GtkCurve", 0 /* removed */);
         add_type ("GtkDialog", gtk_dialog_get_type);

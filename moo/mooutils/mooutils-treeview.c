@@ -52,7 +52,7 @@ static gboolean tree_helper_move_row_default    (MooTreeHelper      *helper,
                                                  GtkTreePath        *new_path);
 
 
-G_DEFINE_TYPE (MooTreeHelper, _moo_tree_helper, GTK_TYPE_OBJECT)
+G_DEFINE_TYPE (MooTreeHelper, _moo_tree_helper, G_TYPE_INITIALLY_UNOWNED)
 
 
 enum {
@@ -188,8 +188,7 @@ combo_changed (GtkComboBox   *combo,
 }
 
 
-static void
-moo_tree_helper_destroy (GInitiallyUnowned *object)
+static void moo_tree_helper_destroy (GtkWidget *object)
 {
     MooTreeHelper *helper = MOO_TREE_HELPER (object);
 
@@ -198,7 +197,7 @@ moo_tree_helper_destroy (GInitiallyUnowned *object)
         GtkTreeSelection *selection;
 
         g_signal_handlers_disconnect_by_func (helper->widget,
-                                              (gpointer) gtk_object_destroy,
+                                              (gpointer) gtk_widget_destroy,
                                               helper);
 
         switch (helper->type)
@@ -237,7 +236,7 @@ moo_tree_helper_destroy (GInitiallyUnowned *object)
         helper->widget = NULL;
     }
 
-    G_OBJECT_CLASS(_moo_tree_helper_parent_class)->destroy (object);
+    GTK_WIDGET_CLASS(_moo_tree_helper_parent_class)->destroy (object);
 }
 
 
@@ -312,7 +311,7 @@ tree_helper_move_row_default (G_GNUC_UNUSED MooTreeHelper *helper,
 static void
 _moo_tree_helper_class_init (MooTreeHelperClass *klass)
 {
-    G_OBJECT_CLASS(klass)->destroy = moo_tree_helper_destroy;
+    G_OBJECT_CLASS(klass)->dispose = (GObjectFinalizeFunc) moo_tree_helper_destroy;
 
     klass->move_row = tree_helper_move_row_default;
     klass->new_row = tree_helper_new_row_default;
@@ -718,7 +717,7 @@ _moo_tree_helper_connect (MooTreeHelper *helper,
     helper->down_btn = down_btn;
 
     g_signal_connect_swapped (widget, "destroy",
-                              G_CALLBACK (gtk_object_destroy),
+                              G_CALLBACK (gtk_widget_destroy),
                               helper);
 
     switch (helper->type)
@@ -906,8 +905,18 @@ typedef struct {
 
 #define LEVEL_INDENTATION 12
 #define EXPANDER_SIZE 8
-#define CELL_XPAD(cell) MAX ((cell)->xpad, 1)
-#define CELL_YPAD(cell) MAX ((cell)->ypad, 1)
+static inline gint _cell_get_xpad (GtkCellRenderer *cell) {
+    gint xpad, ypad;
+    gtk_cell_renderer_get_padding (cell, &xpad, &ypad);
+    return MAX (xpad, 1);
+}
+static inline gint _cell_get_ypad (GtkCellRenderer *cell) {
+    gint xpad, ypad;
+    gtk_cell_renderer_get_padding (cell, &xpad, &ypad);
+    return MAX (ypad, 1);
+}
+#define CELL_XPAD(cell) _cell_get_xpad (cell)
+#define CELL_YPAD(cell) _cell_get_ypad (cell)
 
 typedef struct {
     GtkCellRenderer base;
@@ -929,7 +938,7 @@ moo_expander_cell_init (MooExpanderCell *cell)
 static void
 moo_expander_cell_get_size (GtkCellRenderer      *cell,
                             GtkWidget            *widget,
-                            GdkRectangle         *cell_area,
+                            const GdkRectangle   *cell_area,
                             int                  *x_offset,
                             int                  *y_offset,
                             int                  *width_p,
@@ -944,15 +953,19 @@ moo_expander_cell_get_size (GtkCellRenderer      *cell,
     {
         if (x_offset)
         {
+            gfloat xalign_val, yalign_val;
+            gtk_cell_renderer_get_alignment (cell, &xalign_val, &yalign_val);
             float xalign = (gtk_widget_get_direction (widget) == GTK_TEXT_DIR_RTL) ?
-                                (1.0f - cell->xalign) : cell->xalign;
+                                (1.0f - xalign_val) : xalign_val;
             *x_offset = (int) (xalign * (cell_area->width - width));
             *x_offset = MAX (*x_offset, 0);
         }
 
         if (y_offset)
         {
-            *y_offset = (int) (cell->yalign * (cell_area->height - height));
+            gfloat xa_dummy, ya_val;
+            gtk_cell_renderer_get_alignment (cell, &xa_dummy, &ya_val);
+            *y_offset = (int) (ya_val * (cell_area->height - height));
             *y_offset = MAX (*y_offset, 0);
         }
     }
@@ -973,17 +986,16 @@ moo_expander_cell_get_size (GtkCellRenderer      *cell,
 
 static void
 moo_expander_cell_render (GtkCellRenderer      *cell,
-                          GdkDrawable          *window,
+                          cairo_t              *cr,
                           GtkWidget            *widget,
-                          G_GNUC_UNUSED GdkRectangle *background_area,
-                          GdkRectangle         *cell_area,
-                          GdkRectangle         *expose_area,
+                          G_GNUC_UNUSED const GdkRectangle *background_area,
+                          const GdkRectangle   *cell_area,
                           GtkCellRendererState  flags)
 {
     MooExpanderCell *exp_cell = MOO_EXPANDER_CELL (cell);
     GdkRectangle pix_rect;
     GdkRectangle draw_rect;
-    GtkStateType state;
+    GtkStateFlags state_flags = GTK_STATE_FLAG_NORMAL;
 
     moo_expander_cell_get_size (cell, widget, cell_area,
                                 &pix_rect.x,
@@ -996,38 +1008,43 @@ moo_expander_cell_render (GtkCellRenderer      *cell,
     pix_rect.width  -= CELL_XPAD (cell) * 2;
     pix_rect.height -= CELL_YPAD (cell) * 2;
 
-    if (!gdk_rectangle_intersect (cell_area, &pix_rect, &draw_rect) ||
-        !gdk_rectangle_intersect (expose_area, &draw_rect, &draw_rect))
+    if (!gdk_rectangle_intersect (cell_area, &pix_rect, &draw_rect))
             return;
 
-    state = GTK_WIDGET_STATE (widget);
-
-    if (!cell->sensitive)
+    if (!gtk_cell_renderer_get_sensitive (cell))
     {
-        state = GTK_STATE_INSENSITIVE;
+        state_flags = GTK_STATE_FLAG_INSENSITIVE;
     }
     else if (flags & GTK_CELL_RENDERER_SELECTED)
     {
         if (gtk_widget_has_focus (GTK_WIDGET (widget)))
-            state = GTK_STATE_SELECTED;
+            state_flags = GTK_STATE_FLAG_SELECTED;
         else
-            state = GTK_STATE_ACTIVE;
+            state_flags = GTK_STATE_FLAG_ACTIVE;
     }
     else if (flags & GTK_CELL_RENDERER_PRELIT)
     {
-        state = GTK_STATE_PRELIGHT;
+        state_flags = GTK_STATE_FLAG_PRELIGHT;
     }
 
-    gdk_draw_rectangle (window, gtk_widget_get_style (widget)->text_gc[state], FALSE,
-                        pix_rect.x, pix_rect.y,
-                        pix_rect.width, pix_rect.height);
-    gdk_draw_line (window, gtk_widget_get_style (widget)->text_gc[state],
-                   pix_rect.x + 2, pix_rect.y + pix_rect.height / 2,
-                   pix_rect.x + pix_rect.width - 2, pix_rect.y + pix_rect.height / 2);
+    /* TODO GTK3: gdk_draw_rectangle removed. Needs cairo context (cr) */
+
+
+    /* TODO GTK3: Direct style field access removed. Use GtkStyleContext. */
+    /* Original GC: gtk_widget_get_style (widget)->text_gc[state] on window */
+
+
+    /* cairo_rectangle (cr, pix_rect.x, pix_rect.y, pix_rect.width, pix_rect.height); */
+
+
+    /* cairo_stroke (cr); */;
+            cairo_move_to (cr, pix_rect.x + 2, pix_rect.y + pix_rect.height / 2);
+        cairo_line_to (cr, pix_rect.x + pix_rect.width - 2, pix_rect.y + pix_rect.height / 2);
+        cairo_stroke (cr);;
     if (!exp_cell->expanded)
-        gdk_draw_line (window, gtk_widget_get_style (widget)->text_gc[state],
-                       pix_rect.x + pix_rect.width / 2, pix_rect.y + 2,
-                       pix_rect.x + pix_rect.width / 2, pix_rect.y + pix_rect.height - 2);
+                cairo_move_to (cr, pix_rect.x + pix_rect.width / 2, pix_rect.y + 2);
+        cairo_line_to (cr, pix_rect.x + pix_rect.width / 2, pix_rect.y + pix_rect.height - 2);
+        cairo_stroke (cr);;
 }
 
 static void
@@ -1036,7 +1053,9 @@ moo_expander_cell_class_init (MooExpanderCellClass *klass)
     GtkCellRendererClass *cell_class = GTK_CELL_RENDERER_CLASS (klass);
 
     cell_class->get_size = moo_expander_cell_get_size;
-    cell_class->render = moo_expander_cell_render;
+    cell_class->render = (void (*)(GtkCellRenderer *, cairo_t *,
+        GtkWidget *, const GdkRectangle *, const GdkRectangle *,
+        GtkCellRendererState)) moo_expander_cell_render;
 }
 
 static void

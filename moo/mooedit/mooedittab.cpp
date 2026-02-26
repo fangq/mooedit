@@ -202,7 +202,7 @@ moo_edit_tab_get_window (MooEditTab *tab)
     GtkWidget *toplevel;
     g_return_val_if_fail (MOO_IS_EDIT_TAB (tab), NULL);
     toplevel = gtk_widget_get_toplevel (GTK_WIDGET (tab));
-    if (!toplevel || !GTK_WIDGET_TOPLEVEL (toplevel))
+    if (!toplevel || !gtk_widget_is_toplevel (GTK_WIDGET (toplevel)))
         return NULL;
     g_return_val_if_fail (MOO_IS_EDIT_WINDOW (toplevel), NULL);
     return MOO_EDIT_WINDOW (toplevel);
@@ -238,7 +238,7 @@ _moo_edit_tab_focus_next_view (MooEditTab *tab)
 
     focus_chain[i++] = moo_edit_tab_get_view (tab, 1, 1);
 
-    if (GTK_WIDGET_VISIBLE (tab->vpaned2))
+    if (gtk_widget_get_visible (GTK_WIDGET (tab->vpaned2)))
     {
         if ((view = moo_edit_tab_get_view (tab, 2, 1)))
             focus_chain[i++] = view;
@@ -274,8 +274,8 @@ gboolean
 _moo_edit_tab_get_split_horizontal (MooEditTab *tab)
 {
     g_return_val_if_fail (MOO_IS_EDIT_TAB (tab), FALSE);
-    return GTK_WIDGET_VISIBLE (tab->vpaned1) &&
-           GTK_WIDGET_VISIBLE (tab->vpaned2);
+    return gtk_widget_get_visible (GTK_WIDGET (tab->vpaned1)) &&
+           gtk_widget_get_visible (GTK_WIDGET (tab->vpaned2));
 }
 
 /*
@@ -331,7 +331,7 @@ _moo_edit_tab_set_split_horizontal (MooEditTab *tab,
         MooEditView *view2 = moo_edit_tab_get_view (tab, 1, 2);
 
         g_assert (view1 != NULL);
-        g_assert (!GTK_WIDGET_VISIBLE (tab->vpaned2));
+        g_assert (!gtk_widget_get_visible (GTK_WIDGET (tab->vpaned2)));
         g_assert (!gtk_container_get_children (GTK_CONTAINER (tab->vpaned2)));
 
         if (view1)
@@ -423,7 +423,7 @@ _moo_edit_tab_set_split_vertical (MooEditTab *tab,
         swin = create_view_in_scrolled_window (tab);
         gtk_paned_pack2 (GTK_PANED (tab->vpaned1), swin, TRUE, FALSE);
 
-        if (GTK_WIDGET_VISIBLE (tab->vpaned2))
+        if (gtk_widget_get_visible (GTK_WIDGET (tab->vpaned2)))
         {
             g_assert (gtk_paned_get_child1 (GTK_PANED (tab->vpaned2)) != NULL);
             swin = create_view_in_scrolled_window (tab);

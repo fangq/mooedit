@@ -31,7 +31,7 @@ enum {
 static void moo_menu_tool_button_class_init (MooMenuToolButtonClass *klass);
 static void moo_menu_tool_button_init       (MooMenuToolButton      *button);
 
-static void moo_menu_tool_button_destroy    (GInitiallyUnowned              *object);
+static void moo_menu_tool_button_destroy    (GtkWidget              *object);
 static void moo_menu_tool_button_toggled    (GtkToggleToolButton    *button);
 
 
@@ -41,9 +41,9 @@ G_DEFINE_TYPE(MooMenuToolButton, moo_menu_tool_button, GTK_TYPE_TOGGLE_TOOL_BUTT
 static void
 moo_menu_tool_button_class_init (MooMenuToolButtonClass *klass)
 {
-    GObjectClass *gtkobject_class = G_OBJECT_CLASS(klass);
+    GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
     GtkToggleToolButtonClass *toggle_class = GTK_TOGGLE_TOOL_BUTTON_CLASS (klass);
-    gtkobject_class->destroy = moo_menu_tool_button_destroy;
+    widget_class->destroy = moo_menu_tool_button_destroy;
     toggle_class->toggled = moo_menu_tool_button_toggled;
 }
 
@@ -55,7 +55,7 @@ moo_menu_tool_button_init (G_GNUC_UNUSED MooMenuToolButton *button)
 
 
 static void
-moo_menu_tool_button_destroy (GInitiallyUnowned *object)
+moo_menu_tool_button_destroy (GtkWidget *object)
 {
     MooMenuToolButton *button = MOO_MENU_TOOL_BUTTON (object);
 
@@ -63,7 +63,7 @@ moo_menu_tool_button_destroy (GInitiallyUnowned *object)
         gtk_widget_destroy (button->menu);
     button->menu = NULL;
 
-    G_OBJECT_CLASS(moo_menu_tool_button_parent_class)->destroy (object);
+    GTK_WIDGET_CLASS(moo_menu_tool_button_parent_class)->destroy (object);
 }
 
 
@@ -86,8 +86,8 @@ menu_position_func (G_GNUC_UNUSED GtkMenu *menu,
     gdk_window_get_origin (gtk_widget_get_window (button), x, y);
     gtk_widget_size_request (button, &req);
 
-    *x += button->allocation.x + button->allocation.width - req.width;
-    *y += button->allocation.y + button->allocation.height;
+    *x += ({ GtkAllocation _a; gtk_widget_get_allocation(GTK_WIDGET(button), &_a); _a.x; }) + ({ GtkAllocation _a; gtk_widget_get_allocation(GTK_WIDGET(button), &_a); _a.width; }) - req.width;
+    *y += ({ GtkAllocation _a; gtk_widget_get_allocation(GTK_WIDGET(button), &_a); _a.y; }) + ({ GtkAllocation _a; gtk_widget_get_allocation(GTK_WIDGET(button), &_a); _a.height; });
 
     *push_in = TRUE;
 }

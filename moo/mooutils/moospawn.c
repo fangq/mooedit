@@ -112,6 +112,10 @@ _moo_cmd_class_init (MooCmdClass *klass)
     klass->stdout_line = moo_cmd_stdout_line;
     klass->stderr_line = moo_cmd_stderr_line;
 
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
+
     g_type_class_add_private (klass, sizeof (MooCmdPrivate));
 
     signals[ABORT] =

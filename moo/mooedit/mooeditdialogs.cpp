@@ -64,7 +64,7 @@ _moo_edit_open_dialog (GtkWidget *widget,
         start = moo_prefs_get_file (moo_edit_setting (MOO_EDIT_PREFS_LAST_DIR));
 
     dialog = moo_file_dialog_new (MOO_FILE_DIALOG_OPEN, widget,
-                                  TRUE, GTK_STOCK_OPEN, start,
+                                  TRUE, "document-open", start,
                                   nullptr);
     g_object_set (dialog, "enable-encodings", TRUE, nullptr);
     moo_file_dialog_set_help_id (dialog, "dialog-open");
@@ -127,7 +127,7 @@ _moo_edit_save_as_dialog (MooEdit    *doc,
 
     dialog = moo_file_dialog_new (MOO_FILE_DIALOG_SAVE,
                                   GTK_WIDGET (moo_edit_get_view (doc)),
-                                  FALSE, GTK_STOCK_SAVE_AS,
+                                  FALSE, "document-save-as",
                                   start, display_basename);
     g_object_set (dialog, "enable-encodings", TRUE, nullptr);
     moo_file_dialog_set_encoding (dialog, moo_edit_get_encoding (doc));
@@ -428,7 +428,7 @@ _moo_edit_save_multiple_changes_dialog (MooEditArray *docs,
 
     gtk_dialog_add_buttons (GTK_DIALOG (dialog),
                             MOO_STOCK_SAVE_NONE, GTK_RESPONSE_NO,
-                            GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
+                            "dialog-cancel", GTK_RESPONSE_CANCEL,
                             MOO_STOCK_SAVE_SELECTED, GTK_RESPONSE_YES,
                             nullptr);
 
@@ -529,7 +529,7 @@ moo_edit_question_dialog (MooEdit    *doc,
                                               "%s", secondary);
 
     gtk_dialog_add_buttons (GTK_DIALOG (dialog),
-                            GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
+                            "dialog-cancel", GTK_RESPONSE_CANCEL,
                             button, GTK_RESPONSE_YES,
                             nullptr);
 
@@ -564,7 +564,7 @@ _moo_edit_save_error_enc_dialog (MooEdit    *doc,
                                  filename, encoding);
 
     result = moo_edit_question_dialog (doc, _("Save file in UTF-8 encoding?"),
-                                       secondary, GTK_STOCK_OK, GTK_RESPONSE_YES);
+                                       secondary, "dialog-ok", GTK_RESPONSE_YES);
 
     g_free (secondary);
     g_free (filename);
@@ -622,8 +622,8 @@ _moo_edit_try_encoding_dialog (G_GNUC_UNUSED GFile *file,
         moo_window_set_parent (dialog, GTK_WIDGET (window));
 
     gtk_dialog_add_buttons (GTK_DIALOG (dialog),
-                            GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
-                            GTK_STOCK_OK, GTK_RESPONSE_OK,
+                            "dialog-cancel", GTK_RESPONSE_CANCEL,
+                            "dialog-ok", GTK_RESPONSE_OK,
                             nullptr);
     gtk_dialog_set_default_response (GTK_DIALOG (dialog), GTK_RESPONSE_OK);
     gtk_dialog_set_alternative_button_order (GTK_DIALOG (dialog),
@@ -778,8 +778,8 @@ _moo_text_search_from_start_dialog (GtkWidget *widget,
     moo_window_set_parent (dialog, widget);
 
     gtk_dialog_add_buttons (GTK_DIALOG (dialog),
-                            GTK_STOCK_NO, GTK_RESPONSE_CANCEL,
-                            GTK_STOCK_YES, GTK_RESPONSE_YES,
+                            "dialog-cancel", GTK_RESPONSE_CANCEL,
+                            "dialog-ok", GTK_RESPONSE_YES,
                             nullptr);
     gtk_dialog_set_default_response (GTK_DIALOG (dialog), GTK_RESPONSE_YES);
     gtk_dialog_set_alternative_button_order (GTK_DIALOG (dialog),
@@ -817,7 +817,7 @@ _moo_text_regex_error_dialog (GtkWidget  *parent,
                                      GTK_MESSAGE_ERROR, GTK_BUTTONS_NONE,
                                      "%s", msg_text);
     moo_window_set_parent (dialog, parent);
-    gtk_dialog_add_buttons (GTK_DIALOG (dialog), GTK_STOCK_CLOSE,
+    gtk_dialog_add_buttons (GTK_DIALOG (dialog), "window-close",
                             GTK_RESPONSE_CANCEL, nullptr);
     gtk_dialog_set_default_response (GTK_DIALOG (dialog), GTK_RESPONSE_CANCEL);
 

@@ -43,7 +43,7 @@ struct _MooCmdViewPrivate {
     MooOutputFilter *filter;
 };
 
-static void      moo_cmd_view_destroy       (GInitiallyUnowned  *object);
+static void      moo_cmd_view_destroy       (GtkWidget *object);
 static GObject  *moo_cmd_view_constructor   (GType                  type,
                                              guint                  n_construct_properties,
                                              GObjectConstructParam *construct_param);
@@ -82,16 +82,20 @@ static void
 moo_cmd_view_class_init (MooCmdViewClass *klass)
 {
     GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
-    GObjectClass *gtkobject_class = G_OBJECT_CLASS(klass);
+    GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
 
     gobject_class->constructor = moo_cmd_view_constructor;
 
-    gtkobject_class->destroy = moo_cmd_view_destroy;
+    widget_class->destroy = moo_cmd_view_destroy;
 
     klass->abort = moo_cmd_view_abort_real;
     klass->cmd_exit = moo_cmd_view_cmd_exit;
     klass->stdout_line = moo_cmd_view_stdout_line;
     klass->stderr_line = moo_cmd_view_stderr_line;
+
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
 
     g_type_class_add_private (klass, sizeof (MooCmdViewPrivate));
 
@@ -189,15 +193,15 @@ moo_cmd_view_constructor (GType                  type,
 
 
 static void
-moo_cmd_view_destroy (GInitiallyUnowned *object)
+moo_cmd_view_destroy (GtkWidget *object)
 {
     MooCmdView *view = MOO_CMD_VIEW (object);
 
     moo_cmd_view_abort_and_disconnect (view);
     moo_cmd_view_set_filter (view, NULL);
 
-    if (G_OBJECT_CLASS(moo_cmd_view_parent_class)->destroy)
-        G_OBJECT_CLASS(moo_cmd_view_parent_class)->destroy (object);
+    if (GTK_WIDGET_CLASS (moo_cmd_view_parent_class)->destroy)
+        GTK_WIDGET_CLASS (moo_cmd_view_parent_class)->destroy (object);
 }
 
 

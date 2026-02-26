@@ -69,6 +69,10 @@ _moo_ctags_view_class_init (MooCtagsViewClass *klass)
                   G_TYPE_NONE, 1,
                   MOO_TYPE_CTAGS_ENTRY);
 
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
+
     g_type_class_add_private (klass, sizeof (MooCtagsViewPrivate));
 }
 

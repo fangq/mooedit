@@ -234,7 +234,7 @@ ensure_output (WindowStuff *stuff)
 static gboolean
 find_window_plugin_create (WindowStuff *stuff)
 {
-    gtk_widget_get_window (stuff) = MOO_WIN_PLUGIN (stuff)->window;
+    stuff->window = MOO_WIN_PLUGIN (stuff)->window;
     return TRUE;
 }
 
@@ -253,7 +253,7 @@ find_plugin_init (FindPlugin *plugin)
                                  "label", _("Find In Files"),
                                  "tooltip", _("Find in files"),
                                  "default-accel", MOO_EDIT_ACCEL_FIND_IN_FILES,
-                                 "stock-id", MOO_STOCK_FIND_IN_FILES,
+                                 "icon-name", MOO_STOCK_FIND_IN_FILES,
                                  "closure-callback", find_in_files_cb,
                                  nullptr);
 
@@ -262,7 +262,7 @@ find_plugin_init (FindPlugin *plugin)
                                  "display-name", _("Find File"),
                                  "label", _("Find File"),
                                  "tooltip", _("Find file"),
-                                 "stock-id", MOO_STOCK_FIND_FILE,
+                                 "icon-name", MOO_STOCK_FIND_FILE,
                                  "closure-callback", find_file_cb,
                                  nullptr);
 #endif
@@ -1119,8 +1119,8 @@ output_activate (WindowStuff    *stuff,
     if (!line_data || (stuff->cmd == CMD_GREP && line_data->line < 0))
         return FALSE;
 
-    editor = moo_edit_window_get_editor (gtk_widget_get_window (stuff));
-    moo_editor_open_path (editor, line_data->filename, NULL, line_data->line, gtk_widget_get_window (stuff));
+    editor = moo_edit_window_get_editor (stuff->window);
+    moo_editor_open_path (editor, line_data->filename, NULL, line_data->line, stuff->window);
 
     return TRUE;
 }

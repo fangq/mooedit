@@ -23,13 +23,13 @@ G_BEGIN_DECLS
 
 
 #define MOO_STOCK_TERMINAL              "moo-terminal"
-#define MOO_STOCK_KEYBOARD              GTK_STOCK_SELECT_FONT
-#define MOO_STOCK_MENU                  GTK_STOCK_INDEX
-#define MOO_STOCK_RESTART               GTK_STOCK_REFRESH
+#define MOO_STOCK_KEYBOARD              "font-select"
+#define MOO_STOCK_MENU                  "gtk-index"
+#define MOO_STOCK_RESTART               "view-refresh"
 
-#define MOO_STOCK_DOC_DELETED           GTK_STOCK_DIALOG_ERROR
-#define MOO_STOCK_DOC_MODIFIED_ON_DISK  GTK_STOCK_DIALOG_WARNING
-#define MOO_STOCK_DOC_MODIFIED          GTK_STOCK_SAVE
+#define MOO_STOCK_DOC_DELETED           "dialog-error"
+#define MOO_STOCK_DOC_MODIFIED_ON_DISK  "dialog-warning"
+#define MOO_STOCK_DOC_MODIFIED          "document-save"
 
 #define MOO_STOCK_NEW_WINDOW            "moo-new-window"
 
@@ -61,7 +61,7 @@ G_BEGIN_DECLS
 
 #define MOO_STOCK_EDIT_BOOKMARK         "moo-edit-bookmark"
 
-#define MOO_STOCK_PLUGINS               GTK_STOCK_PREFERENCES
+#define MOO_STOCK_PLUGINS               "preferences-system"
 
 
 void        _moo_stock_init                 (void);

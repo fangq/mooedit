@@ -347,7 +347,7 @@ child_new (MooTreeView  *view,
     g_signal_connect_swapped (widget, "button-press-event",
                               G_CALLBACK (child_button_press), child);
 
-    child->parent = view;
+    child->owner = view;
     child->widget = g_object_ref (widget);
     return child;
 }
@@ -394,16 +394,16 @@ static void
 child_row_activated (Child              *child,
                      const GtkTreePath  *path)
 {
-    if (child->parent->active == child)
-        g_signal_emit (child->parent, signals[ROW_ACTIVATED], 0, path);
+    if (child->owner->active == child)
+        g_signal_emit (child->owner, signals[ROW_ACTIVATED], 0, path);
 }
 
 
 static void
 child_selection_changed (Child *child)
 {
-    if (child->parent->active == child)
-        g_signal_emit (child->parent, signals[SELECTION_CHANGED], 0);
+    if (child->owner->active == child)
+        g_signal_emit (child->owner, signals[SELECTION_CHANGED], 0);
 }
 
 
@@ -411,10 +411,10 @@ static gboolean
 child_key_press (Child       *child,
                  GdkEventKey *event)
 {
-    if (child->parent->active == child)
+    if (child->owner->active == child)
     {
         gboolean result = FALSE;
-        g_signal_emit (child->parent, signals[KEY_PRESS_EVENT], 0,
+        g_signal_emit (child->owner, signals[KEY_PRESS_EVENT], 0,
                        child->widget, event, &result);
         return result;
     }
@@ -429,10 +429,10 @@ static gboolean
 child_button_press (Child          *child,
                     GdkEventButton *event)
 {
-    if (child->parent->active == child)
+    if (child->owner->active == child)
     {
         gboolean result = FALSE;
-        g_signal_emit (child->parent, signals[BUTTON_PRESS_EVENT], 0,
+        g_signal_emit (child->owner, signals[BUTTON_PRESS_EVENT], 0,
                        child->widget, event, &result);
         return result;
     }

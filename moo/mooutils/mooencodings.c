@@ -752,7 +752,7 @@ setup_combo (GtkComboBox      *combo,
     }
 
     gtk_combo_box_set_model (combo, GTK_TREE_MODEL (store));
-    gtk_combo_box_entry_set_text_column (GTK_COMBO_BOX_TEXT (combo), COLUMN_DISPLAY);
+    gtk_combo_box_set_entry_text_column (GTK_COMBO_BOX (combo), COLUMN_DISPLAY);
 
     cell = gtk_cell_renderer_text_new ();
     gtk_cell_layout_clear (GTK_CELL_LAYOUT (combo));
@@ -832,7 +832,7 @@ _moo_encodings_attach_combo (GtkWidget  *dialog,
     gtk_widget_show (label);
     gtk_box_pack_start (GTK_BOX (hbox), label, FALSE, FALSE, 0);
 
-    combo = gtk_combo_box_entry_new ();
+    combo = gtk_combo_box_text_new_with_entry ();
     gtk_widget_show (combo);
     gtk_box_pack_start (GTK_BOX (hbox), combo, TRUE, TRUE, 0);
 

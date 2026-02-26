@@ -30,7 +30,7 @@
 #include "mooutils/moo-gtk3-compat.h"
 
 
-static void moo_file_props_dialog_destroy   (GInitiallyUnowned          *object);
+static void moo_file_props_dialog_destroy (GtkWidget *object);
 static void moo_file_props_dialog_show      (GtkWidget          *widget);
 static void moo_file_props_dialog_response  (GtkDialog          *dialog,
                                              int                 reponse);
@@ -42,11 +42,10 @@ G_DEFINE_TYPE(MooFilePropsDialog, _moo_file_props_dialog, GTK_TYPE_DIALOG)
 static void
 _moo_file_props_dialog_class_init (MooFilePropsDialogClass *klass)
 {
-    GObjectClass *gtkobject_class = G_OBJECT_CLASS(klass);
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
     GtkDialogClass *dialog_class = GTK_DIALOG_CLASS (klass);
 
-    gtkobject_class->destroy = moo_file_props_dialog_destroy;
+    widget_class->destroy = moo_file_props_dialog_destroy;
     widget_class->show = moo_file_props_dialog_show;
     dialog_class->response = moo_file_props_dialog_response;
 }
@@ -65,8 +64,8 @@ _moo_file_props_dialog_init (MooFilePropsDialog *dialog)
     gtk_container_add (GTK_CONTAINER(gtk_dialog_get_content_area (GTK_DIALOG (dialog))), dialog->notebook);
 
     gtk_dialog_add_buttons (GTK_DIALOG (dialog),
-                            GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
-                            GTK_STOCK_OK, GTK_RESPONSE_OK,
+                            "dialog-cancel", GTK_RESPONSE_CANCEL,
+                            "dialog-ok", GTK_RESPONSE_OK,
                             NULL);
     gtk_dialog_set_alternative_button_order (GTK_DIALOG (dialog),
                                              GTK_RESPONSE_OK,
@@ -268,8 +267,7 @@ gtk_widget_set_valign (label, GTK_ALIGN_CENTER);
 }
 
 
-static void
-moo_file_props_dialog_destroy (GInitiallyUnowned *object)
+static void moo_file_props_dialog_destroy (GtkWidget *object)
 {
     MooFilePropsDialog *dialog = MOO_FILE_PROPS_DIALOG (object);
 
@@ -288,7 +286,7 @@ moo_file_props_dialog_destroy (GInitiallyUnowned *object)
         dialog->table = NULL;
     }
 
-    G_OBJECT_CLASS(_moo_file_props_dialog_parent_class)->destroy (object);
+    GTK_WIDGET_CLASS(_moo_file_props_dialog_parent_class)->destroy (object);
 }
 
 

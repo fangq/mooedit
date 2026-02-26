@@ -1076,12 +1076,12 @@ moo_html_motion (GtkWidget      *widget,
     if (html->data->button_pressed)
         html->data->in_drag = TRUE;
 
-    if (gtk_widget_get_window (event) != gtk_text_view_get_window (textview, GTK_TEXT_WINDOW_TEXT))
+    if (event->window != gtk_text_view_get_window (textview, GTK_TEXT_WINDOW_TEXT))
         goto out;
 
     if (event->is_hint)
     {
-        gdk_window_get_pointer (gtk_widget_get_window (event), &x, &y, &state);
+        gdk_window_get_pointer (event->window, &x, &y, &state);
     }
     else
     {
@@ -1110,9 +1110,9 @@ moo_html_motion (GtkWidget      *widget,
             g_free (html->data->hover_link);
             html->data->hover_link = g_strdup (tag->href);
 
-            cursor = gdk_cursor_new (GDK_HAND2);
-            gdk_window_set_cursor (gtk_widget_get_window (event), cursor);
-            gdk_cursor_unref (cursor);
+            cursor = gdk_cursor_new_for_display (gdk_display_get_default (), GDK_HAND2);
+            gdk_window_set_cursor (event->window, cursor);
+            g_object_unref (cursor);
 
             g_signal_emit (html, html_signals[HOVER_LINK], 0, tag->href);
         }
@@ -1124,9 +1124,9 @@ moo_html_motion (GtkWidget      *widget,
         g_free (html->data->hover_link);
         html->data->hover_link = nullptr;
 
-        cursor = gdk_cursor_new (GDK_XTERM);
-        gdk_window_set_cursor (gtk_widget_get_window (event), cursor);
-        gdk_cursor_unref (cursor);
+        cursor = gdk_cursor_new_for_display (gdk_display_get_default (), GDK_XTERM);
+        gdk_window_set_cursor (event->window, cursor);
+        g_object_unref (cursor);
 
         g_signal_emit (html, html_signals[HOVER_LINK], 0, nullptr);
     }
@@ -1194,7 +1194,7 @@ moo_html_button_release (GtkWidget      *widget,
         goto out;
     }
 
-    if (gtk_widget_get_window (event) != gtk_text_view_get_window (textview, GTK_TEXT_WINDOW_TEXT))
+    if (event->window != gtk_text_view_get_window (textview, GTK_TEXT_WINDOW_TEXT))
         goto out;
 
     gtk_text_view_window_to_buffer_coords (textview, GTK_TEXT_WINDOW_TEXT,
@@ -1304,7 +1304,7 @@ moo_html_size_allocate_real (GtkWidget *widget,
     GdkWindow *window;
     MooHtmlData *data = moo_html_get_data (GTK_TEXT_VIEW (widget));
 
-    if (!GTK_WIDGET_REALIZED (widget))
+    if (!gtk_widget_get_realized (widget))
         return;
 
     window = gtk_text_view_get_window (GTK_TEXT_VIEW (widget), GTK_TEXT_WINDOW_TEXT);

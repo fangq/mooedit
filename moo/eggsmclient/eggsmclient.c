@@ -62,6 +62,10 @@ egg_sm_client_class_init (EggSMClientClass *klass)
 {
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
 
+  /* TODO GTK3: g_type_class_add_private is deprecated.
+
+     Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
+
   g_type_class_add_private (klass, sizeof (EggSMClientPrivate));
 
   /**

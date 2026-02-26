@@ -137,7 +137,7 @@ _moo_accel_prefs_page_class_init (MooAccelPrefsPageClass *klass)
 static void
 row_activated (MooAccelPrefsPage *page)
 {
-    if (GTK_WIDGET_IS_SENSITIVE (page->gxml->shortcut))
+    if (gtk_widget_is_sensitive (GTK_WIDGET (page->gxml->shortcut)))
         gtk_button_clicked (GTK_BUTTON (page->gxml->shortcut));
 }
 
@@ -806,9 +806,9 @@ _moo_accel_prefs_dialog_new (MooActionCollection *collection)
 
     dialog = gtk_dialog_new_with_buttons (_("Configure Shortcuts"), NULL,
                                           (GtkDialogFlags) 0,
-                                          GTK_STOCK_HELP, GTK_RESPONSE_HELP,
-                                          GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
-                                          GTK_STOCK_OK, GTK_RESPONSE_OK,
+                                          "help-browser", GTK_RESPONSE_HELP,
+                                          "dialog-cancel", GTK_RESPONSE_CANCEL,
+                                          "dialog-ok", GTK_RESPONSE_OK,
                                           NULL);
     gtk_dialog_set_alternative_button_order (GTK_DIALOG (dialog),
                                              GTK_RESPONSE_OK,

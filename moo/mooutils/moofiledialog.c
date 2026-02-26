@@ -184,7 +184,7 @@ moo_file_dialog_get_property (GObject        *object,
             break;
 
         case PROP_PARENT:
-            g_value_set_object (value, dialog->priv->parent);
+            g_value_set_object (value, gtk_widget_get_parent (dialog));
             break;
 
         case PROP_FILTER_MGR_ID:
@@ -300,7 +300,7 @@ GtkWidget *file_chooser_dialog_new (const char *title,
 {
     GtkWidget *dialog =
             gtk_file_chooser_dialog_new (title, NULL, action,
-                                         GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
+                                         "dialog-cancel", GTK_RESPONSE_CANCEL,
                                          okbtn, GTK_RESPONSE_OK,
                                          NULL);
 
@@ -318,7 +318,7 @@ GtkWidget *file_chooser_dialog_new (const char *title,
     {
         moo_help_set_id (dialog, help_id);
         moo_help_connect_keys (dialog);
-        gtk_dialog_add_button (GTK_DIALOG (dialog), GTK_STOCK_HELP, GTK_RESPONSE_HELP);
+        gtk_dialog_add_button (GTK_DIALOG (dialog), "help-browser", GTK_RESPONSE_HELP);
     }
 
     return dialog;
@@ -379,7 +379,7 @@ moo_file_dialog_create_widget (MooFileDialog *dialog)
 
             widget = file_chooser_dialog_new (dialog->priv->title,
                                               chooser_action,
-                                              GTK_STOCK_OPEN,
+                                              "document-open",
                                               dialog->priv->current_dir,
                                               dialog->priv->help_id);
             file_chooser_set_select_multiple (widget, dialog->priv->multiple);
@@ -390,7 +390,7 @@ moo_file_dialog_create_widget (MooFileDialog *dialog)
 
             widget = file_chooser_dialog_new (dialog->priv->title,
                                               chooser_action,
-                                              GTK_STOCK_SAVE,
+                                              "document-save",
                                               dialog->priv->current_dir,
                                               dialog->priv->help_id);
 
@@ -429,8 +429,8 @@ moo_file_dialog_create_widget (MooFileDialog *dialog)
     if (dialog->priv->size_prefs_key)
         _moo_window_set_remember_size (GTK_WINDOW (widget),
                                        dialog->priv->size_prefs_key, -1, -1, TRUE);
-    if (dialog->priv->parent)
-        moo_window_set_parent (widget, dialog->priv->parent);
+    if (gtk_widget_get_parent (dialog))
+        moo_window_set_parent (widget, gtk_widget_get_parent (dialog));
 
     return widget;
 }

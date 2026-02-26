@@ -191,7 +191,7 @@ moo_filter_mgr_init_filter_combo (MooFilterMgr *mgr,
     gtk_combo_box_set_row_separator_func (combo, combo_row_separator_func, NULL, NULL);
 
     if (GTK_IS_COMBO_BOX_ENTRY (combo))
-        gtk_combo_box_entry_set_text_column (GTK_COMBO_BOX_TEXT (combo), COLUMN_DESCRIPTION);
+        gtk_combo_box_set_entry_text_column (GTK_COMBO_BOX (combo), COLUMN_DESCRIPTION);
 }
 
 
@@ -546,7 +546,7 @@ moo_filter_mgr_attach (MooFilterMgr   *mgr,
     gtk_widget_show (label);
     gtk_box_pack_start (GTK_BOX (hbox), label, FALSE, FALSE, 0);
 
-    combo = gtk_combo_box_entry_new ();
+    combo = gtk_combo_box_text_new_with_entry ();
     moo_filter_mgr_init_filter_combo (mgr, GTK_COMBO_BOX (combo), user_id);
     gtk_widget_show (combo);
     gtk_box_pack_start (GTK_BOX (hbox), combo, TRUE, TRUE, 0);

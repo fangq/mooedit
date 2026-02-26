@@ -62,6 +62,10 @@ _moo_ctags_doc_plugin_class_init (MooCtagsDocPluginClass *klass)
     plugin_class->create = (MooDocPluginCreateFunc) moo_ctags_doc_plugin_create;
     plugin_class->destroy = (MooDocPluginDestroyFunc) moo_ctags_doc_plugin_destroy;
 
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
+
     g_type_class_add_private (klass, sizeof (MooCtagsDocPluginPrivate));
 }
 

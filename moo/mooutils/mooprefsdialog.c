@@ -47,7 +47,7 @@ static void moo_prefs_dialog_get_property   (GObject        *object,
                                              GValue         *value,
                                              GParamSpec     *pspec);
 
-static void moo_prefs_dialog_destroy        (GInitiallyUnowned      *object);
+static void moo_prefs_dialog_destroy (GtkWidget *object);
 static void moo_prefs_dialog_response       (GtkDialog      *dialog,
                                              int             response);
 
@@ -85,12 +85,11 @@ static void
 moo_prefs_dialog_class_init (MooPrefsDialogClass *klass)
 {
     GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
-    GObjectClass *gtkobject_class = G_OBJECT_CLASS(klass);
     GtkDialogClass *dialog_class = GTK_DIALOG_CLASS (klass);
 
     gobject_class->set_property = moo_prefs_dialog_set_property;
     gobject_class->get_property = moo_prefs_dialog_get_property;
-    gtkobject_class->destroy = moo_prefs_dialog_destroy;
+    GTK_WIDGET_CLASS(klass)->destroy = moo_prefs_dialog_destroy;
     dialog_class->response = moo_prefs_dialog_response;
 
     klass->apply = moo_prefs_dialog_apply;
@@ -137,10 +136,10 @@ moo_prefs_dialog_init (MooPrefsDialog *dialog)
     gtk_window_set_destroy_with_parent (GTK_WINDOW (dialog), TRUE);
 
     gtk_dialog_add_buttons (GTK_DIALOG (dialog),
-                            GTK_STOCK_HELP, GTK_RESPONSE_HELP,
-                            GTK_STOCK_APPLY, GTK_RESPONSE_APPLY,
-                            GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
-                            GTK_STOCK_OK, GTK_RESPONSE_OK,
+                            "help-browser", GTK_RESPONSE_HELP,
+                            "dialog-ok-apply", GTK_RESPONSE_APPLY,
+                            "dialog-cancel", GTK_RESPONSE_CANCEL,
+                            "dialog-ok", GTK_RESPONSE_OK,
                             NULL);
 #if GTK_MINOR_VERSION >= 6
     gtk_dialog_set_alternative_button_order (GTK_DIALOG (dialog),
@@ -180,7 +179,8 @@ moo_prefs_dialog_init (MooPrefsDialog *dialog)
 static gboolean
 destroy_page (GtkTreeModel  *model,
               G_GNUC_UNUSED GtkTreePath   *path,
-              GtkTreeIter   *iter)
+              GtkTreeIter   *iter,
+              G_GNUC_UNUSED gpointer       data)
 {
     GtkWidget *page = NULL;
 
@@ -194,8 +194,7 @@ destroy_page (GtkTreeModel  *model,
     return FALSE;
 }
 
-static void
-moo_prefs_dialog_destroy (GInitiallyUnowned *object)
+static void moo_prefs_dialog_destroy (GtkWidget *object)
 {
     MooPrefsDialog *dialog = MOO_PREFS_DIALOG (object);
 
@@ -207,12 +206,12 @@ moo_prefs_dialog_destroy (GInitiallyUnowned *object)
                                               dialog);
         gtk_tree_view_set_model (dialog->pages_list, NULL);
         gtk_tree_model_foreach (GTK_TREE_MODEL (dialog->store),
-                                (GtkTreeModelForeachFunc) destroy_page, NULL);
+                                destroy_page, NULL);
         g_object_unref (dialog->store);
         dialog->store = NULL;
     }
 
-    G_OBJECT_CLASS(moo_prefs_dialog_parent_class)->destroy (object);
+    GTK_WIDGET_CLASS(moo_prefs_dialog_parent_class)->destroy (object);
 }
 
 
@@ -237,7 +236,7 @@ setup_pages_list (MooPrefsDialog *dialog)
     icon_column =
         gtk_tree_view_column_new_with_attributes ("Icon",
                                                   icon_renderer,
-                                                  "stock-id", ICON_ID_COLUMN,
+                                                  "icon-name", ICON_ID_COLUMN,
                                                   "pixbuf", ICON_COLUMN,
                                                   NULL);
     gtk_tree_view_append_column (GTK_TREE_VIEW (tree), icon_column);
@@ -475,7 +474,7 @@ moo_prefs_dialog_insert_page (MooPrefsDialog     *dialog,
 
     g_return_if_fail (MOO_IS_PREFS_DIALOG (dialog));
     g_return_if_fail (MOO_IS_PREFS_PAGE (page));
-    g_return_if_fail (page->parent == NULL);
+    g_return_if_fail (gtk_widget_get_parent (GTK_WIDGET (page)) == NULL);
 
     if (position < 0)
         position = gtk_tree_model_iter_n_children (GTK_TREE_MODEL (dialog->store), NULL);
@@ -492,7 +491,7 @@ moo_prefs_dialog_insert_page (MooPrefsDialog     *dialog,
                   NULL);
 
     if (!icon_id)
-        icon_id = g_strdup (GTK_STOCK_PREFERENCES);
+        icon_id = g_strdup ("preferences-system");
 
     gtk_list_store_set (dialog->store, &iter,
                         ICON_ID_COLUMN, icon_id,

@@ -86,6 +86,10 @@ moo_edit_config_class_init (MooEditConfigClass *klass)
     gobject_class->get_property = moo_edit_config_get_property;
     gobject_class->finalize = moo_edit_config_finalize;
 
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
+
     g_type_class_add_private (klass, sizeof (MooEditConfigPrivate));
 
     prop_id_quark = g_quark_from_static_string ("MooEditConfigPropId");

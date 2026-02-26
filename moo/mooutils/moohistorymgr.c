@@ -139,6 +139,10 @@ moo_history_mgr_class_init (MooHistoryMgrClass *klass)
 {
     GObjectClass *object_class = G_OBJECT_CLASS (klass);
 
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
+
     g_type_class_add_private (klass, sizeof (MooHistoryMgrPrivate));
 
     object_class->constructor = moo_history_mgr_constructor;
@@ -1569,8 +1573,8 @@ moo_history_mgr_create_dialog (MooHistoryMgr   *mgr,
     g_return_val_if_fail (callback != NULL, NULL);
 
     dialog = gtk_dialog_new_with_buttons ("", NULL, GTK_DIALOG_DESTROY_WITH_PARENT,
-                                          GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
-                                          GTK_STOCK_OPEN, GTK_RESPONSE_OK,
+                                          "dialog-cancel", GTK_RESPONSE_CANCEL,
+                                          "document-open", GTK_RESPONSE_OK,
                                           NULL);
     gtk_dialog_set_alternative_button_order (GTK_DIALOG (dialog),
                                              GTK_RESPONSE_OK,

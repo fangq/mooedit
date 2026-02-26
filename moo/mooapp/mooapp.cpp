@@ -834,7 +834,7 @@ moo_app_do_quit (MooApp *app)
     moo_app_save_prefs (app);
 
     if (app->priv->quit_handler_id)
-        gtk_quit_remove (app->priv->quit_handler_id);
+        /* GTK3: gtk_quit_remove removed */
 
     i = 0;
     while (gtk_main_level () && i < 1000)
@@ -885,7 +885,7 @@ moo_app_run (MooApp *app)
     app->priv->running = TRUE;
 
     app->priv->quit_handler_id =
-            gtk_quit_add (1, (GtkFunction) on_gtk_main_quit, app);
+            /* GTK3: gtk_quit_add removed; quit handler called after gtk_main() */
 
     g_timeout_add (100, (GSourceFunc) check_signal, NULL);
 
@@ -905,6 +905,8 @@ moo_app_run (MooApp *app)
     g_idle_add_full(G_PRIORITY_DEFAULT_IDLE + 1, (GSourceFunc) emit_started, app, NULL);
 
     gtk_main ();
+        /* GTK3: call quit handler explicitly after gtk_main returns */
+        on_gtk_main_quit (app);
 
     return app->priv->exit_status;
 }
@@ -967,24 +969,24 @@ install_common_actions (void)
     g_return_if_fail (klass != NULL);
 
     moo_window_class_new_action (klass, "Preferences", NULL,
-                                 "display-name", GTK_STOCK_PREFERENCES,
-                                 "label", GTK_STOCK_PREFERENCES,
-                                 "tooltip", GTK_STOCK_PREFERENCES,
-                                 "stock-id", GTK_STOCK_PREFERENCES,
+                                 "display-name", "preferences-system",
+                                 "label", "preferences-system",
+                                 "tooltip", "preferences-system",
+                                 "icon-name", "preferences-system",
                                  "closure-callback", moo_app_prefs_dialog,
                                  nullptr);
 
     moo_window_class_new_action (klass, "About", NULL,
-                                 "label", GTK_STOCK_ABOUT,
+                                 "label", "help-about",
                                  "no-accel", TRUE,
-                                 "stock-id", GTK_STOCK_ABOUT,
+                                 "icon-name", "help-about",
                                  "closure-callback", moo_app_about_dialog,
                                  nullptr);
 
     moo_window_class_new_action (klass, "Help", NULL,
-                                 "label", GTK_STOCK_HELP,
+                                 "label", "help-browser",
                                  "default-accel", MOO_APP_ACCEL_HELP,
-                                 "stock-id", GTK_STOCK_HELP,
+                                 "icon-name", "help-browser",
                                  "closure-callback", moo_app_help,
                                  nullptr);
 
@@ -994,10 +996,10 @@ install_common_actions (void)
                                  nullptr);
 
     moo_window_class_new_action (klass, "Quit", NULL,
-                                 "display-name", GTK_STOCK_QUIT,
-                                 "label", GTK_STOCK_QUIT,
-                                 "tooltip", GTK_STOCK_QUIT,
-                                 "stock-id", GTK_STOCK_QUIT,
+                                 "display-name", "application-exit",
+                                 "label", "application-exit",
+                                 "tooltip", "application-exit",
+                                 "icon-name", "application-exit",
                                  "default-accel", MOO_APP_ACCEL_QUIT,
                                  "closure-callback", moo_app_quit,
                                  "closure-proxy-func", moo_app_instance,

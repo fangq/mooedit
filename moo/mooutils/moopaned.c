@@ -59,7 +59,7 @@ struct _MooPanedPrivate {
     GdkWindow   *pane_window;
 
     /* XXX weak pointer */
-    gpointer     focus_child; /* focused grandchild of bin->child */
+    gpointer     focus_child; /* focused grandchild of gtk_bin_get_child (GTK_BIN (paned)) */
     MooPane     *focus_pane;
     FocusPosition focus;
     gboolean     button_real_focus; /* button was focused by keyboard navigation */
@@ -111,7 +111,7 @@ static GObject *moo_paned_constructor       (GType                  type,
                                              guint                  n_construct_properties,
                                              GObjectConstructParam *construct_properties);
 
-static void     moo_paned_destroy           (GInitiallyUnowned      *object);
+static void     moo_paned_destroy (GtkWidget *object);
 
 static void     moo_paned_realize           (GtkWidget      *widget);
 static void     moo_paned_unrealize         (GtkWidget      *widget);
@@ -127,11 +127,12 @@ static void     moo_paned_set_focus_child   (GtkContainer *container,
 
 static void     moo_paned_size_request      (GtkWidget      *widget,
                                              GtkRequisition *requisition);
+static void moo_paned_get_preferred_width(GtkWidget*,gint*,gint*);
+static void moo_paned_get_preferred_height(GtkWidget*,gint*,gint*);
 static void     moo_paned_size_allocate     (GtkWidget      *widget,
                                              GtkAllocation  *allocation);
 
-static gboolean moo_paned_expose            (GtkWidget      *widget,
-                                             cairo_t *event);
+static gboolean moo_paned_expose            (GtkWidget      *widget, cairo_t *cr);
 static gboolean moo_paned_motion            (GtkWidget      *widget,
                                              GdkEventMotion *event);
 static gboolean moo_paned_enter             (GtkWidget      *widget,
@@ -167,10 +168,8 @@ static void     moo_paned_remove            (GtkContainer   *container,
 
 static void     realize_handle              (MooPaned       *paned);
 static void     realize_pane                (MooPaned       *paned);
-static void     draw_handle                 (MooPaned       *paned,
-                                             cairo_t *event);
-static void     draw_border                 (MooPaned       *paned,
-                                             cairo_t *event);
+static void     draw_handle                 (MooPaned       *paned, cairo_t *cr);
+static void     draw_border                 (MooPaned       *paned, cairo_t *cr);
 static void     button_box_visible_notify   (MooPaned     *paned);
 
 static void     pane_button_toggled         (GtkToggleButton *button,
@@ -228,7 +227,6 @@ static void
 moo_paned_class_init (MooPanedClass *klass)
 {
     GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
-    GObjectClass *gtkobject_class = G_OBJECT_CLASS(klass);
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
     GtkContainerClass *container_class = GTK_CONTAINER_CLASS (klass);
 
@@ -238,7 +236,7 @@ moo_paned_class_init (MooPanedClass *klass)
     gobject_class->get_property = moo_paned_get_property;
     gobject_class->constructor = moo_paned_constructor;
 
-    gtkobject_class->destroy = moo_paned_destroy;
+    widget_class->destroy = moo_paned_destroy;
 
     widget_class->realize = moo_paned_realize;
     widget_class->unrealize = moo_paned_unrealize;
@@ -246,7 +244,8 @@ moo_paned_class_init (MooPanedClass *klass)
     widget_class->map = moo_paned_map;
     widget_class->unmap = moo_paned_unmap;
     widget_class->draw = moo_paned_expose;
-    widget_class->size_request = moo_paned_size_request;
+    widget_class->get_preferred_width = moo_paned_get_preferred_width;
+    widget_class->get_preferred_height = moo_paned_get_preferred_height;
     widget_class->size_allocate = moo_paned_size_allocate;
     widget_class->motion_notify_event = moo_paned_motion;
     widget_class->enter_notify_event = moo_paned_enter;
@@ -361,7 +360,7 @@ moo_paned_class_init (MooPanedClass *klass)
 static void
 moo_paned_init (MooPaned *paned)
 {
-    GTK_WIDGET_SET_NO_WINDOW (paned);
+    gtk_widget_set_has_window (GTK_WIDGET (paned), FALSE);
 
     paned->priv = G_TYPE_INSTANCE_GET_PRIVATE (paned,
                                                MOO_TYPE_PANED,
@@ -552,15 +551,15 @@ moo_paned_get_property (GObject        *object,
 
 
 static void
-moo_paned_destroy (GInitiallyUnowned      *object)
+moo_paned_destroy (GtkWidget *object)
 {
     GSList *l;
     MooPaned *paned = MOO_PANED (object);
 
     for (l = paned->priv->panes; l != NULL; l = l->next)
-        gtk_object_destroy (l->data);
+        gtk_widget_destroy (l->data);
 
-    G_OBJECT_CLASS(moo_paned_parent_class)->destroy (object);
+    GTK_WIDGET_CLASS(moo_paned_parent_class)->destroy (object);
 
     for (l = paned->priv->panes; l != NULL; l = l->next)
         g_object_unref (l->data);
@@ -593,21 +592,9 @@ moo_paned_style_set (GtkWidget *widget,
 {
     MooPaned *paned = MOO_PANED (widget);
 
-    if (gtk_widget_get_style (widget))
-    {
-        if (paned->priv->bin_window)
-            gtk_style_set_background (gtk_widget_get_style (widget),
-                                      paned->priv->bin_window,
-                                      GTK_STATE_NORMAL);
-        if (paned->priv->handle_window)
-            gtk_style_set_background (gtk_widget_get_style (widget),
-                                      paned->priv->handle_window,
-                              GTK_STATE_NORMAL);
-        if (paned->priv->pane_window)
-            gtk_style_set_background (gtk_widget_get_style (widget),
-                                      paned->priv->pane_window,
-                                      GTK_STATE_NORMAL);
-    }
+    /* GTK3: Background is now managed by CSS theme.
+       gdk_window_set_background_* calls removed. */
+    (void) paned;
 }
 
 static void
@@ -619,8 +606,8 @@ moo_paned_realize (GtkWidget *widget)
 
     paned = MOO_PANED (widget);
 
-    gtk_widget_get_window (widget) = gtk_widget_get_parent_window (widget);
-    g_object_ref (gtk_widget_get_window (widget));
+    gtk_widget_set_window (widget, g_object_ref (gtk_widget_get_parent_window (widget)));
+    /* GTK3: window already ref'd by set_window */
 
     attributes.x = moo_widget_get_alloc(widget).x;
     attributes.y = moo_widget_get_alloc(widget).y;
@@ -633,16 +620,16 @@ moo_paned_realize (GtkWidget *widget)
     attributes.visual = gtk_widget_get_visual (widget);
     attributes.wclass = GDK_INPUT_OUTPUT;
 
-    attributes_mask = GDK_WA_X | GDK_WA_Y | GDK_WA_VISUAL | GDK_WA_COLORMAP;
+    attributes_mask = GDK_WA_X | GDK_WA_Y | GDK_WA_VISUAL;
 
     paned->priv->bin_window = gdk_window_new (gtk_widget_get_parent_window (widget),
                                               &attributes, attributes_mask);
     gdk_window_set_user_data (paned->priv->bin_window, widget);
 
-    gtk_widget_get_style (widget) = gtk_style_attach (gtk_widget_get_style (widget), gtk_widget_get_window (widget));
-    gtk_style_set_background (gtk_widget_get_style (widget), paned->priv->bin_window, GTK_STATE_NORMAL);
+    /* GTK3: style_attach removed */
+        /* GTK3: background from CSS */
 
-    GTK_WIDGET_SET_REALIZED (widget);
+    gtk_widget_set_realized (GTK_WIDGET (widget), TRUE);
 
     realize_pane (paned);
 
@@ -717,16 +704,12 @@ realize_handle (MooPaned *paned)
             break;
     }
 
-    attributes_mask = GDK_WA_X | GDK_WA_Y | GDK_WA_VISUAL |
-            GDK_WA_COLORMAP | GDK_WA_CURSOR;
+    attributes_mask = GDK_WA_X | GDK_WA_Y | GDK_WA_VISUAL | GDK_WA_CURSOR;
 
     paned->priv->handle_window = gdk_window_new (paned->priv->pane_window,
             &attributes, attributes_mask);
     gdk_window_set_user_data (paned->priv->handle_window, widget);
-
-    gtk_style_set_background (gtk_widget_get_style (widget),
-                              paned->priv->handle_window,
-                              GTK_STATE_NORMAL);
+        /* GTK3: background from CSS */
 
     gdk_cursor_unref (attributes.cursor);
 }
@@ -736,7 +719,7 @@ static void
 get_pane_window_rect (MooPaned     *paned,
                       GdkRectangle *rect)
 {
-    *rect = GTK_WIDGET(paned)->allocation;
+    { GtkAllocation _a; gtk_widget_get_allocation(GTK_WIDGET(paned), &_a); *rect = *(GdkRectangle*)&_a; }
 
     switch (paned->priv->pane_position)
     {
@@ -756,14 +739,14 @@ get_pane_window_rect (MooPaned     *paned,
             rect->x += paned->priv->button_box_size;
             break;
         case MOO_PANE_POS_RIGHT:
-            rect->x += GTK_WIDGET(paned)->allocation.width - rect->width -
+            rect->x += moo_widget_get_alloc(GTK_WIDGET(paned)).width - rect->width -
                             paned->priv->button_box_size;
             break;
         case MOO_PANE_POS_TOP:
             rect->y += paned->priv->button_box_size;
             break;
         case MOO_PANE_POS_BOTTOM:
-            rect->y += GTK_WIDGET(paned)->allocation.height - rect->height -
+            rect->y += moo_widget_get_alloc(GTK_WIDGET(paned)).height - rect->height -
                             paned->priv->button_box_size;
             break;
     }
@@ -791,16 +774,12 @@ realize_pane (MooPaned *paned)
     attributes.visual = gtk_widget_get_visual (widget);
     attributes.wclass = GDK_INPUT_OUTPUT;
 
-    attributes_mask = GDK_WA_X | GDK_WA_Y | GDK_WA_VISUAL |
-            GDK_WA_COLORMAP;
+    attributes_mask = GDK_WA_X | GDK_WA_Y | GDK_WA_VISUAL;
 
     paned->priv->pane_window =
             gdk_window_new (gtk_widget_get_window (widget), &attributes, attributes_mask);
     gdk_window_set_user_data (paned->priv->pane_window, widget);
-
-    gtk_style_set_background (gtk_widget_get_style (widget),
-                              paned->priv->pane_window,
-                              GTK_STATE_NORMAL);
+        /* GTK3: background from CSS */
 
     realize_handle (paned);
 
@@ -960,16 +939,16 @@ moo_paned_size_request (GtkWidget      *widget,
     requisition->width = 0;
     requisition->height = 0;
 
-    if (bin->child && GTK_WIDGET_VISIBLE (bin->child))
+    if (gtk_bin_get_child (GTK_BIN (paned)) && gtk_widget_get_visible (GTK_WIDGET (gtk_bin_get_child (GTK_BIN (paned)))))
     {
-        gtk_widget_size_request (bin->child, &child_requisition);
+        gtk_widget_get_preferred_size (gtk_bin_get_child (GTK_BIN (paned)), &child_requisition, NULL);
         requisition->width += child_requisition.width;
         requisition->height += child_requisition.height;
     }
 
     if (paned->priv->button_box_visible)
     {
-        gtk_widget_size_request (paned->button_box, &child_requisition);
+        gtk_widget_get_preferred_size (paned->button_box, &child_requisition, NULL);
         add_button_box_requisition (paned, requisition, &child_requisition);
     }
     else
@@ -1016,13 +995,33 @@ moo_paned_size_request (GtkWidget      *widget,
 
 
 static void
+moo_paned_get_preferred_width (GtkWidget *widget,
+                               gint      *minimum_width,
+                               gint      *natural_width)
+{
+    GtkRequisition requisition;
+    moo_paned_size_request (widget, &requisition);
+    *minimum_width = *natural_width = requisition.width;
+}
+
+static void
+moo_paned_get_preferred_height (GtkWidget *widget,
+                                gint      *minimum_height,
+                                gint      *natural_height)
+{
+    GtkRequisition requisition;
+    moo_paned_size_request (widget, &requisition);
+    *minimum_height = *natural_height = requisition.height;
+}
+
+static void
 get_pane_widget_allocation (MooPaned        *paned,
                             GtkAllocation   *allocation)
 {
     allocation->x = 0;
     allocation->y = 0;
-    allocation->width = GTK_WIDGET(paned)->allocation.width;
-    allocation->height = GTK_WIDGET(paned)->allocation.height;
+    allocation->width = moo_widget_get_alloc(GTK_WIDGET(paned)).width;
+    allocation->height = moo_widget_get_alloc(GTK_WIDGET(paned)).height;
 
     switch (paned->priv->pane_position)
     {
@@ -1052,13 +1051,13 @@ get_button_box_allocation (MooPaned        *paned,
         case MOO_PANE_POS_LEFT:
         case MOO_PANE_POS_RIGHT:
             allocation->y = 0;
-            allocation->height = GTK_WIDGET(paned)->allocation.height;
+            allocation->height = moo_widget_get_alloc(GTK_WIDGET(paned)).height;
             allocation->width = paned->priv->button_box_size;
             break;
         case MOO_PANE_POS_TOP:
         case MOO_PANE_POS_BOTTOM:
             allocation->x = 0;
-            allocation->width = GTK_WIDGET(paned)->allocation.width;
+            allocation->width = moo_widget_get_alloc(GTK_WIDGET(paned)).width;
             allocation->height = paned->priv->button_box_size;
             break;
     }
@@ -1069,13 +1068,13 @@ get_button_box_allocation (MooPaned        *paned,
             allocation->x = 0;
             break;
         case MOO_PANE_POS_RIGHT:
-            allocation->x = GTK_WIDGET(paned)->allocation.width - allocation->width;
+            allocation->x = moo_widget_get_alloc(GTK_WIDGET(paned)).width - allocation->width;
             break;
         case MOO_PANE_POS_TOP:
             allocation->y = 0;
             break;
         case MOO_PANE_POS_BOTTOM:
-            allocation->y = GTK_WIDGET(paned)->allocation.height - allocation->height;
+            allocation->y = moo_widget_get_alloc(GTK_WIDGET(paned)).height - allocation->height;
             break;
     }
 }
@@ -1090,16 +1089,16 @@ get_bin_child_allocation (MooPaned        *paned,
         case MOO_PANE_POS_LEFT:
         case MOO_PANE_POS_RIGHT:
             allocation->y = 0;
-            allocation->height = GTK_WIDGET(paned)->allocation.height;
-            allocation->width = GTK_WIDGET(paned)->allocation.width -
+            allocation->height = moo_widget_get_alloc(GTK_WIDGET(paned)).height;
+            allocation->width = moo_widget_get_alloc(GTK_WIDGET(paned)).width -
                                 paned->priv->button_box_size -
                                 paned->priv->border_size;
             break;
         case MOO_PANE_POS_TOP:
         case MOO_PANE_POS_BOTTOM:
             allocation->x = 0;
-            allocation->width = GTK_WIDGET(paned)->allocation.width;
-            allocation->height = GTK_WIDGET(paned)->allocation.height -
+            allocation->width = moo_widget_get_alloc(GTK_WIDGET(paned)).width;
+            allocation->height = moo_widget_get_alloc(GTK_WIDGET(paned)).height -
                                  paned->priv->button_box_size -
                                  paned->priv->border_size;
             break;
@@ -1156,12 +1155,12 @@ clamp_handle_size (MooPaned *paned)
         case MOO_PANE_POS_LEFT:
         case MOO_PANE_POS_RIGHT:
             paned->priv->handle_size = CLAMP (paned->priv->handle_size, 0,
-                                              GTK_WIDGET(paned)->allocation.width);
+                                              moo_widget_get_alloc(GTK_WIDGET(paned)).width);
             break;
         case MOO_PANE_POS_TOP:
         case MOO_PANE_POS_BOTTOM:
             paned->priv->handle_size = CLAMP (paned->priv->handle_size, 0,
-                                              GTK_WIDGET(paned)->allocation.height);
+                                              moo_widget_get_alloc(GTK_WIDGET(paned)).height);
             break;
     }
 }
@@ -1175,13 +1174,13 @@ clamp_button_box_size (MooPaned *paned)
         case MOO_PANE_POS_LEFT:
         case MOO_PANE_POS_RIGHT:
             paned->priv->button_box_size = CLAMP (paned->priv->button_box_size, 0,
-                    GTK_WIDGET(paned)->allocation.width -
+                    moo_widget_get_alloc(GTK_WIDGET(paned)).width -
                             paned->priv->handle_size);
             break;
         case MOO_PANE_POS_TOP:
         case MOO_PANE_POS_BOTTOM:
             paned->priv->button_box_size = CLAMP (paned->priv->button_box_size, 0,
-                    GTK_WIDGET(paned)->allocation.height -
+                    moo_widget_get_alloc(GTK_WIDGET(paned)).height -
                             paned->priv->handle_size);
             break;
     }
@@ -1197,7 +1196,7 @@ clamp_child_requisition (MooPaned *paned,
         case MOO_PANE_POS_LEFT:
         case MOO_PANE_POS_RIGHT:
             requisition->width = CLAMP (requisition->width, 0,
-                                        GTK_WIDGET(paned)->allocation.width -
+                                        moo_widget_get_alloc(GTK_WIDGET(paned)).width -
                                                 paned->priv->handle_size -
                                                 paned->priv->button_box_size -
                                                 paned->priv->border_size);
@@ -1205,7 +1204,7 @@ clamp_child_requisition (MooPaned *paned,
         case MOO_PANE_POS_TOP:
         case MOO_PANE_POS_BOTTOM:
             requisition->height = CLAMP (requisition->height, 0,
-                                        GTK_WIDGET(paned)->allocation.height -
+                                        moo_widget_get_alloc(GTK_WIDGET(paned)).height -
                                                 paned->priv->handle_size -
                                                 paned->priv->button_box_size -
                                                 paned->priv->border_size);
@@ -1225,7 +1224,7 @@ clamp_pane_widget_size (MooPaned       *paned,
     {
         case MOO_PANE_POS_LEFT:
         case MOO_PANE_POS_RIGHT:
-            max_size = GTK_WIDGET(paned)->allocation.width -
+            max_size = moo_widget_get_alloc(GTK_WIDGET(paned)).width -
                                       paned->priv->handle_size -
                                       paned->priv->button_box_size;
             if (paned->priv->sticky)
@@ -1233,7 +1232,7 @@ clamp_pane_widget_size (MooPaned       *paned,
             break;
         case MOO_PANE_POS_TOP:
         case MOO_PANE_POS_BOTTOM:
-            max_size = GTK_WIDGET(paned)->allocation.height -
+            max_size = moo_widget_get_alloc(GTK_WIDGET(paned)).height -
                                       paned->priv->handle_size -
                                       paned->priv->button_box_size;
             if (paned->priv->sticky)
@@ -1258,13 +1257,13 @@ get_handle_window_rect (MooPaned      *paned,
         case MOO_PANE_POS_RIGHT:
             rect->y = 0;
             rect->width = paned->priv->handle_size;
-            rect->height = GTK_WIDGET(paned)->allocation.height;
+            rect->height = moo_widget_get_alloc(GTK_WIDGET(paned)).height;
             break;
         case MOO_PANE_POS_TOP:
         case MOO_PANE_POS_BOTTOM:
             rect->x = 0;
             rect->height = paned->priv->handle_size;
-            rect->width = GTK_WIDGET(paned)->allocation.width;
+            rect->width = moo_widget_get_alloc(GTK_WIDGET(paned)).width;
             break;
     }
 
@@ -1295,7 +1294,7 @@ moo_paned_size_allocate (GtkWidget     *widget,
     GtkAllocation child_allocation;
     GtkRequisition child_requisition = {0, 0};
 
-    widget->allocation = *allocation;
+    gtk_widget_set_allocation (widget, allocation);
     bin = GTK_BIN (widget);
     paned = MOO_PANED (widget);
 
@@ -1306,8 +1305,8 @@ moo_paned_size_allocate (GtkWidget     *widget,
     if (!paned->priv->pane_widget_visible)
         paned->priv->pane_widget_size = 0;
 
-    if (bin->child && GTK_WIDGET_VISIBLE (bin->child))
-        gtk_widget_get_child_requisition (bin->child, &child_requisition);
+    if (gtk_bin_get_child (GTK_BIN (paned)) && gtk_widget_get_visible (GTK_WIDGET (gtk_bin_get_child (GTK_BIN (paned)))))
+        gtk_widget_get_preferred_size (gtk_bin_get_child (GTK_BIN (paned)), &child_requisition, NULL);
 
     if (paned->priv->handle_visible)
         clamp_handle_size (paned);
@@ -1323,7 +1322,7 @@ moo_paned_size_allocate (GtkWidget     *widget,
         paned->priv->position = paned->priv->pane_widget_size;
     }
 
-    if (GTK_WIDGET_REALIZED (widget))
+    if (gtk_widget_get_realized (GTK_WIDGET (widget)))
         gdk_window_move_resize (paned->priv->bin_window,
                                 allocation->x,
                                 allocation->y,
@@ -1336,13 +1335,13 @@ moo_paned_size_allocate (GtkWidget     *widget,
         gtk_widget_size_allocate (paned->button_box, &child_allocation);
     }
 
-    if (bin->child)
+    if (gtk_bin_get_child (GTK_BIN (paned)))
     {
         get_bin_child_allocation (paned, &child_allocation);
-        gtk_widget_size_allocate (bin->child, &child_allocation);
+        gtk_widget_size_allocate (gtk_bin_get_child (GTK_BIN (paned)), &child_allocation);
     }
 
-    if (GTK_WIDGET_REALIZED (widget))
+    if (gtk_widget_get_realized (GTK_WIDGET (widget)))
     {
         GdkRectangle rect = { 0 };
 
@@ -1429,8 +1428,8 @@ moo_paned_forall (GtkContainer   *container,
     if (!paned->priv->forall_bottom_to_top && include_internals)
         forall_internals (paned, callback, callback_data);
 
-    if (bin->child)
-        callback (bin->child, callback_data);
+    if (gtk_bin_get_child (GTK_BIN (paned)))
+        callback (gtk_bin_get_child (GTK_BIN (paned)), callback_data);
 
     if (paned->priv->forall_bottom_to_top && include_internals)
         forall_internals (paned, callback, callback_data);
@@ -1438,31 +1437,28 @@ moo_paned_forall (GtkContainer   *container,
 
 
 static gboolean
-moo_paned_expose (GtkWidget      *widget,
-                  cairo_t *event)
+moo_paned_expose (GtkWidget      *widget, cairo_t *cr)
 {
     MooPaned *paned = MOO_PANED (widget);
 
     if (paned->priv->button_box_visible)
-        gtk_container_propagate_expose (GTK_CONTAINER (paned),
-                                        paned->button_box, event);
+        gtk_container_propagate_draw (GTK_CONTAINER (paned),
+                                        paned->button_box, cr);
 
-    if (gtk_bin_get_child (GTK_BIN (paned)) && GTK_WIDGET_DRAWABLE (gtk_bin_get_child (GTK_BIN (paned))))
-        gtk_container_propagate_expose (GTK_CONTAINER (paned),
-                                        gtk_bin_get_child (GTK_BIN (paned)),
-                                        event);
+    if (gtk_bin_get_child (GTK_BIN (paned)) && gtk_widget_is_drawable (gtk_bin_get_child (GTK_BIN (paned))))
+        gtk_container_propagate_draw (GTK_CONTAINER (paned),
+                                        gtk_bin_get_child (GTK_BIN (paned)), cr);
 
     if (paned->priv->pane_widget_visible)
-        gtk_container_propagate_expose (GTK_CONTAINER (paned),
-                                        _moo_pane_get_frame (paned->priv->current_pane),
-                                        event);
+        gtk_container_propagate_draw (GTK_CONTAINER (paned),
+                                        _moo_pane_get_frame (paned->priv->current_pane), cr);
 
-    if (paned->priv->handle_visible && gtk_widget_get_window (event) == paned->priv->handle_window)
-        draw_handle (paned, event);
+    if (paned->priv->handle_visible && gtk_cairo_should_draw_window (cr, paned->priv->handle_window))
+        draw_handle (paned, cr);
 
     if (paned->priv->button_box_visible && !paned->priv->pane_widget_visible &&
-        paned->priv->border_size && gtk_widget_get_window (event) == paned->priv->bin_window)
-            draw_border (paned, event);
+        paned->priv->border_size && gtk_cairo_should_draw_window (cr, paned->priv->bin_window))
+            draw_border (paned, cr);
 
     return TRUE;
 }
@@ -1498,7 +1494,7 @@ moo_paned_add (GtkContainer   *container,
 
     g_return_if_fail (GTK_IS_WIDGET (child));
 
-    if (bin->child != NULL)
+    if (gtk_bin_get_child (bin) != NULL)
     {
         g_warning ("Attempting to add a widget with type %s to a %s, "
                    "but as a GtkBin subclass a %s can only contain one widget at a time; "
@@ -1506,13 +1502,13 @@ moo_paned_add (GtkContainer   *container,
         g_type_name (G_OBJECT_TYPE (child)),
         g_type_name (G_OBJECT_TYPE (bin)),
         g_type_name (G_OBJECT_TYPE (bin)),
-        g_type_name (G_OBJECT_TYPE (bin->child)));
+        g_type_name (G_OBJECT_TYPE (gtk_bin_get_child (bin))));
         return;
     }
 
     gtk_widget_set_parent_window (child, MOO_PANED(container)->priv->bin_window);
     gtk_widget_set_parent (child, GTK_WIDGET (bin));
-    bin->child = child;
+    /* GTK3: child set via gtk_widget_set_parent */
 }
 
 
@@ -1529,11 +1525,10 @@ moo_paned_remove (GtkContainer   *container,
 
 
 static void
-draw_handle (MooPaned       *paned,
-             cairo_t *event)
+draw_handle (MooPaned       *paned, cairo_t *cr)
 {
     GtkWidget *widget = GTK_WIDGET (paned);
-    GtkStateType state;
+    GtkStateFlags state_flags;
     GdkRectangle area = {0, 0, 0, 0};
     GtkOrientation orientation = GTK_ORIENTATION_VERTICAL;
     int shadow_size = 0;
@@ -1565,17 +1560,16 @@ draw_handle (MooPaned       *paned,
     }
 
     if (gtk_widget_is_focus (widget))
-        state = GTK_STATE_SELECTED;
+        state_flags = GTK_STATE_FLAG_SELECTED;
     else if (paned->priv->handle_prelit)
-        state = GTK_STATE_PRELIGHT;
+        state_flags = GTK_STATE_FLAG_PRELIGHT;
     else
-        state = GTK_WIDGET_STATE (widget);
+        state_flags = gtk_widget_get_state_flags (widget);
 
     gtk_paint_handle (gtk_widget_get_style (widget),
                       paned->priv->handle_window,
-                      state,
+                      state_flags,
                       GTK_SHADOW_NONE,
-                      &event->area,
                       widget,
                       "paned",
                       area.x, area.y, area.width, area.height,
@@ -1591,7 +1585,6 @@ draw_handle (MooPaned       *paned,
             gtk_paint_vline (gtk_widget_get_style (widget),
                              paned->priv->handle_window,
                              GTK_STATE_NORMAL,
-                             &event->area,
                              widget,
                              "moo-paned",
                              area.y,
@@ -1603,7 +1596,6 @@ draw_handle (MooPaned       *paned,
             gtk_paint_vline (gtk_widget_get_style (widget),
                              paned->priv->handle_window,
                              GTK_STATE_NORMAL,
-                             &event->area,
                              widget,
                              "moo-paned",
                              area.y,
@@ -1618,7 +1610,6 @@ draw_handle (MooPaned       *paned,
             gtk_paint_hline (gtk_widget_get_style (widget),
                              paned->priv->handle_window,
                              GTK_STATE_NORMAL,
-                             &event->area,
                              widget,
                              "moo-paned",
                              area.x,
@@ -1630,7 +1621,6 @@ draw_handle (MooPaned       *paned,
             gtk_paint_hline (gtk_widget_get_style (widget),
                              paned->priv->handle_window,
                              GTK_STATE_NORMAL,
-                             &event->area,
                              widget,
                              "moo-paned",
                              area.x,
@@ -1642,8 +1632,7 @@ draw_handle (MooPaned       *paned,
 
 
 static void
-draw_border (MooPaned       *paned,
-             cairo_t *event)
+draw_border (MooPaned       *paned, cairo_t *cr)
 {
     GdkRectangle rect;
     GtkWidget *widget = GTK_WIDGET (paned);
@@ -1666,7 +1655,6 @@ draw_border (MooPaned       *paned,
             gtk_paint_vline (gtk_widget_get_style (widget),
                              paned->priv->bin_window,
                              GTK_STATE_NORMAL,
-                             &event->area,
                              widget,
                              "moo-paned",
                              rect.y,
@@ -1687,7 +1675,6 @@ draw_border (MooPaned       *paned,
             gtk_paint_hline (gtk_widget_get_style (widget),
                              paned->priv->bin_window,
                              GTK_STATE_NORMAL,
-                             &event->area,
                              widget,
                              "moo-paned",
                              rect.x,
@@ -1708,7 +1695,7 @@ moo_paned_set_sticky_pane (MooPaned   *paned,
     {
         paned->priv->sticky = sticky;
 
-        if (GTK_WIDGET_REALIZED (paned))
+        if (gtk_widget_get_realized (GTK_WIDGET (paned)))
             gtk_widget_queue_resize (GTK_WIDGET (paned));
 
         g_object_notify (G_OBJECT (paned), "sticky-pane");
@@ -1822,12 +1809,12 @@ get_handle_rect (MooPaned     *paned,
         case MOO_PANE_POS_LEFT:
         case MOO_PANE_POS_RIGHT:
             rect->width = paned->priv->handle_size;
-            rect->height = GTK_WIDGET(paned)->allocation.height;
+            rect->height = moo_widget_get_alloc(GTK_WIDGET(paned)).height;
             break;
         case MOO_PANE_POS_TOP:
         case MOO_PANE_POS_BOTTOM:
             rect->height = paned->priv->handle_size;
-            rect->width = GTK_WIDGET(paned)->allocation.width;
+            rect->width = moo_widget_get_alloc(GTK_WIDGET(paned)).width;
             break;
     }
 }
@@ -1840,7 +1827,7 @@ moo_paned_enter (GtkWidget      *widget,
     MooPaned *paned = MOO_PANED (widget);
     GdkRectangle rect;
 
-    if (gtk_widget_get_window (event) == paned->priv->handle_window &&
+    if (event->window == paned->priv->handle_window &&
         !paned->priv->in_drag)
     {
         paned->priv->handle_prelit = TRUE;
@@ -1860,7 +1847,7 @@ static gboolean moo_paned_leave     (GtkWidget      *widget,
     MooPaned *paned = MOO_PANED (widget);
     GdkRectangle rect;
 
-    if (gtk_widget_get_window (event) == paned->priv->handle_window &&
+    if (event->window == paned->priv->handle_window &&
         !paned->priv->in_drag)
     {
         paned->priv->handle_prelit = FALSE;
@@ -1881,7 +1868,7 @@ moo_paned_button_press (GtkWidget      *widget,
     MooPaned *paned = MOO_PANED (widget);
 
     if (!paned->priv->in_drag &&
-         (gtk_widget_get_window (event) == paned->priv->handle_window) &&
+         (event->window == paned->priv->handle_window) &&
          (event->button == 1) &&
          paned->priv->pane_widget_visible)
     {
@@ -1961,7 +1948,7 @@ compute_window_offset (MooPaned  *paned,
 
     *x = *y = 0;
 
-    for (window = paned->gtk_widget_get_window (button_box); window != NULL && window != parent; )
+    for (window = gtk_widget_get_window (paned->button_box); window != NULL && window != parent; )
     {
         int x_local, y_local;
         gdk_window_get_position (window, &x_local, &y_local);
@@ -1997,10 +1984,12 @@ _moo_paned_get_button_position (MooPaned     *paned,
 
     if (button)
     {
-        rect->x = button->allocation.x;
-        rect->y = button->allocation.y;
-        rect->width = button->allocation.width;
-        rect->height = button->allocation.height;
+        GtkAllocation ba;
+        gtk_widget_get_allocation (button, &ba);
+        rect->x = ba.x;
+        rect->y = ba.y;
+        rect->width = ba.width;
+        rect->height = ba.height;
     }
     else if (last_button)
     {
@@ -2011,10 +2000,12 @@ _moo_paned_get_button_position (MooPaned     *paned,
                               "button-spacing", &button_spacing,
                               NULL);
 
-        rect->x = last_button->allocation.x;
-        rect->y = last_button->allocation.y;
-        rect->width = last_button->allocation.width;
-        rect->height = last_button->allocation.height;
+        GtkAllocation lba;
+        gtk_widget_get_allocation (last_button, &lba);
+        rect->x = lba.x;
+        rect->y = lba.y;
+        rect->width = lba.width;
+        rect->height = lba.height;
 
         switch (paned->priv->pane_position)
         {
@@ -2096,13 +2087,21 @@ _moo_paned_get_button (MooPaned  *paned,
         {
             case MOO_PANE_POS_LEFT:
             case MOO_PANE_POS_RIGHT:
-                if (y < button->allocation.y + button->allocation.height)
-                    in_button = TRUE;
+                {
+                    GtkAllocation ba;
+                    gtk_widget_get_allocation (button, &ba);
+                    if (y < ba.y + ba.height)
+                        in_button = TRUE;
+                }
                 break;
             case MOO_PANE_POS_TOP:
             case MOO_PANE_POS_BOTTOM:
-                if (x < button->allocation.x + button->allocation.width)
-                    in_button = TRUE;
+                {
+                    GtkAllocation ba;
+                    gtk_widget_get_allocation (button, &ba);
+                    if (x < ba.x + ba.width)
+                        in_button = TRUE;
+                }
                 break;
         }
 
@@ -2139,7 +2138,7 @@ moo_paned_set_pane_size_real (MooPaned   *paned,
 
     g_return_if_fail (MOO_IS_PANED (paned));
 
-    if (!GTK_WIDGET_REALIZED (paned))
+    if (!gtk_widget_get_realized (GTK_WIDGET (paned)))
     {
         paned->priv->position = size;
         return;
@@ -2217,7 +2216,7 @@ moo_paned_set_pane_size (MooPaned       *paned,
 static void
 button_box_visible_notify (MooPaned *paned)
 {
-    gboolean visible = GTK_WIDGET_VISIBLE (paned->button_box);
+    gboolean visible = gtk_widget_get_visible (GTK_WIDGET (paned->button_box));
 
     if (paned->priv->button_box_visible == visible)
         return;
@@ -2225,7 +2224,7 @@ button_box_visible_notify (MooPaned *paned)
     if (paned->priv->panes)
         paned->priv->button_box_visible = visible;
 
-    if (GTK_WIDGET_REALIZED (paned))
+    if (gtk_widget_get_realized (GTK_WIDGET (paned)))
         gtk_widget_queue_resize (GTK_WIDGET (paned));
 }
 
@@ -2274,7 +2273,7 @@ _moo_paned_insert_pane (MooPaned *paned,
     gtk_widget_show (paned->button_box);
     paned->priv->button_box_visible = TRUE;
 
-    if (GTK_WIDGET_VISIBLE (paned))
+    if (gtk_widget_get_visible (GTK_WIDGET (paned)))
         gtk_widget_queue_resize (GTK_WIDGET (paned));
 }
 
@@ -2306,7 +2305,7 @@ moo_paned_insert_pane (MooPaned       *paned,
     g_return_val_if_fail (MOO_IS_PANED (paned), NULL);
     g_return_val_if_fail (GTK_IS_WIDGET (pane_widget), NULL);
     g_return_val_if_fail (pane_label != NULL, NULL);
-    g_return_val_if_fail (pane_widget->parent == NULL, NULL);
+    g_return_val_if_fail (gtk_widget_get_parent (pane_widget) == NULL, NULL);
 
     pane = _moo_pane_new (pane_widget, pane_label);
     _moo_paned_insert_pane (paned, pane, position);
@@ -2851,7 +2850,7 @@ moo_paned_open_pane_real (MooPaned *paned,
         gtk_widget_hide (_moo_pane_get_frame (old_pane));
     }
 
-    if (GTK_WIDGET_MAPPED (paned))
+    if (gtk_widget_get_mapped (GTK_WIDGET (paned)))
     {
         gdk_window_show (paned->priv->pane_window);
         gdk_window_show (paned->priv->handle_window);
@@ -2907,7 +2906,7 @@ moo_paned_hide_pane_real (MooPaned *paned)
 
     gtk_widget_hide (_moo_pane_get_frame (paned->priv->current_pane));
 
-    if (GTK_WIDGET_REALIZED (paned))
+    if (gtk_widget_get_realized (GTK_WIDGET (paned)))
     {
         gdk_window_hide (paned->priv->handle_window);
         gdk_window_hide (paned->priv->pane_window);
@@ -2930,7 +2929,7 @@ moo_paned_hide_pane_real (MooPaned *paned)
         else if (!gtk_bin_get_child (GTK_BIN (paned)) ||
                   !gtk_widget_child_focus (gtk_bin_get_child (GTK_BIN (paned)), GTK_DIR_TAB_FORWARD))
         {
-            if (GTK_WIDGET_VISIBLE (button))
+            if (gtk_widget_get_visible (GTK_WIDGET (button)))
                 gtk_widget_grab_focus (button);
         }
         else
@@ -3171,9 +3170,8 @@ handle_expose (GtkWidget      *widget,
 
     gtk_paint_handle (gtk_widget_get_style (widget),
                       gtk_widget_get_window (widget),
-                      widget->state,
+                      gtk_widget_get_state_flags (widget),
                       GTK_SHADOW_ETCHED_IN,
-                      &event->area,
                       widget,
                       "moo-pane-handle",
                       0,
@@ -3200,10 +3198,10 @@ handle_realize (G_GNUC_UNUSED GtkWidget *widget,
         return;
 
 #if 0
-    cursor = gdk_cursor_new (paned->priv->handle_cursor_type);
+    cursor = gdk_cursor_new_for_display (gdk_display_get_default (), paned->priv->handle_cursor_type);
     g_return_if_fail (cursor != NULL);
     gdk_window_set_cursor (gtk_widget_get_window (widget), cursor);
-    gdk_cursor_unref (cursor);
+    g_object_unref (cursor);
 #endif
 }
 

@@ -590,6 +590,10 @@ _moo_output_filter_regex_class_init (MooOutputFilterRegexClass *klass)
     filter_class->stdout_line = moo_output_filter_regex_stdout_line;
     filter_class->stderr_line = moo_output_filter_regex_stderr_line;
 
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
+
     g_type_class_add_private (klass, sizeof (MooOutputFilterRegexPrivate));
 }
 

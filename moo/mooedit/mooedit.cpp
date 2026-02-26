@@ -138,6 +138,10 @@ moo_edit_class_init (MooEditClass *klass)
 
     klass->before_save = moo_edit_before_save;
 
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
+
     g_type_class_add_private (klass, sizeof (MooEditPrivate));
 
     g_object_class_install_property (gobject_class, PROP_EDITOR,

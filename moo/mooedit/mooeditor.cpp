@@ -169,6 +169,10 @@ moo_editor_class_init (MooEditorClass *klass)
     g_type_class_unref (g_type_class_ref (MOO_TYPE_EDIT_WINDOW));
     g_type_class_unref (g_type_class_ref (MOO_TYPE_INDENTER));
 
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
+
     g_type_class_add_private (klass, sizeof (MooEditorPrivate));
 
     g_object_class_install_property (gobject_class, PROP_OPEN_SINGLE_FILE_INSTANCE,
@@ -598,7 +602,7 @@ add_new_window_action (void)
                                      "display-name", MOO_STOCK_NEW_WINDOW,
                                      "label", MOO_STOCK_NEW_WINDOW,
                                      "tooltip", _("Open new editor window"),
-                                     "stock-id", MOO_STOCK_NEW_WINDOW,
+                                     "icon-name", MOO_STOCK_NEW_WINDOW,
                                      "default-accel", MOO_EDIT_ACCEL_NEW_WINDOW,
                                      "closure-callback", moo_editor_new_window,
                                      "closure-proxy-func", moo_edit_window_get_editor,

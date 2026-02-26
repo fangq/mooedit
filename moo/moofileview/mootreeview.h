@@ -55,7 +55,7 @@ struct _MooTreeViewIcon
 struct _MooTreeViewChild
 {
     MooTreeViewChildType type;
-    MooTreeView *parent;
+    MooTreeView *owner;  /* renamed from 'parent' to avoid GTK3 macro conflict */
     GtkWidget *widget;
     union {
         MooTreeViewTree tree;

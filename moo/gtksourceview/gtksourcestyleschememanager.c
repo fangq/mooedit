@@ -157,6 +157,10 @@ gtk_source_style_scheme_manager_class_init (GtkSourceStyleSchemeManagerClass *kl
 							     G_TYPE_STRV,
 							     G_PARAM_READABLE));
 
+	/* TODO GTK3: g_type_class_add_private is deprecated.
+
+	   Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
+
 	g_type_class_add_private (object_class, sizeof(GtkSourceStyleSchemeManagerPrivate));
 }
 

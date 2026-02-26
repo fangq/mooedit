@@ -153,9 +153,9 @@ moo_line_mark_class_init (MooLineMarkClass *klass)
 
     g_object_class_install_property (gobject_class,
                                      PROP_STOCK_ID,
-                                     g_param_spec_string ("stock-id",
-                                             "stock-id",
-                                             "stock-id",
+                                     g_param_spec_string ("icon-name",
+                                             "icon-name",
+                                             "icon-name",
                                              NULL,
                                              (GParamFlags) G_PARAM_READWRITE));
 
@@ -520,7 +520,7 @@ moo_line_mark_set_pixbuf (MooLineMark    *mark,
                           GdkPixbuf      *pixbuf)
 {
     g_return_if_fail (MOO_IS_LINE_MARK (mark));
-    g_return_if_fail (!pixbuf || GDK_IS_PIXBUF (pixbuf));
+    g_return_if_fail (!pixbuf || GDK_KEY_IS_PIXBUF (pixbuf));
 
     if (pixbuf != mark->priv->pixbuf)
     {
@@ -564,7 +564,7 @@ update_pixbuf (MooLineMark *mark)
 
     g_assert (mark->priv->widget != NULL);
     g_return_if_fail (GTK_IS_WIDGET (mark->priv->widget));
-    g_return_if_fail (GTK_WIDGET_REALIZED (mark->priv->widget));
+    g_return_if_fail (gtk_widget_get_realized (GTK_WIDGET (mark->priv->widget)));
 
     cache = g_object_get_data (G_OBJECT (mark->priv->widget),
                                "moo-line-mark-icons");
@@ -582,10 +582,7 @@ update_pixbuf (MooLineMark *mark)
 
     if (!pixbuf)
     {
-        pixbuf = gtk_widget_render_icon (mark->priv->widget,
-                                         mark->priv->stock_id,
-                                         GTK_ICON_SIZE_MENU,
-                                         NULL);
+        pixbuf = gtk_widget_render_icon_pixbuf (mark->priv->widget, mark->priv->stock_id, GTK_ICON_SIZE_MENU);
         g_return_if_fail (pixbuf != NULL);
         g_hash_table_insert (cache, g_strdup (mark->priv->stock_id), pixbuf);
     }
@@ -600,7 +597,7 @@ _moo_line_mark_realize (MooLineMark *mark,
 {
     g_assert (MOO_IS_LINE_MARK (mark));
     g_assert (GTK_IS_WIDGET (widget));
-    g_assert (GTK_WIDGET_REALIZED (widget));
+    g_assert (gtk_widget_get_realized (widget));
     g_assert (!mark->priv->realized);
 
     mark->priv->realized = TRUE;

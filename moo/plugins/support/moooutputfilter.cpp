@@ -82,6 +82,10 @@ moo_output_filter_class_init (MooOutputFilterClass *klass)
     G_OBJECT_CLASS (klass)->finalize = moo_output_filter_finalize;
     klass->activate = moo_output_filter_activate;
 
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
+
     g_type_class_add_private (klass, sizeof (MooOutputFilterPrivate));
 
     signals[STDOUT_LINE] =

@@ -1252,12 +1252,12 @@ drag_source_drag_data_get (GtkTreeDragSource *drag_source,
                            GtkTreePath       *path,
                            GtkSelectionData  *selection_data)
 {
-    if (selection_data->target == TREE_MODEL_ROW_ATOM)
+    if (gtk_selection_data_get_target (selection_data) == TREE_MODEL_ROW_ATOM)
     {
         gtk_tree_set_row_drag_data (selection_data, GTK_TREE_MODEL (drag_source), path);
         return TRUE;
     }
-    else if (selection_data->target == moo_atom_uri_list ())
+    else if (gtk_selection_data_get_target (selection_data) == moo_atom_uri_list ())
     {
         Item *item = get_item_at_path (FILE_LIST (drag_source), path);
 
@@ -1677,7 +1677,7 @@ drag_dest_drag_data_received (GtkTreeDragDest  *drag_dest,
                               GtkTreePath      *dest,
                               GtkSelectionData *selection_data)
 {
-    if (selection_data->target == TREE_MODEL_ROW_ATOM)
+    if (gtk_selection_data_get_target (selection_data) == TREE_MODEL_ROW_ATOM)
     {
         GtkTreePath *path = nullptr;
         gboolean retval;
@@ -1691,7 +1691,7 @@ drag_dest_drag_data_received (GtkTreeDragDest  *drag_dest,
         gtk_tree_path_free (path);
         return retval;
     }
-    else if (selection_data->target == moo_atom_uri_list ())
+    else if (gtk_selection_data_get_target (selection_data) == moo_atom_uri_list ())
     {
         char **uris;
         gboolean retval = FALSE;
@@ -1781,9 +1781,9 @@ pixbuf_data_func (G_GNUC_UNUSED GtkTreeViewColumn *column,
 {
     Item *item = get_item_at_iter (FILE_LIST (model), iter);
     if (ITEM_IS_GROUP (item))
-        g_object_set (cell, "stock-id", GTK_STOCK_DIRECTORY, nullptr);
+        g_object_set (cell, "icon-name", "folder", nullptr);
     else if (ITEM_IS_FILE (item))
-        g_object_set (cell, "stock-id", GTK_STOCK_FILE, nullptr);
+        g_object_set (cell, "icon-name", "text-x-generic", nullptr);
 }
 
 static void
@@ -2035,19 +2035,19 @@ popup_menu (WindowPlugin *plugin,
 
     if (can_open (plugin->list, selected))
     {
-        menuitem = gtk_image_menu_item_new_from_stock (GTK_STOCK_OPEN, nullptr);
+        menuitem = gtk_image_menu_item_new_from_stock ("document-open", nullptr);
         g_signal_connect (menuitem, "activate", G_CALLBACK (open_activated), plugin);
         gtk_menu_shell_append (GTK_MENU_SHELL (menu), menuitem);
     }
 
-    menuitem = gtk_image_menu_item_new_from_stock (GTK_STOCK_ADD, nullptr);
+    menuitem = gtk_image_menu_item_new_from_stock ("list-add", nullptr);
     gtk_label_set_text (GTK_LABEL (gtk_bin_get_child (GTK_BIN (menuitem))), "Add Group");
     g_signal_connect (menuitem, "activate", G_CALLBACK (add_group_activated), plugin);
     gtk_menu_shell_append (GTK_MENU_SHELL (menu), menuitem);
 
     if (selected)
     {
-        menuitem = gtk_image_menu_item_new_from_stock (GTK_STOCK_REMOVE, nullptr);
+        menuitem = gtk_image_menu_item_new_from_stock ("list-remove", nullptr);
         g_signal_connect (menuitem, "activate", G_CALLBACK (remove_activated), plugin);
         gtk_widget_set_sensitive (menuitem, can_remove (plugin->list, selected));
         gtk_menu_shell_append (GTK_MENU_SHELL (menu), menuitem);
@@ -2055,7 +2055,7 @@ popup_menu (WindowPlugin *plugin,
 
     if (single_item && ITEM_IS_GROUP (single_item))
     {
-        menuitem = gtk_image_menu_item_new_from_stock (GTK_STOCK_EDIT, nullptr);
+        menuitem = gtk_image_menu_item_new_from_stock ("gtk-edit", nullptr);
         gtk_label_set_text (GTK_LABEL (gtk_bin_get_child (GTK_BIN (menuitem))), "Rename");
         g_signal_connect (menuitem, "activate", G_CALLBACK (rename_activated), plugin);
         gtk_menu_shell_append (GTK_MENU_SHELL (menu), menuitem);
@@ -2346,7 +2346,7 @@ file_list_window_plugin_create (WindowPlugin *plugin)
     gtk_container_add (GTK_CONTAINER (scrolled_window), GTK_WIDGET (plugin->treeview));
     gtk_widget_show_all (scrolled_window);
 
-    label = moo_pane_label_new (GTK_STOCK_DIRECTORY,
+    label = moo_pane_label_new ("folder",
                                 nullptr, _("File List"),
                                 _("File List"));
     moo_edit_window_add_pane (window,

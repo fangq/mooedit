@@ -271,6 +271,10 @@ moo_action_class_init (MooActionClass *klass)
     GObjectClass *object_class = G_OBJECT_CLASS (klass);
     GtkActionClass *action_class = GTK_ACTION_CLASS (klass);
 
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
+
     g_type_class_add_private (klass, sizeof (MooActionPrivate));
 
     object_class->dispose = moo_action_dispose;
@@ -510,6 +514,10 @@ moo_toggle_action_class_init (MooToggleActionClass *klass)
     GObjectClass *object_class = G_OBJECT_CLASS (klass);
     GtkActionClass *action_class = GTK_ACTION_CLASS (klass);
     GtkToggleActionClass *toggle_action_class = GTK_TOGGLE_ACTION_CLASS (klass);
+
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
 
     g_type_class_add_private (klass, sizeof (MooToggleActionPrivate));
 

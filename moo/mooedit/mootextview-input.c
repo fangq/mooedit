@@ -417,7 +417,7 @@ _moo_text_view_update_text_cursor (MooTextView *view,
     GtkTextView *text_view = GTK_TEXT_VIEW (view);
 
     g_return_if_fail (MOO_IS_TEXT_VIEW (view));
-    g_return_if_fail (GTK_WIDGET_REALIZED (view));
+    g_return_if_fail (gtk_widget_get_realized (GTK_WIDGET (view)));
     g_return_if_fail (MOO_TEXT_VIEW_GET_CLASS (view)->get_text_cursor != NULL);
 
     tcursor = MOO_TEXT_VIEW_GET_CLASS (view)->get_text_cursor (view, x, y);
@@ -447,7 +447,7 @@ _moo_text_view_update_text_cursor (MooTextView *view,
     view->priv->text_cursor = tcursor;
 
     if (cursor)
-        gdk_cursor_unref (cursor);
+        g_object_unref (cursor);
 }
 
 static void
@@ -456,7 +456,7 @@ set_invisible_cursor (GdkWindow *window)
     GdkDisplay *display = gdk_window_get_display (window);
     GdkCursor *cursor = gdk_cursor_new_for_display (display, GDK_BLANK_CURSOR);
     gdk_window_set_cursor (window, cursor);
-    gdk_cursor_unref (cursor);
+    g_object_unref (cursor);
 }
 
 static void
@@ -546,7 +546,7 @@ left_window_click (GtkTextView    *text_view,
     MooTextView *view = MOO_TEXT_VIEW (text_view);
 
     *line_numbers = FALSE;
-    window_width = gdk_window_get_width (gtk_widget_get_window (event));
+    window_width = gdk_window_get_width (event->window);
 
     if (view->priv->lm.show_icons && event->x >= 0 && event->x < view->priv->lm.icon_width)
     {
@@ -659,7 +659,7 @@ event_button_to_buffer (GtkTextView    *text_view,
                         int            *y)
 {
     gtk_text_view_window_to_buffer_coords (text_view,
-                                           gtk_text_view_get_window_type (text_view, gtk_widget_get_window (event)),
+                                           gtk_text_view_get_window_type (text_view, event->window),
                                            (int) event->x, (int) event->y, x, y);
 }
 
@@ -673,7 +673,7 @@ event_motion_to_buffer (GtkTextView    *text_view,
 
     if (event->is_hint)
     {
-        gdk_window_get_pointer (gtk_widget_get_window (event), &event_x, &event_y, NULL);
+        gdk_window_get_pointer (event->window, &event_x, &event_y, NULL);
     }
     else
     {
@@ -682,7 +682,7 @@ event_motion_to_buffer (GtkTextView    *text_view,
     }
 
     gtk_text_view_window_to_buffer_coords (text_view,
-                                           gtk_text_view_get_window_type (text_view, gtk_widget_get_window (event)),
+                                           gtk_text_view_get_window_type (text_view, event->window),
                                            event_x, event_y, x, y);
 }
 
@@ -704,7 +704,7 @@ _moo_text_view_button_press_event (GtkWidget          *widget,
     event_button_to_buffer (text_view, event, &x, &y);
     _moo_text_view_update_text_cursor (view, x, y);
 
-    switch (gtk_text_view_get_window_type (text_view, gtk_widget_get_window (event)))
+    switch (gtk_text_view_get_window_type (text_view, event->window))
     {
         case GTK_TEXT_WINDOW_TEXT:
             break;

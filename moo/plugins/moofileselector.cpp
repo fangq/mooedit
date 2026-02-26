@@ -203,7 +203,7 @@ moo_file_selector_set_property (GObject        *object,
     switch (prop_id)
     {
         case PROP_WINDOW:
-            gtk_widget_get_window (sel) = (MooEditWindow*) g_value_get_object (value);
+            sel->window = (MooEditWindow*) g_value_get_object (value);
             break;
 
         default:
@@ -223,7 +223,7 @@ moo_file_selector_get_property (GObject        *object,
     switch (prop_id)
     {
         case PROP_WINDOW:
-            g_value_set_object (value, gtk_widget_get_window (sel));
+            g_value_set_object (value, sel->window);
             break;
 
         default:
@@ -306,8 +306,8 @@ moo_file_selector_activate (MooFileView    *fileview,
     }
 
     if (is_text)
-        moo_editor_open_path (moo_edit_window_get_editor (gtk_widget_get_window (filesel)),
-                              path, nullptr, -1, gtk_widget_get_window (filesel));
+        moo_editor_open_path (moo_edit_window_get_editor (filesel->window),
+                              path, nullptr, -1, filesel->window);
     else if (!is_exe)
         moo_open_file (path);
 }
@@ -320,7 +320,7 @@ goto_current_doc_dir (MooFileSelector *filesel)
     GFile *file, *parent_file;
     GError *error = nullptr;
 
-    doc = moo_edit_window_get_active_doc (gtk_widget_get_window (filesel));
+    doc = moo_edit_window_get_active_doc (filesel->window);
     file = doc ? moo_edit_get_file (doc) : nullptr;
     parent_file = file ? g_file_get_parent (file) : nullptr;
 
@@ -515,7 +515,7 @@ file_selector_create_file (MooFileSelector *filesel)
         goto out;
 
     info = moo_open_info_new (path, nullptr, -1, MOO_OPEN_FLAGS_NONE);
-    doc = moo_editor_new_file (moo_edit_window_get_editor (gtk_widget_get_window (filesel)),
+    doc = moo_editor_new_file (moo_edit_window_get_editor (filesel->window),
                                info, GTK_WIDGET (filesel), nullptr);
     g_object_unref (info);
 
@@ -560,8 +560,8 @@ file_selector_open_files (MooFileSelector *filesel)
 
     while (files)
     {
-        moo_editor_open_path (moo_edit_window_get_editor (gtk_widget_get_window (filesel)),
-                              (const char*) files->data, nullptr, -1, gtk_widget_get_window (filesel));
+        moo_editor_open_path (moo_edit_window_get_editor (filesel->window),
+                              (const char*) files->data, nullptr, -1, filesel->window);
         g_free (files->data);
         files = g_list_delete_link (files, files);
     }
@@ -597,7 +597,7 @@ moo_file_selector_constructor (GType           type,
     filesel = MOO_FILE_SELECTOR (object);
     fileview = MOO_FILE_VIEW (object);
 
-    g_return_val_if_fail (gtk_widget_get_window (filesel) != nullptr, object);
+    g_return_val_if_fail (filesel->window != nullptr, object);
 
     file_selector_go_home (MOO_FILE_VIEW (fileview));
 
@@ -609,7 +609,7 @@ moo_file_selector_constructor (GType           type,
     merge_id = moo_ui_xml_new_merge_id (xml);
 
     moo_action_group_add_action (group, "GoToCurrentDocDir",
-                                 "stock-id", GTK_STOCK_JUMP_TO,
+                                 "icon-name", "go-jump",
                                  "tooltip", _("Go to current document directory"),
                                  "closure-object", fileview,
                                  "closure-signal", "goto-current-doc-dir",
@@ -624,14 +624,14 @@ moo_file_selector_constructor (GType           type,
     moo_action_group_add_action (group, "NewFile",
                                  "label", _("New File..."),
                                  "tooltip", _("New File..."),
-                                 "stock-id", GTK_STOCK_NEW,
+                                 "icon-name", "document-new",
                                  "closure-object", filesel,
                                  "closure-callback", file_selector_create_file,
                                  nullptr);
     moo_action_group_add_action (group, "Open",
-                                 "label", GTK_STOCK_OPEN,
-                                 "tooltip", GTK_STOCK_OPEN,
-                                 "stock-id", GTK_STOCK_OPEN,
+                                 "label", "document-open",
+                                 "tooltip", "document-open",
+                                 "icon-name", "document-open",
                                  "closure-object", filesel,
                                  "closure-callback", file_selector_open_files,
                                  nullptr);
@@ -647,11 +647,11 @@ moo_file_selector_constructor (GType           type,
     label = moo_pane_label_new (MOO_STOCK_FILE_SELECTOR,
                                 nullptr, _("File Selector"),
                                 _("File Selector"));
-    moo_edit_window_add_pane (gtk_widget_get_window (filesel), MOO_FILE_SELECTOR_PLUGIN_ID,
+    moo_edit_window_add_pane (filesel->window, MOO_FILE_SELECTOR_PLUGIN_ID,
                               GTK_WIDGET (filesel), label, MOO_PANE_POS_RIGHT);
     moo_pane_label_free (label);
 
-    pane = moo_big_paned_find_pane (gtk_widget_get_window (filesel)->paned,
+    pane = moo_big_paned_find_pane (filesel->window->paned,
                                     GTK_WIDGET (filesel), nullptr);
     moo_pane_set_drag_dest (pane);
 
@@ -709,7 +709,7 @@ moo_file_selector_drop_data_received (MooFileView    *fileview,
         g_critical ("oops");
         goto parent;
     }
-    else if (data->length < 0)
+    else if (gtk_selection_data_get_length (data) < 0)
     {
         g_warning ("could not get MOO_EDIT_TAB data");
         goto error;
@@ -1148,7 +1148,7 @@ create_drop_doc_menu (MooFileSelector *filesel,
     gtk_widget_show (item);
     gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
 
-    item = gtk_image_menu_item_new_from_stock (GTK_STOCK_CANCEL, nullptr);
+    item = gtk_image_menu_item_new_from_stock ("dialog-cancel", nullptr);
     gtk_widget_show (item);
     _moo_menu_item_set_accel_label (item, "Escape");
     gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);

@@ -163,13 +163,13 @@ moo_find_constructor (GType           type,
     if (find->replace)
     {
         use_replace = TRUE;
-        stock_id = GTK_STOCK_FIND_AND_REPLACE;
+        stock_id = "edit-find-replace";
         title = C_("Dialog title", "Replace");
     }
     else
     {
         use_replace = FALSE;
-        stock_id = GTK_STOCK_FIND;
+        stock_id = "edit-find";
         title = C_("Dialog title", "Find");
     }
 
@@ -179,7 +179,7 @@ moo_find_constructor (GType           type,
 
     gtk_window_set_title (GTK_WINDOW (find), title);
     gtk_dialog_add_buttons (GTK_DIALOG (find),
-                            GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
+                            "dialog-cancel", GTK_RESPONSE_CANCEL,
                             stock_id, GTK_RESPONSE_OK,
                             NULL);
     gtk_dialog_set_alternative_button_order (GTK_DIALOG (find),

@@ -442,9 +442,9 @@ _moo_value_convert (const GValue *src,
             else
             {
                 g_snprintf (string, 8, "#%02x%02x%02x",
-                            color->red >> 8,
-                            color->green >> 8,
-                            color->blue >> 8);
+                            (int)(color->red * 255 + 0.5),
+                            (int)(color->green * 255 + 0.5),
+                            (int)(color->blue * 255 + 0.5));
                 g_value_set_string (dest, string);
                 return TRUE;
             }

@@ -47,7 +47,7 @@ create_message_dialog (GtkWindow  *parent,
     if (buttons == GTK_BUTTONS_CLOSE || buttons == GTK_BUTTONS_OK)
     {
         gtk_dialog_add_buttons (GTK_DIALOG (dialog),
-                                buttons == GTK_BUTTONS_CLOSE ? GTK_STOCK_CLOSE : GTK_STOCK_OK,
+                                buttons == GTK_BUTTONS_CLOSE ? "window-close" : "dialog-ok",
                                 GTK_RESPONSE_CANCEL,
                                 NULL);
         gtk_dialog_set_default_response (GTK_DIALOG (dialog),
@@ -133,7 +133,7 @@ on_hide (GtkWindow *window)
 {
     GtkWindow *parent = gtk_window_get_transient_for (window);
 
-    if (parent && GTK_WIDGET_DRAWABLE (parent))
+    if (parent && gtk_widget_is_drawable (GTK_WIDGET (parent)))
         gtk_window_present (parent);
 
     g_signal_handlers_disconnect_by_func (window, (gpointer) on_hide, NULL);
@@ -170,7 +170,7 @@ moo_position_window_real (GtkWidget  *window,
     if (toplevel && gtk_window_get_group (GTK_WINDOW (toplevel)))
         gtk_window_group_add_window (gtk_window_get_group (GTK_WINDOW (toplevel)), GTK_WINDOW (window));
 
-    if (!at_mouse && !at_coords && parent && GTK_WIDGET_REALIZED (parent))
+    if (!at_mouse && !at_coords && parent && gtk_widget_get_realized (GTK_WIDGET (parent)))
     {
         if (GTK_IS_WINDOW (parent))
         {
@@ -200,7 +200,7 @@ moo_position_window_real (GtkWidget  *window,
         gtk_window_set_position (GTK_WINDOW (window), GTK_WIN_POS_NONE);
         g_object_set_data_full (G_OBJECT (window), "moo-coords", coord, g_free);
 
-        if (!GTK_WIDGET_REALIZED (window))
+        if (!gtk_widget_get_realized (GTK_WIDGET (window)))
         {
             g_signal_handlers_disconnect_by_func (window, (gpointer) position_window, NULL);
             g_signal_connect (window, "realize",
@@ -372,11 +372,11 @@ moo_overwrite_file_dialog (const char *display_name,
                                               "overwrite its contents.",
                                               display_dirname);
 
-    gtk_dialog_add_button (GTK_DIALOG (dialog), GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL);
+    gtk_dialog_add_button (GTK_DIALOG (dialog), "dialog-cancel", GTK_RESPONSE_CANCEL);
 
     button = gtk_button_new_with_mnemonic ("_Replace");
     gtk_button_set_image (GTK_BUTTON (button),
-                          gtk_image_new_from_icon_name (GTK_STOCK_SAVE_AS, GTK_ICON_SIZE_BUTTON));
+                          gtk_image_new_from_icon_name ("document-save-as", GTK_ICON_SIZE_BUTTON));
     gtk_widget_show (button);
     gtk_dialog_add_action_widget (GTK_DIALOG (dialog), button, GTK_RESPONSE_YES);
 
@@ -426,9 +426,9 @@ moo_save_changes_dialog (const char *display_name,
         _("If you don't save, changes will be discarded"));
 
     gtk_dialog_add_buttons (dialog,
-        GTK_STOCK_DISCARD, GTK_RESPONSE_NO,
-        GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
-        GTK_STOCK_SAVE, GTK_RESPONSE_YES,
+        "edit-delete", GTK_RESPONSE_NO,
+        "dialog-cancel", GTK_RESPONSE_CANCEL,
+        "document-save", GTK_RESPONSE_YES,
         NULL);
 
     gtk_dialog_set_alternative_button_order (dialog,
@@ -495,7 +495,7 @@ save_size (GtkWindow *window)
 
     pinfo->save_size_idle = 0;
 
-    if (!GTK_WIDGET_REALIZED (window))
+    if (!gtk_widget_get_realized (GTK_WIDGET (window)))
         return FALSE;
 
     state = gdk_window_get_state (gtk_widget_get_window (GTK_WIDGET(window)));

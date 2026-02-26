@@ -48,7 +48,7 @@ static void      moo_line_view_move_cursor      (GtkTextView    *text_view,
                                                  gint            count,
                                                  gboolean        extend_selection);
 static void      moo_line_view_populate_popup   (GtkTextView    *text_view,
-                                                 GtkMenu        *menu);
+                                                 GtkWidget *menu);
 
 static MooTextCursor
                  moo_line_view_get_text_cursor  (MooTextView    *view,
@@ -94,6 +94,10 @@ moo_line_view_class_init (MooLineViewClass *klass)
     textview_class->populate_popup = moo_line_view_populate_popup;
 
     mootextview_class->get_text_cursor = moo_line_view_get_text_cursor;
+
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
 
     g_type_class_add_private (klass, sizeof (MooLineViewPrivate));
 
@@ -163,8 +167,8 @@ moo_line_view_parent_set (GtkWidget *widget,
 
     view->priv->hscrollbar = NULL;
 
-    if (widget->parent && GTK_IS_SCROLLED_WINDOW (widget->parent))
-        view->priv->hscrollbar = gtk_scrolled_window_get_hscrollbar (GTK_SCROLLED_WINDOW (widget->parent));
+    if (gtk_widget_get_parent (widget) && GTK_IS_SCROLLED_WINDOW (gtk_widget_get_parent (widget)))
+        view->priv->hscrollbar = gtk_scrolled_window_get_hscrollbar (GTK_SCROLLED_WINDOW (gtk_widget_get_parent (widget)));
 
     if (GTK_WIDGET_CLASS (moo_line_view_parent_class)->parent_set)
         GTK_WIDGET_CLASS (moo_line_view_parent_class)->parent_set (widget, old_parent);
@@ -217,7 +221,7 @@ moo_line_view_button_release (GtkWidget      *widget,
 
     result = GTK_WIDGET_CLASS(moo_line_view_parent_class)->button_release_event (widget, event);
 
-    if (gtk_text_view_get_window_type (textview, gtk_widget_get_window (event)) == GTK_TEXT_WINDOW_TEXT &&
+    if (gtk_text_view_get_window_type (textview, event->window) == GTK_TEXT_WINDOW_TEXT &&
         !moo_text_view_has_selection (MOO_TEXT_VIEW (widget)))
     {
         gtk_text_view_window_to_buffer_coords (textview,
@@ -500,7 +504,7 @@ check_if_scrolled (MooLineView *view)
     GtkTextIter iter;
     int line;
 
-    if (!GTK_WIDGET_REALIZED (view))
+    if (!gtk_widget_get_realized (GTK_WIDGET (view)))
     {
         view->priv->scrolled = FALSE;
         return;
@@ -521,19 +525,19 @@ static void
 check_if_scrolled (MooLineView *view)
 {
     int delta;
-    GtkAdjustment *adj = GTK_TEXT_VIEW (view)->vadjustment;
+    GtkAdjustment *adj = gtk_scrollable_get_vadjustment (GTK_SCROLLABLE (view));
 
     delta = 10;
 
-    if (view->priv->hscrollbar && GTK_WIDGET_VISIBLE (view->priv->hscrollbar))
+    if (view->priv->hscrollbar && gtk_widget_get_visible (GTK_WIDGET (view->priv->hscrollbar)))
     {
         int space;
-        gtk_widget_style_get (GTK_WIDGET (view)->parent, "scrollbar-spacing", &space, nullptr);
-        delta = MAX (delta - 1, space + view->priv->hscrollbar->allocation.height) + 1;
+        gtk_widget_style_get (gtk_widget_get_parent (GTK_WIDGET (view)), "scrollbar-spacing", &space, nullptr);
+        delta = MAX (delta - 1, space + gtk_widget_get_allocated_height (GTK_WIDGET (view->priv->hscrollbar))) + 1;
     }
 
-    view->priv->scrolled = adj && GTK_WIDGET_REALIZED (view) &&
-                           ABS (adj->value - (adj->upper - adj->page_size)) > delta;
+    view->priv->scrolled = adj && gtk_widget_get_realized (GTK_WIDGET (view)) &&
+                           ABS (gtk_adjustment_get_value (adj) - (gtk_adjustment_get_upper (adj) - gtk_adjustment_get_page_size (adj))) > delta;
 }
 #endif
 
@@ -637,7 +641,7 @@ copy_clipboard (GtkTextView *text_view)
 
 static void
 moo_line_view_populate_popup (GtkTextView *text_view,
-                              GtkMenu     *menu)
+                              GtkWidget *menu)
 {
     GtkWidget *item;
     gboolean has_selection, has_text;
@@ -646,7 +650,7 @@ moo_line_view_populate_popup (GtkTextView *text_view,
                            (GtkCallback) gtk_widget_destroy,
                            NULL);
 
-    item = gtk_image_menu_item_new_from_stock (GTK_STOCK_COPY, NULL);
+    item = gtk_image_menu_item_new_from_stock ("edit-copy", NULL);
     g_signal_connect_swapped (item, "activate",
                               G_CALLBACK (copy_clipboard), text_view);
     has_selection = moo_text_view_has_selection (MOO_TEXT_VIEW (text_view));
@@ -654,7 +658,7 @@ moo_line_view_populate_popup (GtkTextView *text_view,
     gtk_widget_show (item);
     gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
 
-    item = gtk_image_menu_item_new_from_stock (GTK_STOCK_SELECT_ALL, NULL);
+    item = gtk_image_menu_item_new_from_stock ("edit-select-all", NULL);
     g_signal_connect_swapped (item, "activate",
                               G_CALLBACK (moo_text_view_select_all),
                               text_view);

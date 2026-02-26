@@ -175,7 +175,7 @@ static void         moo_file_view_get_property  (GObject        *object,
                                                  GValue         *value,
                                                  GParamSpec     *pspec);
 
-static void         moo_file_view_destroy       (GInitiallyUnowned      *object);
+static void moo_file_view_destroy (GtkWidget *object);
 static void         moo_file_view_hide          (GtkWidget      *widget);
 static gboolean     moo_file_view_key_press     (MooFileView    *fileview,
                                                  GtkWidget      *widget,
@@ -492,7 +492,6 @@ static void
 moo_file_view_class_init (MooFileViewClass *klass)
 {
     GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
-    GObjectClass *gtkobject_class = G_OBJECT_CLASS(klass);
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
     GtkBindingSet *binding_set;
 
@@ -500,7 +499,7 @@ moo_file_view_class_init (MooFileViewClass *klass)
     gobject_class->set_property = moo_file_view_set_property;
     gobject_class->get_property = moo_file_view_get_property;
 
-    gtkobject_class->destroy = moo_file_view_destroy;
+    widget_class->destroy = moo_file_view_destroy;
     widget_class->hide = moo_file_view_hide;
     widget_class->popup_menu = moo_file_view_popup_menu;
     widget_class->unrealize = moo_file_view_unrealize;
@@ -917,8 +916,7 @@ moo_file_view_init (MooFileView *fileview)
 }
 
 
-static void
-moo_file_view_destroy (GInitiallyUnowned *object)
+static void moo_file_view_destroy (GtkWidget *object)
 {
     MooFileView *fileview = MOO_FILE_VIEW (object);
 
@@ -928,7 +926,7 @@ moo_file_view_destroy (GInitiallyUnowned *object)
         fileview->priv->props_dialog = NULL;
     }
 
-    G_OBJECT_CLASS(moo_file_view_parent_class)->destroy (object);
+    GTK_WIDGET_CLASS(moo_file_view_parent_class)->destroy (object);
 }
 
 
@@ -1121,9 +1119,9 @@ init_actions (MooFileView *fileview)
     group = moo_action_collection_get_group (fileview->priv->actions, NULL);
 
     moo_action_group_add_action (group, "GoUp",
-                                 "label", GTK_STOCK_GO_UP,
+                                 "label", "go-up",
                                  "tooltip", _("Go to parent folder"),
-                                 "stock-id", GTK_STOCK_GO_UP,
+                                 "icon-name", "go-up",
                                  "default-accel", MOO_FILE_VIEW_ACCEL_GO_UP,
                                  "force-accel-label", TRUE,
                                  "closure-object", fileview,
@@ -1131,9 +1129,9 @@ init_actions (MooFileView *fileview)
                                  NULL);
 
     action = moo_action_group_add_action (group, "GoBack",
-                                          "label", GTK_STOCK_GO_BACK,
-                                          "tooltip", GTK_STOCK_GO_BACK,
-                                          "stock-id", GTK_STOCK_GO_BACK,
+                                          "label", "go-previous",
+                                          "tooltip", "go-previous",
+                                          "icon-name", "go-previous",
                                           "default-accel", MOO_FILE_VIEW_ACCEL_GO_BACK,
                                           "force-accel-label", TRUE,
                                           "closure-object", fileview,
@@ -1142,9 +1140,9 @@ init_actions (MooFileView *fileview)
     moo_bind_bool_property (action, "sensitive", fileview, "can-go-back", FALSE);
 
     action = moo_action_group_add_action (group, "GoForward",
-                                          "label", GTK_STOCK_GO_FORWARD,
-                                          "tooltip", GTK_STOCK_GO_FORWARD,
-                                          "stock-id", GTK_STOCK_GO_FORWARD,
+                                          "label", "go-next",
+                                          "tooltip", "go-next",
+                                          "icon-name", "go-next",
                                           "default-accel", MOO_FILE_VIEW_ACCEL_GO_FORWARD,
                                           "force-accel-label", TRUE,
                                           "closure-object", fileview,
@@ -1153,9 +1151,9 @@ init_actions (MooFileView *fileview)
     moo_bind_bool_property (action, "sensitive", fileview, "can-go-forward", FALSE);
 
     moo_action_group_add_action (group, "GoHome",
-                                 "label", GTK_STOCK_HOME,
-                                 "tooltip", GTK_STOCK_HOME,
-                                 "stock-id", GTK_STOCK_HOME,
+                                 "label", "go-home",
+                                 "tooltip", "go-home",
+                                 "icon-name", "go-home",
                                  "default-accel", MOO_FILE_VIEW_ACCEL_GO_HOME,
                                  "force-accel-label", TRUE,
                                  "closure-object", fileview,
@@ -1165,7 +1163,7 @@ init_actions (MooFileView *fileview)
     moo_action_group_add_action (group, "NewFolder",
                                  "label", MOO_STOCK_NEW_FOLDER,
                                  "tooltip", MOO_STOCK_NEW_FOLDER,
-                                 "stock-id", MOO_STOCK_NEW_FOLDER,
+                                 "icon-name", MOO_STOCK_NEW_FOLDER,
                                  "closure-object", fileview,
                                  "closure-callback", file_view_create_folder,
                                  NULL);
@@ -1173,7 +1171,7 @@ init_actions (MooFileView *fileview)
     action = moo_action_group_add_action (group, "Delete",
                                           "label", _("Delete..."),
                                           "tooltip", _("Delete selected files"),
-                                          "stock-id", GTK_STOCK_DELETE,
+                                          "icon-name", "edit-delete",
                                           "default-accel", MOO_FILE_VIEW_ACCEL_DELETE,
                                           "force-accel-label", TRUE,
                                           NULL);
@@ -1211,9 +1209,9 @@ init_actions (MooFileView *fileview)
     _moo_sync_toggle_action (action, fileview, "sort-folders-first", FALSE);
 
     action = moo_action_group_add_action (group, "Properties",
-                                          "label", GTK_STOCK_PROPERTIES,
-                                          "tooltip", GTK_STOCK_PROPERTIES,
-                                          "stock-id", GTK_STOCK_PROPERTIES,
+                                          "label", "document-properties",
+                                          "tooltip", "document-properties",
+                                          "icon-name", "document-properties",
                                           "default-accel", MOO_FILE_VIEW_ACCEL_PROPERTIES,
                                           "force-accel-label", TRUE,
                                           "closure-object", fileview,
@@ -1224,7 +1222,7 @@ init_actions (MooFileView *fileview)
     moo_action_group_add_action (group, "BookmarksMenu",
                                  "label", _("Bookmarks"),
                                  "tooltip", _("Bookmarks"),
-                                 "stock-id", MOO_STOCK_FILE_BOOKMARK,
+                                 "icon-name", MOO_STOCK_FILE_BOOKMARK,
                                  "closure-object", fileview,
                                  "closure-callback", view_bookmarks,
                                  "has-submenu", TRUE,
@@ -1233,7 +1231,7 @@ init_actions (MooFileView *fileview)
     moo_action_group_add_action (group, "AddBookmark",
                                  "label", _("Add Bookmark"),
                                  "tooltip", _("Add Bookmark"),
-                                 "stock-id", GTK_STOCK_ADD,
+                                 "icon-name", "list-add",
                                  "closure-object", fileview,
                                  "closure-callback", add_bookmark,
                                  NULL);
@@ -1241,15 +1239,15 @@ init_actions (MooFileView *fileview)
     moo_action_group_add_action (group, "EditBookmarks",
                                  "label", _("Edit Bookmarks"),
                                  "tooltip", _("Edit Bookmarks"),
-                                 "stock-id", GTK_STOCK_EDIT,
+                                 "icon-name", "gtk-edit",
                                  "closure-object", fileview,
                                  "closure-callback", edit_bookmarks,
                                  NULL);
 
     action = moo_action_group_add_action (group, "Cut",
-                                          "label", GTK_STOCK_CUT,
-                                          "tooltip", GTK_STOCK_CUT,
-                                          "stock-id", GTK_STOCK_CUT,
+                                          "label", "edit-cut",
+                                          "tooltip", "edit-cut",
+                                          "icon-name", "edit-cut",
                                           "default-accel", MOO_FILE_VIEW_ACCEL_CUT,
                                           "force-accel-label", TRUE,
                                           "closure-object", fileview,
@@ -1258,9 +1256,9 @@ init_actions (MooFileView *fileview)
     moo_bind_bool_property (action, "sensitive", fileview, "has-selection", FALSE);
 
     action = moo_action_group_add_action (group, "Copy",
-                                          "label", GTK_STOCK_COPY,
-                                          "tooltip", GTK_STOCK_COPY,
-                                          "stock-id", GTK_STOCK_COPY,
+                                          "label", "edit-copy",
+                                          "tooltip", "edit-copy",
+                                          "icon-name", "edit-copy",
                                           "force-accel-label", TRUE,
                                           "default-accel", MOO_FILE_VIEW_ACCEL_COPY,
                                           "closure-object", fileview,
@@ -1269,9 +1267,9 @@ init_actions (MooFileView *fileview)
     moo_bind_bool_property (action, "sensitive", fileview, "has-selection", FALSE);
 
     action = moo_action_group_add_action (group, "Paste",
-                                          "label", GTK_STOCK_PASTE,
-                                          "tooltip", GTK_STOCK_PASTE,
-                                          "stock-id", GTK_STOCK_PASTE,
+                                          "label", "edit-paste",
+                                          "tooltip", "edit-paste",
+                                          "icon-name", "edit-paste",
                                           "default-accel", MOO_FILE_VIEW_ACCEL_PASTE,
                                           "force-accel-label", TRUE,
                                           "closure-object", fileview,
@@ -1281,7 +1279,7 @@ init_actions (MooFileView *fileview)
     moo_action_group_add_action (group, "Reload",
                                  "label", _("Reload"),
                                  "tooltip", _("Reload"),
-                                 "stock-id", GTK_STOCK_REFRESH,
+                                 "icon-name", "view-refresh",
                                  "closure-object", fileview,
                                  "closure-signal", "reload",
                                  NULL);
@@ -1590,7 +1588,7 @@ create_filter_combo (G_GNUC_UNUSED MooFileView *fileview)
     gtk_widget_show (button);
     gtk_box_pack_start (GTK_BOX (hbox), button, FALSE, FALSE, 0);
 
-    combo = gtk_combo_box_entry_new ();
+    combo = gtk_combo_box_text_new_with_entry ();
     gtk_widget_show (combo);
     gtk_box_pack_start (GTK_BOX (hbox), combo, TRUE, TRUE, 0);
 
@@ -2711,7 +2709,7 @@ file_view_cut_or_copy_clipboard (MooFileView *fileview,
     gboolean result;
     GtkClipboard *clipboard;
 
-    g_return_if_fail (GTK_WIDGET_REALIZED (fileview));
+    g_return_if_fail (gtk_widget_get_realized (GTK_WIDGET (fileview)));
 
     folder = fileview->priv->current_dir;
     files = file_view_get_selected_files (fileview);
@@ -3235,8 +3233,8 @@ ask_delete_files (MooFileView *fileview,
 
     moo_window_set_parent (dialog, GTK_WIDGET (fileview));
     gtk_dialog_add_buttons (GTK_DIALOG (dialog),
-                            GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
-                            GTK_STOCK_DELETE, GTK_RESPONSE_OK, NULL);
+                            "dialog-cancel", GTK_RESPONSE_CANCEL,
+                            "edit-delete", GTK_RESPONSE_OK, NULL);
     gtk_dialog_set_default_response (GTK_DIALOG (dialog), GTK_RESPONSE_CANCEL);
 
     response = gtk_dialog_run (GTK_DIALOG (dialog));
@@ -3347,13 +3345,13 @@ update_delete_action (MooFileView *fileview,
         g_object_set (action,
                       "label", _("Move to Trash..."),
                       "tooltip", _("Move selected files to Trash"),
-                      "stock-id", GTK_STOCK_DELETE,
+                      "icon-name", "edit-delete",
                       NULL);
     else
         g_object_set (action,
                       "label", _("Delete..."),
                       "tooltip", _("Delete selected files"),
-                      "stock-id", GTK_STOCK_DELETE,
+                      "icon-name", "edit-delete",
                       NULL);
 
     g_object_set_data (G_OBJECT (action),
@@ -4470,36 +4468,36 @@ moo_file_view_key_press (MooFileView    *fileview,
         case GDK_KEY_Pointer_Accelerate:
         case GDK_KEY_Pointer_DfltBtnNext:
         case GDK_KEY_Pointer_DfltBtnPrev:
-        case GDK_3270_Duplicate:
-        case GDK_3270_FieldMark:
-        case GDK_3270_Right2:
-        case GDK_3270_Left2:
-        case GDK_3270_BackTab:
-        case GDK_3270_EraseEOF:
-        case GDK_3270_EraseInput:
-        case GDK_3270_Reset:
-        case GDK_3270_Quit:
-        case GDK_3270_PA1:
-        case GDK_3270_PA2:
-        case GDK_3270_PA3:
-        case GDK_3270_Test:
-        case GDK_3270_Attn:
-        case GDK_3270_CursorBlink:
-        case GDK_3270_AltCursor:
-        case GDK_3270_KeyClick:
-        case GDK_3270_Jump:
-        case GDK_3270_Ident:
-        case GDK_3270_Rule:
-        case GDK_3270_Copy:
-        case GDK_3270_Play:
-        case GDK_3270_Setup:
-        case GDK_3270_Record:
-        case GDK_3270_ChangeScreen:
-        case GDK_3270_DeleteWord:
-        case GDK_3270_ExSelect:
-        case GDK_3270_CursorSelect:
-        case GDK_3270_PrintScreen:
-        case GDK_3270_Enter:
+        case GDK_KEY_3270_Duplicate:
+        case GDK_KEY_3270_FieldMark:
+        case GDK_KEY_3270_Right2:
+        case GDK_KEY_3270_Left2:
+        case GDK_KEY_3270_BackTab:
+        case GDK_KEY_3270_EraseEOF:
+        case GDK_KEY_3270_EraseInput:
+        case GDK_KEY_3270_Reset:
+        case GDK_KEY_3270_Quit:
+        case GDK_KEY_3270_PA1:
+        case GDK_KEY_3270_PA2:
+        case GDK_KEY_3270_PA3:
+        case GDK_KEY_3270_Test:
+        case GDK_KEY_3270_Attn:
+        case GDK_KEY_3270_CursorBlink:
+        case GDK_KEY_3270_AltCursor:
+        case GDK_KEY_3270_KeyClick:
+        case GDK_KEY_3270_Jump:
+        case GDK_KEY_3270_Ident:
+        case GDK_KEY_3270_Rule:
+        case GDK_KEY_3270_Copy:
+        case GDK_KEY_3270_Play:
+        case GDK_KEY_3270_Setup:
+        case GDK_KEY_3270_Record:
+        case GDK_KEY_3270_ChangeScreen:
+        case GDK_KEY_3270_DeleteWord:
+        case GDK_KEY_3270_ExSelect:
+        case GDK_KEY_3270_CursorSelect:
+        case GDK_KEY_3270_PrintScreen:
+        case GDK_KEY_3270_Enter:
             return FALSE;
     }
 
@@ -4517,7 +4515,7 @@ moo_file_view_key_press (MooFileView    *fileview,
         GtkWidget *entry = GTK_WIDGET (fileview->priv->entry);
 
         g_return_val_if_fail (event != NULL, FALSE);
-        g_return_val_if_fail (GTK_WIDGET_REALIZED (entry), FALSE);
+        g_return_val_if_fail (gtk_widget_get_realized (GTK_WIDGET (entry)), FALSE);
 
         copy = gdk_event_copy ((GdkEvent*) event);
         g_object_unref (copy->key.window);
@@ -5348,7 +5346,7 @@ moo_file_view_drop_data_received (MooFileView    *fileview,
     gboolean success = FALSE;
     gboolean delete = FALSE;
 
-    if (data->target == moo_atom_uri_list ())
+    if (gtk_selection_data_get_target (data) == moo_atom_uri_list ())
     {
         char **uris = gtk_selection_data_get_uris (data);
 
@@ -5371,7 +5369,7 @@ moo_file_view_drop_data_received (MooFileView    *fileview,
     {
         char *text = (char*) gtk_selection_data_get_text (data);
 
-        delete = context->suggested_action & GDK_ACTION_MOVE;
+        delete = gdk_drag_context_get_suggested_action (context) & GDK_ACTION_MOVE;
 
         if (text)
             success = moo_file_view_drop_text (fileview, text, path, widget,
@@ -5517,8 +5515,8 @@ drag_motion (GtkWidget      *widget,
         _moo_tree_view_set_drag_dest_row (widget, NULL);
 
     if (can_drop)
-        gdk_drag_status (context, context->actions & GDK_ACTION_MOVE ?
-                GDK_ACTION_MOVE : context->suggested_action, time);
+        gdk_drag_status (context, gdk_drag_context_get_actions (context) & GDK_ACTION_MOVE ?
+                GDK_ACTION_MOVE : gdk_drag_context_get_suggested_action (context), time);
     else
         gdk_drag_status (context, 0, time);
 
@@ -5619,7 +5617,7 @@ button_drag_motion (MooFileView    *fileview,
                                fileview);
     }
 
-    gdk_drag_status (context, context->suggested_action, time);
+    gdk_drag_status (context, gdk_drag_context_get_suggested_action (context), time);
     return TRUE;
 }
 
@@ -5967,16 +5965,16 @@ moo_file_view_drop_uris (MooFileView    *fileview,
                              (ac == GDK_ACTION_ASK ? "ASK" : "???"))))))
 
     g_print ("suggested: %s\naction: %s\n",
-             ACTION_NAME (context->suggested_action),
-             ACTION_NAME (context->action));
+             ACTION_NAME (gdk_drag_context_get_suggested_action (context)),
+             ACTION_NAME (gdk_drag_context_get_selected_action (context)));
 
     g_print ("actions: %s%s%s%s%s%s\n",
-             context->actions & GDK_ACTION_DEFAULT ? "DEFAULT " : "",
-             context->actions & GDK_ACTION_COPY ? "COPY " : "",
-             context->actions & GDK_ACTION_MOVE ? "MOVE " : "",
-             context->actions & GDK_ACTION_LINK ? "LINK " : "",
-             context->actions & GDK_ACTION_PRIVATE ? "PRIVATE " : "",
-             context->actions & GDK_ACTION_ASK ? "ASK " : "");
+             gdk_drag_context_get_actions (context) & GDK_ACTION_DEFAULT ? "DEFAULT " : "",
+             gdk_drag_context_get_actions (context) & GDK_ACTION_COPY ? "COPY " : "",
+             gdk_drag_context_get_actions (context) & GDK_ACTION_MOVE ? "MOVE " : "",
+             gdk_drag_context_get_actions (context) & GDK_ACTION_LINK ? "LINK " : "",
+             gdk_drag_context_get_actions (context) & GDK_ACTION_PRIVATE ? "PRIVATE " : "",
+             gdk_drag_context_get_actions (context) & GDK_ACTION_ASK ? "ASK " : "");
 
     g_print ("modifiers: %s%s%s\n",
              mask & GDK_SHIFT_MASK ? "SHIFT " : "",
@@ -5985,7 +5983,7 @@ moo_file_view_drop_uris (MooFileView    *fileview,
 #endif
 
     if (mask & (GDK_SHIFT_MASK | GDK_CONTROL_MASK | GDK_MOD1_MASK))
-        action = context->suggested_action;
+        action = gdk_drag_context_get_suggested_action (context);
     else
         action = GDK_ACTION_ASK;
 
@@ -6035,7 +6033,7 @@ moo_file_view_drop_uris (MooFileView    *fileview,
         gtk_widget_show (item);
         gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
 
-        item = gtk_image_menu_item_new_from_stock (GTK_STOCK_CANCEL, NULL);
+        item = gtk_image_menu_item_new_from_stock ("dialog-cancel", NULL);
         gtk_widget_show (item);
         _moo_menu_item_set_accel_label (item, "Escape");
         gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
@@ -6183,8 +6181,8 @@ bookmark_drag_motion (MooBookmarkView *bkview,
 
     _moo_tree_view_set_drag_dest_row (bkview, path);
 
-    gdk_drag_status (context, context->actions & GDK_ACTION_MOVE ?
-                     GDK_ACTION_MOVE : context->suggested_action, time);
+    gdk_drag_status (context, gdk_drag_context_get_actions (context) & GDK_ACTION_MOVE ?
+                     GDK_ACTION_MOVE : gdk_drag_context_get_suggested_action (context), time);
 
     if (fileview->priv->drop_to.row)
     {

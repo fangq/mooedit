@@ -461,7 +461,7 @@ item_new_from_node (MooMarkupNode *node,
         tooltip = moo_markup_get_prop (node, "tooltip");
 
     action = moo_markup_get_prop (node, "action");
-    stock_id = moo_markup_get_prop (node, "stock-id");
+    stock_id = moo_markup_get_prop (node, "icon-name");
     stock_label = moo_markup_get_prop (node, "stock-label");
     icon_stock_id = moo_markup_get_prop (node, "icon-stock-id"),
 
@@ -1084,7 +1084,7 @@ moo_ui_xml_insert_after (MooUiXml       *xml,
     if (!parent)
         parent = xml->priv->ui;
 
-    g_return_if_fail (!after || after->parent == parent);
+    g_return_if_fail (!after || gtk_widget_get_parent (after) == parent);
 
     if (!after)
         position = 0;
@@ -1118,7 +1118,7 @@ moo_ui_xml_insert_before (MooUiXml       *xml,
     if (!parent)
         parent = xml->priv->ui;
 
-    g_return_if_fail (!before || before->parent == parent);
+    g_return_if_fail (!before || gtk_widget_get_parent (before) == parent);
 
     if (!before)
         position = g_slist_length (parent->children);
@@ -1255,7 +1255,7 @@ node_is_ancestor (Node           *node,
     g_return_val_if_fail (node != NULL, FALSE);
     g_return_val_if_fail (ancestor != NULL, FALSE);
 
-    for (n = node; n != NULL; n = n->parent)
+    for (n = node; n != NULL; n = gtk_widget_get_parent (n))
         if (n == ancestor)
             return TRUE;
 
@@ -1328,7 +1328,7 @@ moo_ui_xml_remove_node (MooUiXml       *xml,
     node->parent = NULL;
 
     while (parent && parent->type == MOO_UI_NODE_PLACEHOLDER)
-        parent = parent->parent;
+        parent = gtk_widget_get_parent (parent);
 
     SLIST_FOREACH (xml->priv->toplevels, l)
     {
@@ -1471,7 +1471,7 @@ moo_ui_node_get_path (MooUiNode *node)
 
     while (node->parent && node->parent->parent)
     {
-        node = node->parent;
+        node = gtk_widget_get_parent (node);
         g_string_prepend_c (path, '/');
         g_string_prepend (path, node->name);
     }
@@ -1575,7 +1575,7 @@ get_effective_parent (Node *node)
 
     for (parent = node->parent;
          parent && parent->type == PLACEHOLDER;
-         parent = parent->parent) ;
+         parent = gtk_widget_get_parent (parent)) ;
 
     return parent;
 }
@@ -1976,7 +1976,7 @@ check_empty (Node           *parent,
         {
             GtkWidget *nw = toplevel_get_widget (toplevel, node);
 
-            if (nw && GTK_WIDGET_VISIBLE (nw))
+            if (nw && gtk_widget_get_visible (GTK_WIDGET (nw)))
             {
                 has_children = TRUE;
                 break;
@@ -2018,7 +2018,7 @@ check_separators (Node           *parent,
             case MOO_UI_NODE_ITEM:
                 widget = toplevel_get_widget (toplevel, node);
 
-                if (!widget || !GTK_WIDGET_VISIBLE (widget))
+                if (!widget || !gtk_widget_get_visible (widget))
                     continue;
 
                 if (!first)
@@ -2434,7 +2434,7 @@ effective_parent (Node *node)
     g_return_val_if_fail (node != NULL, NULL);
     parent = node->parent;
     while (parent && parent->type == PLACEHOLDER)
-        parent = parent->parent;
+        parent = gtk_widget_get_parent (parent);
     return parent;
 }
 

@@ -125,7 +125,7 @@
 </packing>
 </child>
 <child>
-<widget class="GtkComboBoxEntry" id="encoding_save">
+<widget class="GtkComboBoxText" id="encoding_save">
 <property name="visible">True</property>
 </widget>
 <packing>

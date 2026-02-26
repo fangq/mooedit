@@ -646,7 +646,7 @@ run_async (const char     *cmd_line,
 
         if (screen)
         {
-            result = gdk_spawn_on_screen (screen, working_dir, (char**) argv, real_env,
+            result = g_spawn_async (working_dir, (char**) argv, real_env,
                                           flags, NULL, NULL, NULL, &error);
         }
         else
@@ -816,6 +816,10 @@ _moo_command_exe_class_init (MooCommandExeClass *klass)
     G_OBJECT_CLASS(klass)->finalize = moo_command_exe_finalize;
     MOO_COMMAND_CLASS(klass)->run = moo_command_exe_run;
     MOO_COMMAND_CLASS(klass)->check_sensitive = moo_command_exe_check_sensitive;
+
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
 
     g_type_class_add_private (klass, sizeof (MooCommandExePrivate));
 

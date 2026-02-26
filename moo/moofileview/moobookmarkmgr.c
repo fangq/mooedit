@@ -530,7 +530,7 @@ make_menu (MooBookmarkMgr *mgr,
 
         action = moo_action_group_add_action (group, action_id,
                                               "label", bookmark->label ? bookmark->label : bookmark->display_path,
-                                              "stock-id", bookmark->icon_stock_id,
+                                              "icon-name", bookmark->icon_stock_id,
                                               "tooltip", bookmark->display_path,
                                               "no-accel", TRUE,
                                               NULL);
@@ -1040,12 +1040,12 @@ icon_data_func (G_GNUC_UNUSED GtkTreeViewColumn *column,
     if (!bookmark)
         g_object_set (cell,
                       "pixbuf", NULL,
-                      "stock-id", NULL,
+                      "icon-name", NULL,
                       NULL);
     else
         g_object_set (cell,
                       "pixbuf", bookmark->pixbuf,
-                      "stock-id", bookmark->icon_stock_id,
+                      "icon-name", bookmark->icon_stock_id,
                       "stock-size", GTK_ICON_SIZE_MENU,
                       NULL);
 
@@ -1413,10 +1413,10 @@ init_icon_combo (GtkComboBox *combo,
     if (!icon_store)
     {
         GtkWidget *dialog = GTK_WIDGET (xml->BkEditor);
-        gtk_widget_ensure_style (dialog);
+        /* GTK3: gtk_widget_ensure_style removed */
         icon_store = gtk_list_store_new (3, GDK_TYPE_PIXBUF,
                                          G_TYPE_STRING, G_TYPE_STRING);
-        fill_icon_store (icon_store, dialog->style);
+        fill_icon_store (icon_store, gtk_widget_get_style (dialog));
     }
 
     gtk_cell_layout_clear (GTK_CELL_LAYOUT (combo));
@@ -1502,7 +1502,7 @@ combo_icon_data_func (G_GNUC_UNUSED GtkCellLayout *cell_layout,
     }
 
     gtk_tree_model_get (model, iter, ICON_COLUMN_STOCK, &stock, -1);
-    g_object_set (cell, "stock-id", stock,
+    g_object_set (cell, "icon-name", stock,
                   "stock-size", GTK_ICON_SIZE_MENU, NULL);
     g_free (stock);
 }
@@ -1638,7 +1638,7 @@ icon_store_find_pixbuf (GtkListStore       *store,
 {
     GtkTreeModel *model = GTK_TREE_MODEL (store);
 
-    g_return_if_fail (GDK_IS_PIXBUF (pixbuf));
+    g_return_if_fail (GDK_KEY_IS_PIXBUF (pixbuf));
 
     if (gtk_tree_model_get_iter_first (model, iter)) do
     {

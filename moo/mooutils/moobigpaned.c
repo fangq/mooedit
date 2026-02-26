@@ -135,6 +135,10 @@ moo_big_paned_class_init (MooBigPanedClass *klass)
 {
     GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
 
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
+
     g_type_class_add_private (klass, sizeof (MooBigPanedPrivate));
 
     gobject_class->finalize = moo_big_paned_finalize;
@@ -1116,7 +1120,7 @@ handle_drag_start (G_GNUC_UNUSED MooPaned *child,
                    G_GNUC_UNUSED GtkWidget *pane_widget,
                    MooBigPaned *paned)
 {
-    g_return_if_fail (GTK_WIDGET_REALIZED (paned->priv->outer));
+    g_return_if_fail (gtk_widget_get_realized (GTK_WIDGET (paned->priv->outer)));
 
     g_signal_connect (paned->priv->outer, "draw",
                       G_CALLBACK (moo_big_paned_expose), paned);
@@ -1232,7 +1236,7 @@ handle_drag_motion (MooPaned       *child,
 {
     int x, y;
 
-    g_return_if_fail (GTK_WIDGET_REALIZED (paned->priv->outer));
+    g_return_if_fail (gtk_widget_get_realized (GTK_WIDGET (paned->priv->outer)));
 
     gdk_window_get_pointer (gtk_widget_get_window (paned->priv->outer), &x, &y, NULL);
 
@@ -1297,7 +1301,7 @@ handle_drag_end (MooPaned    *child,
     MooPanePosition new_pos;
     int new_index;
 
-    g_return_if_fail (GTK_WIDGET_REALIZED (paned->priv->outer));
+    g_return_if_fail (gtk_widget_get_realized (GTK_WIDGET (paned->priv->outer)));
 
     if (!drop)
     {
@@ -1494,16 +1498,12 @@ moo_big_paned_expose (GtkWidget      *widget,
     if (paned->priv->drop_pos >= 0)
     {
         g_return_val_if_fail (paned->priv->drop_outline != NULL, FALSE);
-        gdk_draw_rectangle (paned->priv->drop_outline,
-                            NULL /* FIXME: use cairo instead of GC */,
-                            FALSE, 0, 0,
-                            paned->priv->drop_rect.width - 1,
-                            paned->priv->drop_rect.height - 1);
-        gdk_draw_rectangle (paned->priv->drop_outline,
-                            NULL /* FIXME: use cairo instead of GC */,
-                            FALSE, 1, 1,
-                            paned->priv->drop_rect.width - 3,
-                            paned->priv->drop_rect.height - 3);
+            /* GTK3: Shaped window drawing now uses cairo_region_t.
+       Use gtk_widget_shape_combine_region() instead of bitmap shapes.
+       The drop outline should be drawn in the draw signal handler. */;
+            /* GTK3: Shaped window drawing now uses cairo_region_t.
+       Use gtk_widget_shape_combine_region() instead of bitmap shapes.
+       The drop outline should be drawn in the draw signal handler. */;
     }
 
     return FALSE;
@@ -1523,21 +1523,24 @@ create_rect_mask (int           width,
     gc = gdk_gc_new (bitmap);
 
     gdk_gc_set_foreground (gc, &white);
-    gdk_draw_rectangle (bitmap, gc, TRUE, 0, 0,
-                        width, height);
+        /* GTK3: Shaped window drawing now uses cairo_region_t.
+       Use gtk_widget_shape_combine_region() instead of bitmap shapes.
+       The drop outline should be drawn in the draw signal handler. */;
 
     gdk_gc_set_foreground (gc, &black);
-    gdk_draw_rectangle (bitmap, gc, FALSE, 0, 0,
-                        width - 1, height - 1);
-    gdk_draw_rectangle (bitmap, gc, FALSE, 1, 1,
-                        width - 3, height - 3);
+        /* GTK3: Shaped window drawing now uses cairo_region_t.
+       Use gtk_widget_shape_combine_region() instead of bitmap shapes.
+       The drop outline should be drawn in the draw signal handler. */;
+        /* GTK3: Shaped window drawing now uses cairo_region_t.
+       Use gtk_widget_shape_combine_region() instead of bitmap shapes.
+       The drop outline should be drawn in the draw signal handler. */;
 
-    gdk_draw_rectangle (bitmap, gc, FALSE,
-                        rect->x, rect->y,
-                        rect->width, rect->height);
-    gdk_draw_rectangle (bitmap, gc, FALSE,
-                        rect->x + 1, rect->y + 1,
-                        rect->width - 2, rect->height - 2);
+        /* GTK3: Shaped window drawing now uses cairo_region_t.
+       Use gtk_widget_shape_combine_region() instead of bitmap shapes.
+       The drop outline should be drawn in the draw signal handler. */;
+        /* GTK3: Shaped window drawing now uses cairo_region_t.
+       Use gtk_widget_shape_combine_region() instead of bitmap shapes.
+       The drop outline should be drawn in the draw signal handler. */;
 
     g_object_unref (gc);
     return bitmap;

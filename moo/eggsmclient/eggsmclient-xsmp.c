@@ -196,7 +196,7 @@ EggSMClient *
 egg_sm_client_xsmp_new (void)
 {
 #if GTK_CHECK_VERSION(3,0,0)
-  if (!GDK_IS_X11_DISPLAY_MANAGER (gdk_display_manager_get ()))
+  if (!GDK_KEY_IS_X11_DISPLAY_MANAGER (gdk_display_manager_get ()))
     return NULL;
 #endif
 

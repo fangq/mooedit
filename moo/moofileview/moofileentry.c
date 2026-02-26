@@ -746,7 +746,7 @@ completion_set_case_sensitive (MooFileEntryCompletion *cmpl,
 static gboolean
 completion_popup_shown (MooFileEntryCompletion *cmpl)
 {
-    return cmpl->priv->popup && GTK_WIDGET_MAPPED (cmpl->priv->popup);
+    return cmpl->priv->popup && gtk_widget_get_mapped (GTK_WIDGET (cmpl->priv->popup));
 }
 
 
@@ -775,15 +775,16 @@ completion_popup (MooFileEntryCompletion *cmpl)
 
     gtk_widget_show (cmpl->priv->popup);
 
-    gtk_widget_ensure_style (GTK_WIDGET (cmpl->priv->treeview));
-    gtk_widget_override_background_color (GTK_WIDGET (cmpl->priv->treeview), GTK_STATE_ACTIVE,
-                          &GTK_WIDGET(cmpl->priv->treeview)->style->base[GTK_STATE_SELECTED]);
-    gtk_widget_override_background_color (GTK_WIDGET (cmpl->priv->treeview), GTK_STATE_ACTIVE,
-                            &GTK_WIDGET(cmpl->priv->treeview)->style->base[GTK_STATE_SELECTED]);
+    /* GTK3: ensure-style call removed (no longer needed) */
+    gtk_widget_override_background_color (GTK_WIDGET (cmpl->priv->treeview), GTK_STATE_FLAG_ACTIVE,
+    /* TODO GTK3: Direct style field access removed. Use GtkStyleContext. */
+                          _moo_get_style_bg (cmpl->priv->treeview, GTK_STATE_FLAG_SELECTED));
+    /* TODO GTK3: Direct style field access removed. Use GtkStyleContext. */
+    gtk_widget_override_background_color (GTK_WIDGET (cmpl->priv->treeview), GTK_STATE_FLAG_ACTIVE,
+                            _moo_get_style_bg (cmpl->priv->treeview, GTK_STATE_FLAG_SELECTED));
 
     gtk_grab_add (cmpl->priv->popup);
-    gdk_pointer_grab (cmpl->priv->popup), gtk_widget_get_window(combo->priv->popup, TRUE,
-                      GDK_BUTTON_PRESS_MASK |
+    gdk_pointer_grab (gtk_widget_get_window (cmpl->priv->popup), TRUE,                      GDK_BUTTON_PRESS_MASK |
                               GDK_BUTTON_RELEASE_MASK |
                               GDK_POINTER_MOTION_MASK,
                       NULL, NULL, GDK_CURRENT_TIME);
@@ -818,7 +819,7 @@ completion_entry_focus_out (G_GNUC_UNUSED GtkEntry *entry,
 static void
 completion_popdown (MooFileEntryCompletion *cmpl)
 {
-    if (!GTK_WIDGET_MAPPED (cmpl->priv->popup))
+    if (!gtk_widget_get_mapped (GTK_WIDGET (cmpl->priv->popup)))
         return;
 
     DELETE_MEM (cmpl->priv->real_text);
@@ -851,11 +852,10 @@ completion_popup_button_press (G_GNUC_UNUSED GtkWidget *popup_window,
                                GdkEventButton *event,
                                MooFileEntryCompletion   *cmpl)
 {
-    if (gtk_widget_get_window (event) == cmpl->priv->popup), gtk_widget_get_window(combo->priv->popup)
-    {
+    if (event->window == gtk_widget_get_window (cmpl->priv->popup))    {
         gint width, height;
-        width = gdk_window_get_width (gtk_widget_get_window (event));
-        height = gdk_window_get_height (gtk_widget_get_window (event));
+        width = gdk_window_get_width (event->window);
+        height = gdk_window_get_height (event->window);
         if (event->x < 0 || event->x >= width ||
             event->y < 0 || event->y >= height)
         {
@@ -1135,7 +1135,7 @@ completion_popup_key_press (G_GNUC_UNUSED GtkWidget *popup,
 static gboolean
 resize_popup_idle (MooFileEntryCompletion *cmpl)
 {
-    if (cmpl->priv->popup && GTK_WIDGET_MAPPED (cmpl->priv->popup))
+    if (cmpl->priv->popup && gtk_widget_get_mapped (GTK_WIDGET (cmpl->priv->popup)))
         completion_resize_popup (cmpl);
     cmpl->priv->resize_popup_idle = 0;
     return FALSE;
@@ -1210,7 +1210,7 @@ completion_create_popup (MooFileEntryCompletion *cmpl)
     gtk_widget_set_size_request (cmpl->priv->popup, -1, -1);
     gtk_window_set_default_size (GTK_WINDOW (cmpl->priv->popup), 1, 1);
     gtk_window_set_resizable (GTK_WINDOW (cmpl->priv->popup), FALSE);
-    gtk_widget_add_events (cmpl->priv->popup, GDK_PRESS_MASK | GDK_BUTTON_PRESS_MASK);
+    gtk_widget_add_events (cmpl->priv->popup, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_PRESS_MASK);
 
     cell = gtk_cell_renderer_text_new ();
     cmpl->priv->column = gtk_tree_view_column_new ();
@@ -1354,7 +1354,7 @@ completion_resize_popup (MooFileEntryCompletion *cmpl)
     gboolean above;
     gint width, vert_separator = 0;
 
-    g_return_val_if_fail (GTK_WIDGET_REALIZED (cmpl->priv->entry), FALSE);
+    g_return_val_if_fail (gtk_widget_get_realized (GTK_WIDGET (cmpl->priv->entry)), FALSE);
 
     if (cmpl->priv->resize_popup_idle)
         g_source_remove (cmpl->priv->resize_popup_idle);
@@ -1382,8 +1382,8 @@ completion_resize_popup (MooFileEntryCompletion *cmpl)
                                  items * (height + vert_separator));
 
     gtk_widget_set_size_request (cmpl->priv->popup, -1, -1);
-    gtk_widget_size_request (cmpl->priv->popup, &popup_req);
-    gtk_widget_size_request (widget, &entry_req);
+    gtk_widget_get_preferred_size (cmpl->priv->popup, &popup_req, NULL);
+    gtk_widget_get_preferred_size (widget, &entry_req, NULL);
 
     if (x < monitor.x)
         x = monitor.x;
@@ -1573,7 +1573,7 @@ static void     moo_file_entry_get_property (GObject        *object,
                                              guint           prop_id,
                                              GValue         *value,
                                              GParamSpec     *pspec);
-static void     moo_file_entry_destroy      (GInitiallyUnowned      *object);
+static void moo_file_entry_destroy (GtkWidget *object);
 static gboolean moo_file_entry_key_press    (GtkWidget      *widget,
                                              GdkEventKey    *event);
 
@@ -1590,12 +1590,11 @@ static void
 _moo_file_entry_class_init (MooFileEntryClass *klass)
 {
     GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
-    GObjectClass *gtkobject_class = G_OBJECT_CLASS(klass);
     GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
 
     gobject_class->set_property = moo_file_entry_set_property;
     gobject_class->get_property = moo_file_entry_get_property;
-    gtkobject_class->destroy = moo_file_entry_destroy;
+    widget_class->destroy = moo_file_entry_destroy;
     widget_class->key_press_event = moo_file_entry_key_press;
 
     g_object_class_install_property (gobject_class,
@@ -1617,8 +1616,7 @@ _moo_file_entry_init (G_GNUC_UNUSED MooFileEntry *entry)
 }
 
 
-static void
-moo_file_entry_destroy (GInitiallyUnowned *object)
+static void moo_file_entry_destroy (GtkWidget *object)
 {
     MooFileEntry *entry = MOO_FILE_ENTRY (object);
 
@@ -1629,7 +1627,7 @@ moo_file_entry_destroy (GInitiallyUnowned *object)
         entry->completion = NULL;
     }
 
-    G_OBJECT_CLASS(_moo_file_entry_parent_class)->destroy (object);
+    GTK_WIDGET_CLASS(_moo_file_entry_parent_class)->destroy (object);
 }
 
 

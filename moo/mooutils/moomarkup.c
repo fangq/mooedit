@@ -234,7 +234,7 @@ end_element (G_GNUC_UNUSED GMarkupParseContext    *ctx,
 {
     g_assert (state->current->type == MOO_MARKUP_ELEMENT_NODE);
     collect_text_content (MOO_MARKUP_ELEMENT (state->current));
-    g_assert (state->current->parent != NULL);
+    g_assert (state->parent != NULL);
     state->current = state->current->parent;
 }
 

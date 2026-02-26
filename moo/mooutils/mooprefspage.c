@@ -86,6 +86,10 @@ moo_prefs_page_class_init (MooPrefsPageClass *klass)
     klass->init = moo_prefs_page_init_sig;
     klass->apply = moo_prefs_page_apply;
 
+    /* TODO GTK3: g_type_class_add_private is deprecated.
+
+       Consider using G_DEFINE_TYPE_WITH_PRIVATE instead. */
+
     g_type_class_add_private (klass, sizeof (MooPrefsPagePrivate));
 
     g_object_class_install_property (gobject_class, PROP_LABEL,
@@ -177,7 +181,7 @@ moo_prefs_page_set_property (GObject      *object,
         case PROP_ICON:
             if (page->priv->icon)
                 g_object_unref (G_OBJECT (page->priv->icon));
-            page->priv->icon = GDK_PIXBUF (g_value_dup_object (value));
+            page->priv->icon = GDK_KEY_PIXBUF (g_value_dup_object (value));
             g_object_notify (G_OBJECT (page), "icon");
             break;
 

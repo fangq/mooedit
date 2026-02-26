@@ -324,7 +324,7 @@ line_get_index (BTData *line)
         }
 
         g_assert (i < node->parent->n_children);
-        node = node->parent;
+        node = gtk_widget_get_parent (node);
         bottom = FALSE;
     }
 

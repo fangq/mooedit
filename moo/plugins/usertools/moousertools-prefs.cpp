@@ -479,7 +479,7 @@ command_page_init (MooPrefsPage    *page,
                                        GTK_WIDGET (gxml->up),
                                        GTK_WIDGET (gxml->down));
     g_object_set_data_full (G_OBJECT (page), "moo-tree-helper", helper, g_object_unref);
-    g_signal_connect_swapped (page, "destroy", G_CALLBACK (gtk_object_destroy), helper);
+    g_signal_connect_swapped (page, "destroy", G_CALLBACK (gtk_widget_destroy), helper);
 
     g_signal_connect_swapped (helper, "new-row", G_CALLBACK (new_row), page);
     g_signal_connect_swapped (helper, "delete-row", G_CALLBACK (delete_row), page);
@@ -561,7 +561,7 @@ moo_user_tools_prefs_page_new (void)
     PrefsPageXml *gxml;
     CommandXml *cxml;
 
-    page = moo_prefs_page_new (_("Tools"), GTK_STOCK_EXECUTE);
+    page = moo_prefs_page_new (_("Tools"), "system-run");
     gxml = prefs_page_xml_new_with_root (page);
 
     g_signal_connect_swapped (page, "init", G_CALLBACK (main_page_init), gxml);

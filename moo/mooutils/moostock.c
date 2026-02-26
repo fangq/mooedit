@@ -202,30 +202,30 @@ _moo_stock_init (void)
 
     gtk_stock_add_static (stock_items, G_N_ELEMENTS (stock_items));
 
-    register_stock_icon_alias (factory, GTK_STOCK_DIRECTORY, MOO_STOCK_NEW_FOLDER, "folder_new");
+    register_stock_icon_alias (factory, "folder", MOO_STOCK_NEW_FOLDER, "folder_new");
     add_icon_name (factory, MOO_STOCK_NEW_FOLDER, "folder-new");
-    register_stock_icon_alias (factory, GTK_STOCK_NEW, MOO_STOCK_NEW_WINDOW, "window_new");
+    register_stock_icon_alias (factory, "document-new", MOO_STOCK_NEW_WINDOW, "window_new");
     add_icon_name (factory, MOO_STOCK_NEW_WINDOW, "window-new");
 
-    register_stock_icon_alias (factory, GTK_STOCK_SAVE, MOO_STOCK_SAVE_SELECTED, "filesave");
+    register_stock_icon_alias (factory, "document-save", MOO_STOCK_SAVE_SELECTED, "filesave");
 
-    register_stock_icon_alias (factory, GTK_STOCK_COPY, MOO_STOCK_FILE_COPY, "editcopy");
-    register_stock_icon_alias (factory, GTK_STOCK_SAVE, MOO_STOCK_FILE_SAVE_COPY, "filesave");
-    register_stock_icon_alias (factory, GTK_STOCK_SAVE_AS, MOO_STOCK_FILE_SAVE_AS, "filesaveas");
+    register_stock_icon_alias (factory, "edit-copy", MOO_STOCK_FILE_COPY, "editcopy");
+    register_stock_icon_alias (factory, "document-save", MOO_STOCK_FILE_SAVE_COPY, "filesave");
+    register_stock_icon_alias (factory, "document-save-as", MOO_STOCK_FILE_SAVE_AS, "filesaveas");
 
-    register_stock_icon_alias (factory, GTK_STOCK_NEW, MOO_STOCK_NEW_PROJECT, NULL);
-    register_stock_icon_alias (factory, GTK_STOCK_OPEN, MOO_STOCK_OPEN_PROJECT, NULL);
-    register_stock_icon_alias (factory, GTK_STOCK_CLOSE, MOO_STOCK_CLOSE_PROJECT, NULL);
-    register_stock_icon_alias (factory, GTK_STOCK_PREFERENCES, MOO_STOCK_PROJECT_OPTIONS, NULL);
-    register_stock_icon_alias (factory, GTK_STOCK_GOTO_BOTTOM, MOO_STOCK_BUILD, NULL);
-    register_stock_icon_alias (factory, GTK_STOCK_GO_DOWN, MOO_STOCK_COMPILE, NULL);
-    register_stock_icon_alias (factory, GTK_STOCK_EXECUTE, MOO_STOCK_EXECUTE, NULL);
+    register_stock_icon_alias (factory, "document-new", MOO_STOCK_NEW_PROJECT, NULL);
+    register_stock_icon_alias (factory, "document-open", MOO_STOCK_OPEN_PROJECT, NULL);
+    register_stock_icon_alias (factory, "window-close", MOO_STOCK_CLOSE_PROJECT, NULL);
+    register_stock_icon_alias (factory, "preferences-system", MOO_STOCK_PROJECT_OPTIONS, NULL);
+    register_stock_icon_alias (factory, "go-bottom", MOO_STOCK_BUILD, NULL);
+    register_stock_icon_alias (factory, "go-down", MOO_STOCK_COMPILE, NULL);
+    register_stock_icon_alias (factory, "system-run", MOO_STOCK_EXECUTE, NULL);
 
-    register_stock_icon_alias (factory, GTK_STOCK_FIND, MOO_STOCK_FIND_IN_FILES, NULL);
-    register_stock_icon_alias (factory, GTK_STOCK_FIND, MOO_STOCK_FIND_FILE, NULL);
+    register_stock_icon_alias (factory, "edit-find", MOO_STOCK_FIND_IN_FILES, NULL);
+    register_stock_icon_alias (factory, "edit-find", MOO_STOCK_FIND_FILE, NULL);
 
-    register_stock_icon_alias (factory, GTK_STOCK_ABOUT, MOO_STOCK_EDIT_BOOKMARK, "bookmark");
-    register_stock_icon_alias (factory, GTK_STOCK_ABOUT, MOO_STOCK_FILE_BOOKMARK, "gnome-fs-bookmark");
+    register_stock_icon_alias (factory, "help-about", MOO_STOCK_EDIT_BOOKMARK, "bookmark");
+    register_stock_icon_alias (factory, "help-about", MOO_STOCK_FILE_BOOKMARK, "gnome-fs-bookmark");
     add_icon_name (factory, MOO_STOCK_FILE_BOOKMARK, "bookmark");
 
     g_free (icon_theme_name);
