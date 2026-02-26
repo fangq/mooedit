@@ -318,6 +318,30 @@ enum {
 static guint signals[NUM_SIGNALS];
 static gpointer moo_notebook_grand_parent_class;
 
+
+/* GTK3: get_preferred_width/height implementations */
+static void
+moo_notebook_get_preferred_width (GtkWidget *widget,
+                                   gint      *minimum,
+                                   gint      *natural)
+{
+    GtkRequisition req = {0, 0};
+    moo_notebook_size_request (widget, &req);
+    if (minimum) *minimum = req.width;
+    if (natural) *natural = req.width;
+}
+
+static void
+moo_notebook_get_preferred_height (GtkWidget *widget,
+                                    gint      *minimum,
+                                    gint      *natural)
+{
+    GtkRequisition req = {0, 0};
+    moo_notebook_size_request (widget, &req);
+    if (minimum) *minimum = req.height;
+    if (natural) *natural = req.height;
+}
+
 static void moo_notebook_class_init (MooNotebookClass *klass)
 {
     GObjectClass *gobject_class = G_OBJECT_CLASS (klass);

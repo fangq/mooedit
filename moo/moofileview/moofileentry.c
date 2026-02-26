@@ -29,6 +29,21 @@
 #include <gtk/gtk.h>
 #include "mooutils/moo-gtk3-compat.h"
 
+/* GTK3: _moo_get_style_bg reimplemented using GtkStyleContext */
+static inline const GdkRGBA *
+_moo_get_style_bg (gpointer widget, GtkStateFlags state)
+{
+    static GdkRGBA color;
+    GtkStyleContext *ctx = gtk_widget_get_style_context (GTK_WIDGET (widget));
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+    gtk_style_context_get_background_color (ctx, state, &color);
+    G_GNUC_END_IGNORE_DEPRECATIONS
+    return &color;
+}
+
+
+
+
 #define MOD_MASK() (gtk_accelerator_get_default_mod_mask ())
 
 #define COMPLETION_POPUP_LEN 15

@@ -969,6 +969,7 @@ static void         get_drop_area           (MooBigPaned    *paned,
 // static void         invalidate_drop_outline (MooBigPaned    *paned);
 
 
+/* GTK3: gdk_region_polygon removed. Approximate polygon with bounding rect. */
 static cairo_region_t *
 region_6 (int x0, int y0,
           int x1, int y1,
@@ -977,28 +978,43 @@ region_6 (int x0, int y0,
           int x4, int y4,
           int x5, int y5)
 {
-    GdkPoint points[6];
-    points[0].x = x0; points[0].y = y0;
-    points[1].x = x1; points[1].y = y1;
-    points[2].x = x2; points[2].y = y2;
-    points[3].x = x3; points[3].y = y3;
-    points[4].x = x4; points[4].y = y4;
-    points[5].x = x5; points[5].y = y5;
-    return gdk_region_polygon (points, 6, CAIRO_FILL_RULE_WINDING);
+    int xs[] = {x0, x1, x2, x3, x4, x5};
+    int ys[] = {y0, y1, y2, y3, y4, y5};
+    int min_x = x0, max_x = x0, min_y = y0, max_y = y0;
+    int i;
+    cairo_rectangle_int_t rect;
+    for (i = 1; i < 6; i++) {
+        if (xs[i] < min_x) min_x = xs[i];
+        if (xs[i] > max_x) max_x = xs[i];
+        if (ys[i] < min_y) min_y = ys[i];
+        if (ys[i] > max_y) max_y = ys[i];
+    }
+    rect.x = min_x; rect.y = min_y;
+    rect.width = max_x - min_x; rect.height = max_y - min_y;
+    return cairo_region_create_rectangle (&rect);
 }
 
+/* GTK3: gdk_region_polygon removed. Approximate polygon with bounding rect. */
 static cairo_region_t *
 region_4 (int x0, int y0,
           int x1, int y1,
           int x2, int y2,
           int x3, int y3)
 {
-    GdkPoint points[4];
-    points[0].x = x0; points[0].y = y0;
-    points[1].x = x1; points[1].y = y1;
-    points[2].x = x2; points[2].y = y2;
-    points[3].x = x3; points[3].y = y3;
-    return gdk_region_polygon (points, 4, CAIRO_FILL_RULE_WINDING);
+    int xs[] = {x0, x1, x2, x3};
+    int ys[] = {y0, y1, y2, y3};
+    int min_x = x0, max_x = x0, min_y = y0, max_y = y0;
+    int i;
+    cairo_rectangle_int_t rect;
+    for (i = 1; i < 4; i++) {
+        if (xs[i] < min_x) min_x = xs[i];
+        if (xs[i] > max_x) max_x = xs[i];
+        if (ys[i] < min_y) min_y = ys[i];
+        if (ys[i] > max_y) max_y = ys[i];
+    }
+    rect.x = min_x; rect.y = min_y;
+    rect.width = max_x - min_x; rect.height = max_y - min_y;
+    return cairo_region_create_rectangle (&rect);
 }
 
 
@@ -1509,41 +1525,24 @@ moo_big_paned_expose (GtkWidget      *widget,
     return FALSE;
 }
 
-static cairo_surface_t *
-create_rect_mask (int           width,
-                  int           height,
-                  GdkRectangle *rect)
+/* GTK3: create_rect_mask rewritten using cairo_region_t */
+static cairo_region_t *
+create_rect_region (int           width,
+                    int           height,
+                    GdkRectangle *rect)
 {
-    cairo_surface_t *bitmap;
-    cairo_t *gc;
-    GdkRGBA white = {0, 0, 0, 0};
-    GdkRGBA black = {1, 1, 1, 1};
+    cairo_region_t *region;
+    cairo_rectangle_int_t full = {0, 0, width, height};
+    cairo_rectangle_int_t hole;
 
-    bitmap = gdk_pixmap_new (NULL, width, height, 1);
-    gc = gdk_gc_new (bitmap);
+    region = cairo_region_create_rectangle (&full);
 
-    gdk_gc_set_foreground (gc, &white);
-        /* GTK3: Shaped window drawing now uses cairo_region_t.
-       Use gtk_widget_shape_combine_region() instead of bitmap shapes.
-       The drop outline should be drawn in the draw signal handler. */;
+    /* Cut out the button rectangle (inner hole) */
+    hole.x = rect->x; hole.y = rect->y;
+    hole.width = rect->width; hole.height = rect->height;
+    cairo_region_subtract_rectangle (region, &hole);
 
-    gdk_gc_set_foreground (gc, &black);
-        /* GTK3: Shaped window drawing now uses cairo_region_t.
-       Use gtk_widget_shape_combine_region() instead of bitmap shapes.
-       The drop outline should be drawn in the draw signal handler. */;
-        /* GTK3: Shaped window drawing now uses cairo_region_t.
-       Use gtk_widget_shape_combine_region() instead of bitmap shapes.
-       The drop outline should be drawn in the draw signal handler. */;
-
-        /* GTK3: Shaped window drawing now uses cairo_region_t.
-       Use gtk_widget_shape_combine_region() instead of bitmap shapes.
-       The drop outline should be drawn in the draw signal handler. */;
-        /* GTK3: Shaped window drawing now uses cairo_region_t.
-       Use gtk_widget_shape_combine_region() instead of bitmap shapes.
-       The drop outline should be drawn in the draw signal handler. */;
-
-    g_object_unref (gc);
-    return bitmap;
+    return region;
 }
 
 static void
@@ -1551,7 +1550,7 @@ create_drop_outline (MooBigPaned *paned)
 {
     static GdkWindowAttr attributes;
     int attributes_mask;
-    cairo_surface_t *mask;
+    cairo_region_t *mask;
     GdkRectangle button_rect;
 
     g_return_if_fail (paned->priv->drop_outline == NULL);
@@ -1574,11 +1573,11 @@ create_drop_outline (MooBigPaned *paned)
     button_rect = paned->priv->drop_button_rect;
     button_rect.x -= paned->priv->drop_rect.x;
     button_rect.y -= paned->priv->drop_rect.y;
-    mask = create_rect_mask (paned->priv->drop_rect.width,
+    mask = create_rect_region (paned->priv->drop_rect.width,
                              paned->priv->drop_rect.height,
                              &button_rect);
-    gdk_window_shape_combine_mask (paned->priv->drop_outline, mask, 0, 0);
-    g_object_unref (mask);
+    gdk_window_shape_combine_region (paned->priv->drop_outline, mask, 0, 0);
+    cairo_region_destroy (mask);
 
     gdk_window_show (paned->priv->drop_outline);
 }

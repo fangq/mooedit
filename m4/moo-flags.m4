@@ -199,7 +199,7 @@ AC_DEFUN_ONCE([MOO_AC_FLAGS],[
   MOO_CFLAGS="$MOO_CFLAGS $GTK_CFLAGS"
   MOO_CXXFLAGS="$MOO_CXXFLAGS $GTK_CFLAGS"
   MOO_CPPFLAGS="$MOO_CPPFLAGS -I$moo_top_src_dir/moo -DXDG_PREFIX=_moo_edit_xdg -DG_LOG_DOMAIN=\\\"Moo\\\""
-  MOO_LIBS="$MOO_LIBS $GTK_LIBS $GTHREAD_LIBS $GMODULE_LIBS $LIBM"
+  MOO_LIBS="$MOO_LIBS $GTK_LIBS $GTHREAD_LIBS $GMODULE_LIBS $LIBM -lX11 -lSM -lICE"
 
   if test "x$MOO_STRICT_MODE" != "xyes"; then
     # G_DISABLE_DEPRECATED (or rather lack of it) is not respected anymore. Glib wants you

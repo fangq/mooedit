@@ -1782,7 +1782,7 @@ _moo_create_small_icon (MooSmallIcon icon)
 }
 
 GtkWidget *
-_moocreate_arrow_icon (GtkArrowType arrow_type)
+_moo_create_arrow_icon (GtkArrowType arrow_type)
 {
     MooIconWidget *icon_widget;
     IconType icon_type;
