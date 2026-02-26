@@ -371,7 +371,7 @@ get_color_by_name (GtkSourceStyleScheme *scheme,
 	{
 		GdkRGBA dummy;
 
-		if (gdk_rgba_parse (name + 1, &dummy))
+		if (gdk_rgba_parse (&dummy, name + 1))
 			color = name + 1;
 		else if (gdk_rgba_parse (&dummy, name))
 			color = name;
@@ -549,7 +549,7 @@ get_color (GtkSourceStyle *style,
 
 	if (style->mask & mask)
 	{
-		if (color == NULL || !gdk_rgba_parse (color, dest))
+		if (color == NULL || !gdk_rgba_parse (dest, color))
 		{
 			g_warning ("invalid color '%s'",
 				   color != NULL ? color : "(null)");

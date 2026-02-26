@@ -37,6 +37,12 @@
 #include <gtk/gtk.h>
 #include <string.h>
 
+/* GTK3: prevent parent macro conflict */
+#ifdef parent
+#undef parent
+#endif
+
+
 
 #define REPORT_UNKNOWN_ACTIONS 0
 
@@ -1328,7 +1334,7 @@ moo_ui_xml_remove_node (MooUiXml       *xml,
     node->parent = NULL;
 
     while (parent && parent->type == MOO_UI_NODE_PLACEHOLDER)
-        parent = gtk_widget_get_parent (parent);
+        parent = parent->parent;
 
     SLIST_FOREACH (xml->priv->toplevels, l)
     {
@@ -1575,7 +1581,7 @@ get_effective_parent (Node *node)
 
     for (parent = node->parent;
          parent && parent->type == PLACEHOLDER;
-         parent = gtk_widget_get_parent (parent)) ;
+         parent = parent->parent) ;
 
     return parent;
 }
@@ -2197,7 +2203,7 @@ create_tool_item (MooUiXml       *xml,
         if (_moo_action_get_has_submenu (action))
         {
             tool_item = GTK_WIDGET (gtk_menu_tool_button_new (NULL, NULL));
-            gtk_activatable_set_related_action (action, tool_item);
+            gtk_activatable_set_related_action (GTK_ACTIVATABLE (tool_item), action);
         }
         else
         {
@@ -2434,7 +2440,7 @@ effective_parent (Node *node)
     g_return_val_if_fail (node != NULL, NULL);
     parent = node->parent;
     while (parent && parent->type == PLACEHOLDER)
-        parent = gtk_widget_get_parent (parent);
+        parent = parent->parent;
     return parent;
 }
 
