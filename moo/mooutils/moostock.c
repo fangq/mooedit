@@ -23,6 +23,9 @@
 #include "mooutils/moo-gtk3-compat.h"
 #include <string.h>
 
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+
+
 #define REAL_SMALL 6
 
 
@@ -129,7 +132,16 @@ add_icon_name (GtkIconFactory *factory,
     g_return_if_fail (icon_name != NULL);
 
     set = gtk_icon_factory_lookup (factory, stock_id);
-    g_return_if_fail (set != NULL);
+
+    if (set == NULL)
+    {
+        /* GTK3: stock_id not yet registered; create a new set */
+        set = gtk_icon_set_new ();
+        add_icon_name_if_present (set, icon_name);
+        gtk_icon_factory_add (factory, stock_id, set);
+        gtk_icon_set_unref (set);
+        return;
+    }
 
     add_icon_name_if_present (set, icon_name);
 }
@@ -143,15 +155,30 @@ register_stock_icon_alias (GtkIconFactory *factory,
 {
     GtkIconSet *set;
 
-    /* must use gtk_icon_factory_lookup_default() to initialize gtk icons */
+    /* GTK3: gtk_icon_factory_lookup_default returns NULL for removed stock icons.
+       Fall back to creating a new icon set from the theme. */
     set = gtk_icon_factory_lookup_default (stock_id);
-    g_return_if_fail (set != NULL);
 
-    set = gtk_icon_set_copy (set);
+    if (set != NULL)
+    {
+        set = gtk_icon_set_copy (set);
+    }
+    else
+    {
+        /* Create a new set; try stock_id as an icon theme name */
+        set = gtk_icon_set_new ();
+        add_icon_name_if_present (set, stock_id);
+    }
+
     gtk_icon_factory_add (factory, new_stock_id, set);
 
     if (icon_name)
-        add_icon_name (factory, new_stock_id, icon_name);
+    {
+        /* add_icon_name requires the set to already be in the factory */
+        GtkIconSet *existing = gtk_icon_factory_lookup (factory, new_stock_id);
+        if (existing)
+            add_icon_name_if_present (existing, icon_name);
+    }
 
     gtk_icon_set_unref (set);
 }
@@ -231,3 +258,5 @@ _moo_stock_init (void)
     g_free (icon_theme_name);
     g_object_unref (G_OBJECT (factory));
 }
+
+G_GNUC_END_IGNORE_DEPRECATIONS
