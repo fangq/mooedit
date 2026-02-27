@@ -161,7 +161,7 @@ moo_combo_get_type (void)
             NULL
         };
 
-        type = g_type_register_static (GTK_TYPE_TABLE, "MooCombo", &info, (GTypeFlags) 0);
+        type = g_type_register_static (GTK_TYPE_GRID, "MooCombo", &info, (GTypeFlags) 0);
         g_type_add_interface_static (type, GTK_TYPE_CELL_LAYOUT, &cell_layout_info);
     }
 
@@ -306,7 +306,7 @@ moo_combo_init (MooCombo *combo)
     gtk_grid_attach (GTK_GRID (combo), combo->entry,
                   0, 0, 1, 1);
 gtk_widget_set_hexpand (combo->entry, TRUE);
-gtk_widget_set_valign (combo->entry, GTK_ALIGN_CENTER);
+gtk_widget_set_valign (combo->entry, GTK_ALIGN_FILL);
     gtk_size_group_add_widget (combo->priv->size_group, combo->entry);
 
     g_signal_connect_swapped (combo->entry, "changed",
@@ -328,8 +328,8 @@ create_arrow_button (MooCombo       *combo)
     gtk_size_group_add_widget (combo->priv->size_group, combo->priv->button);
     gtk_grid_attach (GTK_GRID (combo), combo->priv->button,
                   1, 0, 1, 1);
-gtk_widget_set_halign (combo->priv->button, GTK_ALIGN_CENTER);
-gtk_widget_set_valign (combo->priv->button, GTK_ALIGN_CENTER);
+gtk_widget_set_halign (combo->priv->button, GTK_ALIGN_END);
+gtk_widget_set_valign (combo->priv->button, GTK_ALIGN_FILL);
 
     g_signal_connect_swapped (combo->priv->button, "clicked",
                               G_CALLBACK (button_clicked), combo);

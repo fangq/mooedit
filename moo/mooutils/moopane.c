@@ -1659,8 +1659,8 @@ draw_pixbuf (GtkWidget      *widget,
     pixbuf_width = gdk_pixbuf_get_width (pixbuf);
     pixbuf_height = gdk_pixbuf_get_height (pixbuf);
 
-    x = moo_widget_get_alloc(widget).x + (moo_widget_get_alloc(widget).width - pixbuf_width) / 2;
-    y = moo_widget_get_alloc(widget).y + (moo_widget_get_alloc(widget).height - pixbuf_height) / 2;
+    x = (moo_widget_get_alloc(widget).width - pixbuf_width) / 2;
+    y = (moo_widget_get_alloc(widget).height - pixbuf_height) / 2;
 
         {
         gdk_cairo_set_source_pixbuf (cr, pixbuf, x, y);
@@ -1696,8 +1696,8 @@ draw_arrow (GtkWidget      *widget,
 
     width = 3 * moo_widget_get_alloc(widget).width / 4;
     height = 3 * moo_widget_get_alloc(widget).height / 4;
-    x = moo_widget_get_alloc(widget).x + width / 6;
-    y = moo_widget_get_alloc(widget).y + height / 6;
+    x = width / 6;
+    y = height / 6;
 
     gtk_paint_arrow (gtk_widget_get_style (widget),
                      gtk_widget_get_window (widget),

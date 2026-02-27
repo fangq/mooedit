@@ -784,6 +784,8 @@ medit_main (int argc, char *argv[])
 
     gtk_init (NULL, NULL);
 
+    signal(SIGINT, SIG_DFL); /* Allow Ctrl+C to kill the process */
+
     install_log_handlers ();
 
     app = MOO_APP (g_object_new (medit_app_get_type (),

@@ -130,6 +130,16 @@ _moo_module_init (void)
     _moo_add_constants (_moo_module, "MOO_");
     if (PyErr_Occurred ()) PyErr_Clear ();
 
+    /* GTK3: Pre-import gi.repository.Gtk so PyGObject initializes
+     * proper GTK types before _moo registers its custom types */
+    PyRun_SimpleString(
+        "import gi\n"
+        "gi.require_version('Gtk', '3.0')\n"
+        "gi.require_version('Gdk', '3.0')\n"
+        "from gi.repository import Gtk\n"
+    );
+    if (PyErr_Occurred ()) PyErr_Clear ();
+
     _moo_register_classes (PyModule_GetDict (_moo_module));
     if (PyErr_Occurred ()) PyErr_Clear ();
 

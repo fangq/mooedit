@@ -625,6 +625,7 @@ moo_paned_realize (GtkWidget *widget)
                                               &attributes, attributes_mask);
     gtk_widget_set_window (widget, paned->priv->bin_window);
     gtk_widget_register_window (widget, paned->priv->bin_window);
+    gdk_window_set_background_rgba (paned->priv->bin_window, &(GdkRGBA){0,0,0,0});
 
     /* GTK3: style_attach removed */
         /* GTK3: background from CSS */
@@ -709,6 +710,7 @@ realize_handle (MooPaned *paned)
     paned->priv->handle_window = gdk_window_new (paned->priv->pane_window,
             &attributes, attributes_mask);
     gtk_widget_register_window (widget, paned->priv->handle_window);
+    gdk_window_set_background_rgba (paned->priv->handle_window, &(GdkRGBA){0,0,0,0});
         /* GTK3: background from CSS */
 
     gdk_cursor_unref (attributes.cursor);
@@ -779,6 +781,7 @@ realize_pane (MooPaned *paned)
     paned->priv->pane_window =
             gdk_window_new (gtk_widget_get_window (widget), &attributes, attributes_mask);
     gtk_widget_register_window (widget, paned->priv->pane_window);
+    gdk_window_set_background_rgba (paned->priv->pane_window, &(GdkRGBA){0,0,0,0});
         /* GTK3: background from CSS */
 
     realize_handle (paned);
@@ -2870,10 +2873,33 @@ moo_paned_open_pane_real (MooPaned *paned,
     if (_moo_pane_get_detached (pane))
         moo_paned_attach_pane (paned, pane);
 
+    gtk_widget_style_get (GTK_WIDGET (paned), "handle_size", &paned->priv->handle_size, NULL);
+    if (paned->priv->handle_size <= 0) paned->priv->handle_size = 5;
     paned->priv->handle_visible = TRUE;
     paned->priv->pane_widget_visible = TRUE;
     if (paned->priv->position > 0)
         paned->priv->pane_widget_size = paned->priv->position;
+    else
+        paned->priv->pane_widget_size = 200;
+    if (gtk_widget_get_realized (GTK_WIDGET (paned)))
+    {
+        if (paned->priv->pane_window)
+            gdk_window_show (paned->priv->pane_window);
+        if (paned->priv->handle_window)
+            gdk_window_show (paned->priv->handle_window);
+        gtk_widget_queue_resize (GTK_WIDGET (paned));
+    }
+
+
+
+
+
+
+
+
+
+
+
 
     /* XXX it's wrong, it should look if button was clicked */
     if (!paned->priv->dont_move_focus &&

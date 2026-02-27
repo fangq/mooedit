@@ -426,7 +426,7 @@ moo_save_changes_dialog (const char *display_name,
         _("If you don't save, changes will be discarded"));
 
     gtk_dialog_add_buttons (dialog,
-        "edit-delete", GTK_RESPONSE_NO,
+        "_Delete", GTK_RESPONSE_NO,
         "_Cancel", GTK_RESPONSE_CANCEL,
         "_Save", GTK_RESPONSE_YES,
         NULL);

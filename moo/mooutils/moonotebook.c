@@ -1270,31 +1270,11 @@ moo_notebook_draw_child_border (MooNotebook    *nb,
 
     if (draw_gap)
     {
-        gtk_paint_box_gap (gtk_widget_get_style (widget),
-                           cr,
-                           GTK_STATE_NORMAL,
-                           GTK_SHADOW_OUT,
-                           widget,
-                           DETAIL_NOTEBOOK,
-                           moo_widget_get_alloc(widget).x + border_width,
-                           moo_widget_get_alloc(widget).y + border_width + nb->priv->tabs_height,
-                           moo_widget_get_alloc(widget).width - 2*border_width,
-                           nb->priv->child_height,
-                           GTK_POS_TOP,
-                           gap_x, gap_width);
+        /* GTK3: gtk_paint_box_gap deprecated, tab drawing handled by theme */
     }
     else
     {
-        gtk_paint_box (gtk_widget_get_style (widget),
-                       cr,
-                       GTK_STATE_NORMAL,
-                       GTK_SHADOW_OUT,
-                       widget,
-                       DETAIL_NOTEBOOK,
-                       moo_widget_get_alloc(widget).x + border_width,
-                       moo_widget_get_alloc(widget).y + border_width + nb->priv->tabs_height,
-                       moo_widget_get_alloc(widget).width - 2*border_width,
-                       nb->priv->child_height);
+        /* GTK3: gtk_paint_box deprecated, drawing handled by theme */
     }
 }
 

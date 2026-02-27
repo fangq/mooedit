@@ -3231,7 +3231,7 @@ ask_delete_files (MooFileView *fileview,
     moo_window_set_parent (dialog, GTK_WIDGET (fileview));
     gtk_dialog_add_buttons (GTK_DIALOG (dialog),
                             "_Cancel", GTK_RESPONSE_CANCEL,
-                            "edit-delete", GTK_RESPONSE_OK, NULL);
+                            "_Delete", GTK_RESPONSE_OK, NULL);
     gtk_dialog_set_default_response (GTK_DIALOG (dialog), GTK_RESPONSE_CANCEL);
 
     response = gtk_dialog_run (GTK_DIALOG (dialog));

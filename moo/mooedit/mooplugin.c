@@ -667,7 +667,7 @@ MooEditWindow *
 moo_win_plugin_get_window (MooWinPlugin *wplugin)
 {
     g_return_val_if_fail (MOO_IS_WIN_PLUGIN (wplugin), NULL);
-    return gtk_widget_get_window (wplugin);
+    return wplugin->window;
 }
 
 /**

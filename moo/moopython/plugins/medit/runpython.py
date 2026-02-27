@@ -16,16 +16,17 @@
 import sys
 import os
 import re
-import gtk
+from gi.repository import Gtk
 import moo
 from moo import _
 
 if os.name == 'nt':
-    PYTHON_COMMAND = '"' + sys.exec_prefix + '\\pythonw.exe" -u'
+    PYTHON_COMMAND = '"' + sys.exec_prefix + '\\python.exe" -u'
 else:
-    PYTHON_COMMAND = 'python -u'
+    PYTHON_COMMAND = 'python3 -u'
 
 PANE_ID = 'PythonOutput'
+
 
 class Runner(object):
     def __init__(self, window, python_command=PYTHON_COMMAND, pane_id=PANE_ID, pane_label=None):
@@ -36,6 +37,7 @@ class Runner(object):
 
     def __get_output(self):
         return self.window.get_pane(self.pane_id)
+
     def __ensure_output(self):
         pane = self.__get_output()
         if pane is None:
@@ -45,9 +47,9 @@ class Runner(object):
             output.set_property("highlight-current-line", True)
             output.set_filter_by_id("python")
 
-            pane = gtk.ScrolledWindow()
-            pane.set_shadow_type(gtk.SHADOW_ETCHED_IN)
-            pane.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_AUTOMATIC)
+            pane = Gtk.ScrolledWindow()
+            pane.set_shadow_type(Gtk.ShadowType.ETCHED_IN)
+            pane.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
             pane.add(output)
             pane.show_all()
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 #  pyconsole.py
 #
@@ -28,30 +28,31 @@
 # To modify output appearance, set attributes of console.stdout_tag and
 # console.stderr_tag.
 #
-# Console may subclass a type other than gtk.TextView, to allow syntax highlighting and stuff,
-# e.g.:
+# Console may subclass a type other than Gtk.TextView, to allow syntax highlighting
+# and stuff, e.g.:
 #   console_type = pyconsole.ConsoleType(moo.TextView)
-#   console = console_type(use_rlcompleter=False, start_script="import moo\nimport gtk\n")
+#   console = console_type(use_rlcompleter=False, start_script="import moo\n")
 #
 # This widget is not a replacement for real terminal with python running
 # inside: GtkTextView is not a terminal.
 # The use case is: you have a python program, you create this widget,
 # and inspect your program interiors.
 
-import gtk
-import gtk.gdk as gdk
-import gobject
-import pango
-import gtk.keysyms as _keys
+from gi.repository import Gtk
+from gi.repository import Gdk
+from gi.repository import GObject
+from gi.repository import Pango
 import code
 import sys
 import keyword
 import re
 
+
 # commonprefix() from posixpath
 def _commonprefix(m):
     "Given a list of pathnames, returns the longest common leading component"
-    if not m: return ''
+    if not m:
+        return ''
     prefix = m[0]
     for item in m:
         for i in range(len(prefix)):
@@ -62,6 +63,7 @@ def _commonprefix(m):
                 break
     return prefix
 
+
 class _ReadLine(object):
 
     class Output(object):
@@ -69,9 +71,13 @@ class _ReadLine(object):
             object.__init__(self)
             self.buffer = console.get_buffer()
             self.tag_name = tag_name
+
         def write(self, text):
             pos = self.buffer.get_iter_at_mark(self.buffer.get_insert())
             self.buffer.insert_with_tags_by_name(pos, text, self.tag_name)
+
+        def flush(self):
+            pass
 
     class History(object):
         def __init__(self):
@@ -86,7 +92,7 @@ class _ReadLine(object):
             self.ptr = 0
             self.edited = {}
 
-        def get(self, dir, text):
+        def get(self, direction, text):
             if len(self.items) == 1:
                 return None
 
@@ -95,7 +101,7 @@ class _ReadLine(object):
             elif self.ptr in self.edited:
                 del self.edited[self.ptr]
 
-            self.ptr = self.ptr + dir
+            self.ptr = self.ptr + direction
             if self.ptr >= len(self.items):
                 self.ptr = 0
             elif self.ptr < 0:
@@ -109,8 +115,8 @@ class _ReadLine(object):
     def __init__(self):
         object.__init__(self)
 
-        self.set_wrap_mode(gtk.WRAP_CHAR)
-        self.modify_font(pango.FontDescription("Monospace"))
+        self.set_wrap_mode(Gtk.WrapMode.CHAR)
+        self.modify_font(Pango.FontDescription("Monospace"))
 
         self.buffer = self.get_buffer()
         self.buffer.connect("insert-text", self.on_buf_insert)
@@ -136,15 +142,19 @@ class _ReadLine(object):
         self.run_on_raw_input = None
         self.tab_pressed = 0
         self.history = _ReadLine.History()
-        self.nonword_re = re.compile("[^\w\._]")
+        self.nonword_re = re.compile(r"[^\w._]")
 
     def freeze_undo(self):
-        try: self.begin_not_undoable_action()
-        except: pass
+        try:
+            self.begin_not_undoable_action()
+        except Exception:
+            pass
 
     def thaw_undo(self):
-        try: self.end_not_undoable_action()
-        except: pass
+        try:
+            self.end_not_undoable_action()
+        except Exception:
+            pass
 
     def raw_input(self, ps=None):
         if ps:
@@ -160,7 +170,7 @@ class _ReadLine(object):
             self.thaw_undo()
 
         self.__move_cursor_to(iter)
-        self.scroll_to_mark(self.cursor, 0.2)
+        self.scroll_to_mark(self.cursor, 0.2, False, 0.0, 0.0)
 
         self.in_raw_input = True
 
@@ -176,18 +186,18 @@ class _ReadLine(object):
         end = self.__get_end()
         if iter.compare(self.__get_start()) >= 0 and \
            iter.compare(self.__get_end()) <= 0:
-                buffer.move_mark_by_name("cursor", iter)
-                self.scroll_to_mark(self.cursor, 0.2)
+            buffer.move_mark_by_name("cursor", iter)
+            self.scroll_to_mark(self.cursor, 0.2, False, 0.0, 0.0)
 
     def __insert(self, iter, text):
         self.do_insert = True
         self.buffer.insert(iter, text)
         self.do_insert = False
 
-    def on_buf_insert(self, buf, iter, text, len):
-        if not self.in_raw_input or self.do_insert or not len:
+    def on_buf_insert(self, buf, iter, text, length):
+        if not self.in_raw_input or self.do_insert or not length:
             return
-        buf.stop_emission("insert-text")
+        buf.stop_emission_by_name("insert-text")
         lines = text.splitlines()
         need_eol = False
         for l in lines:
@@ -215,7 +225,7 @@ class _ReadLine(object):
         if not self.in_raw_input or self.do_delete:
             return
 
-        buf.stop_emission("delete-range")
+        buf.stop_emission_by_name("delete-range")
 
         start.order(end)
         line_start = self.__get_start()
@@ -236,33 +246,52 @@ class _ReadLine(object):
 
     def do_key_press_event(self, event, parent_type):
         if not self.in_raw_input:
-            return parent_type.do_key_press_event(self, event)
+            try:
+                return Gtk.Widget.do_key_press_event(self, event)
+            except TypeError:
+                # GTK3: event type mismatch, insert printable chars manually
+                keyval = event.keyval
+                if keyval == Gdk.KEY_BackSpace:
+                    cursor = self.get_buffer().get_iter_at_mark(self.get_buffer().get_insert())
+                    prev = cursor.copy()
+                    if prev.backward_char():
+                        self.get_buffer().delete(prev, cursor)
+                elif keyval == Gdk.KEY_Delete:
+                    cursor = self.get_buffer().get_iter_at_mark(self.get_buffer().get_insert())
+                    next_iter = cursor.copy()
+                    if next_iter.forward_char():
+                        self.get_buffer().delete(cursor, next_iter)
+                else:
+                    ch = Gdk.keyval_to_unicode(keyval)
+                    if ch and ch >= 32:
+                        self.get_buffer().insert_at_cursor(chr(ch))
+                return True
 
         tab_pressed = self.tab_pressed
         self.tab_pressed = 0
         handled = True
 
-        state = event.state & (gdk.SHIFT_MASK |
-                                gdk.CONTROL_MASK |
-                                gdk.MOD1_MASK)
+        state = event.state & (Gdk.ModifierType.SHIFT_MASK |
+                               Gdk.ModifierType.CONTROL_MASK |
+                               Gdk.ModifierType.MOD1_MASK)
         keyval = event.keyval
 
         if not state:
-            if keyval == _keys.Return:
+            if keyval == Gdk.KEY_Return:
                 self._commit()
-            elif keyval == _keys.Up:
+            elif keyval == Gdk.KEY_Up:
                 self.__history(-1)
-            elif keyval == _keys.Down:
+            elif keyval == Gdk.KEY_Down:
                 self.__history(1)
-            elif keyval == _keys.Left:
+            elif keyval == Gdk.KEY_Left:
                 self.__move_cursor(-1)
-            elif keyval == _keys.Right:
+            elif keyval == Gdk.KEY_Right:
                 self.__move_cursor(1)
-            elif keyval == _keys.Home:
+            elif keyval == Gdk.KEY_Home:
                 self.__move_cursor(-10000)
-            elif keyval == _keys.End:
+            elif keyval == Gdk.KEY_End:
                 self.__move_cursor(10000)
-            elif keyval == _keys.Tab:
+            elif keyval == Gdk.KEY_Tab:
                 cursor = self.__get_cursor()
                 if cursor.starts_line():
                     handled = False
@@ -275,8 +304,8 @@ class _ReadLine(object):
                         self.__complete()
             else:
                 handled = False
-        elif state == gdk.CONTROL_MASK:
-            if keyval == _keys.u:
+        elif state == Gdk.ModifierType.CONTROL_MASK:
+            if keyval == Gdk.KEY_u:
                 start = self.__get_start()
                 end = self.__get_cursor()
                 self.__delete(start, end)
@@ -286,24 +315,45 @@ class _ReadLine(object):
             handled = False
 
         if not handled:
-            return parent_type.do_key_press_event(self, event)
+            try:
+                return Gtk.Widget.do_key_press_event(self, event)
+            except TypeError:
+                # GTK3: event type mismatch, insert printable chars manually
+                keyval = event.keyval
+                if keyval == Gdk.KEY_BackSpace:
+                    cursor = self.get_buffer().get_iter_at_mark(self.get_buffer().get_insert())
+                    prev = cursor.copy()
+                    if prev.backward_char():
+                        self.get_buffer().delete(prev, cursor)
+                elif keyval == Gdk.KEY_Delete:
+                    cursor = self.get_buffer().get_iter_at_mark(self.get_buffer().get_insert())
+                    next_iter = cursor.copy()
+                    if next_iter.forward_char():
+                        self.get_buffer().delete(cursor, next_iter)
+                else:
+                    ch = Gdk.keyval_to_unicode(keyval)
+                    if ch and ch >= 32:
+                        self.get_buffer().insert_at_cursor(chr(ch))
+                return True
         else:
             return True
 
-    def __history(self, dir):
+    def __history(self, direction):
         text = self._get_line()
-        new_text = self.history.get(dir, text)
-        if not new_text is None:
+        new_text = self.history.get(direction, text)
+        if new_text is not None:
             self.__replace_line(new_text)
         self.__move_cursor(0)
-        self.scroll_to_mark(self.cursor, 0.2)
+        self.scroll_to_mark(self.cursor, 0.2, False, 0.0, 0.0)
 
     def __get_cursor(self):
         return self.buffer.get_iter_at_mark(self.cursor)
+
     def __get_start(self):
         iter = self.__get_cursor()
         iter.set_line_offset(len(self.ps))
         return iter
+
     def __get_end(self):
         iter = self.__get_cursor()
         if not iter.ends_line():
@@ -343,13 +393,14 @@ class _ReadLine(object):
         self.__delete(iter, end)
 
     def __get_width(self):
-        if not (self.flags() & gtk.REALIZED):
+        if not self.get_realized():
             return 80
-        layout = pango.Layout(self.get_pango_context())
+        layout = Pango.Layout.new(self.get_pango_context())
         letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-        layout.set_text(letters)
+        layout.set_text(letters, -1)
         pix_width = layout.get_pixel_size()[0]
-        return self.allocation.width * len(letters) / pix_width
+        alloc = self.get_allocation()
+        return alloc.width * len(letters) // pix_width
 
     def __print_completions(self, completions):
         line_start = self.__get_text(self.__get_start(), self.__get_cursor())
@@ -363,18 +414,18 @@ class _ReadLine(object):
         n_columns = max(int(width / (max_width + 1)), 1)
         col_width = int(width / n_columns)
         total = len(completions)
-        col_length = total / n_columns
+        col_length = total // n_columns
         if total % n_columns:
             col_length = col_length + 1
         col_length = max(col_length, 1)
 
         if col_length == 1:
             n_columns = total
-            col_width = width / total
+            col_width = width // total
 
         for i in range(col_length):
             for j in range(n_columns):
-                ind = i + j*col_length
+                ind = i + j * col_length
                 if ind < total:
                     if j == n_columns - 1:
                         n_spaces = 0
@@ -386,7 +437,7 @@ class _ReadLine(object):
         self.__insert(iter, "%s%s%s" % (self.ps, line_start, line_end))
         iter.set_line_offset(len(self.ps) + len(line_start))
         self.__move_cursor_to(iter)
-        self.scroll_to_mark(self.cursor, 0.2)
+        self.scroll_to_mark(self.cursor, 0.2, False, 0.0, 0.0)
 
     def __complete(self):
         text = self.__get_text(self.__get_start(), self.__get_cursor())
@@ -522,10 +573,7 @@ class _Console(_ReadLine, code.InteractiveInterpreter):
             self.showtraceback()
 
     def runcode(self, code):
-        if gtk.pygtk_version[1] < 8:
-            self.do_command(code)
-        else:
-            self.emit("command", code)
+        self.emit("command", code)
 
     def exec_command(self, command):
         if self._get_line():
@@ -549,7 +597,7 @@ class _Console(_ReadLine, code.InteractiveInterpreter):
 
             completions.sort()
             return [start + "." + s for s in completions]
-        except:
+        except Exception:
             return None
 
     def complete(self, text):
@@ -557,7 +605,7 @@ class _Console(_ReadLine, code.InteractiveInterpreter):
             completions = []
             i = 0
             try:
-                while 1:
+                while True:
                     s = self.completer.complete(text, i)
                     if s:
                         completions.append(s)
@@ -573,18 +621,20 @@ class _Console(_ReadLine, code.InteractiveInterpreter):
             return self.complete_attr(text[:dot], text[dot+1:])
 
         completions = {}
-        strings = keyword.kwlist
+        strings = list(keyword.kwlist)
 
         if self.locals:
             strings.extend(list(self.locals.keys()))
 
-        try: strings.extend(list(eval("globals()", self.locals).keys()))
-        except: pass
+        try:
+            strings.extend(list(eval("globals()", self.locals).keys()))
+        except Exception:
+            pass
 
         try:
-            exec("import __builtin__", self.locals)
-            strings.extend(eval("dir(__builtin__)", self.locals))
-        except:
+            import builtins
+            strings.extend(dir(builtins))
+        except Exception:
             pass
 
         for s in strings:
@@ -595,28 +645,27 @@ class _Console(_ReadLine, code.InteractiveInterpreter):
         return completions
 
 
-def ReadLineType(t=gtk.TextView):
+def ReadLineType(t=Gtk.TextView):
     class readline(t, _ReadLine):
         def __init__(self, *args, **kwargs):
             t.__init__(self)
             _ReadLine.__init__(self, *args, **kwargs)
+
         def do_key_press_event(self, event):
             return _ReadLine.do_key_press_event(self, event, t)
-    gobject.type_register(readline)
+    GObject.type_register(readline)
     return readline
 
-def ConsoleType(t=gtk.TextView):
+
+def ConsoleType(t=Gtk.TextView):
     class console_type(t, _Console):
         __gsignals__ = {
-            'command' : (gobject.SIGNAL_RUN_LAST, gobject.TYPE_NONE, (object,)),
-            'key-press-event' : 'override'
-          }
+            'command': (GObject.SignalFlags.RUN_LAST, None, (object,)),
+            'key-press-event': 'override'
+        }
 
         def __init__(self, *args, **kwargs):
-            if gtk.pygtk_version[1] < 8:
-                gobject.GObject.__init__(self)
-            else:
-                t.__init__(self)
+            t.__init__(self)
             _Console.__init__(self, *args, **kwargs)
 
         def do_command(self, code):
@@ -625,47 +674,41 @@ def ConsoleType(t=gtk.TextView):
         def do_key_press_event(self, event):
             return _Console.do_key_press_event(self, event, t)
 
-    if gtk.pygtk_version[1] < 8:
-        gobject.type_register(console_type)
-
+    GObject.type_register(console_type)
     return console_type
+
 
 ReadLine = ReadLineType()
 Console = ConsoleType()
 
+
 def _create_widget(start_script):
-    try:
-        import moo
-        console_type = ConsoleType(moo.TextView)
-        console = console_type(banner="Hello there!",
-                               use_rlcompleter=False,
-                               start_script=start_script)
-        console.set_property("highlight-current-line", False)
-        editor = moo.create_editor_instance()
-        console.set_lang_by_id("python-console")
-    except ImportError:
-        console = Console(banner="Hello there!",
-                          use_rlcompleter=False,
-                          start_script=start_script)
-    console.modify_font(pango.FontDescription("Monospace"))
+    # GTK3: moo.TextView doesn't expose Gtk.TextView methods via gi,
+    # so just use plain Gtk.TextView-based Console
+    console = Console(banner="Hello there!",
+                      use_rlcompleter=False,
+                      start_script=start_script)
+    console.modify_font(Pango.FontDescription("Monospace"))
     return console
 
-def _make_window(start_script="from gtk import *\n"):
-    window = gtk.Window()
+
+def _make_window(start_script="from gi.repository import Gtk\n"):
+    window = Gtk.Window()
     window.set_title("pyconsole.py")
-    swin = gtk.ScrolledWindow()
-    swin.set_policy(gtk.POLICY_AUTOMATIC, gtk.POLICY_ALWAYS)
+    swin = Gtk.ScrolledWindow()
+    swin.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.ALWAYS)
     window.add(swin)
     console = _create_widget(start_script)
     swin.add(console)
     window.set_default_size(500, 400)
     window.show_all()
 
-    if not gtk.main_level():
-        window.connect("destroy", gtk.main_quit)
-        gtk.main()
+    if not Gtk.main_level():
+        window.connect("destroy", Gtk.main_quit)
+        Gtk.main()
 
     return console
+
 
 if __name__ == '__main__':
     import sys

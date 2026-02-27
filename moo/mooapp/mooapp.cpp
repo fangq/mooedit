@@ -17,6 +17,7 @@
  * class:MooApp: (parent GObject): application object
  */
 
+#include <glib-unix.h>
 #include "config.h"
 
 #include "mooapp-private.h"
@@ -907,6 +908,8 @@ moo_app_run (MooApp *app)
 
     g_idle_add_full(G_PRIORITY_DEFAULT_IDLE + 1, (GSourceFunc) emit_started, app, NULL);
 
+    /* Allow Ctrl+C to quit */
+    g_unix_signal_add(SIGINT, (GSourceFunc)gtk_main_quit, NULL);
     gtk_main ();
         /* GTK3: call quit handler explicitly after gtk_main returns */
         on_gtk_main_quit (app);
@@ -972,15 +975,15 @@ install_common_actions (void)
     g_return_if_fail (klass != NULL);
 
     moo_window_class_new_action (klass, "Preferences", NULL,
-                                 "display-name", "preferences-system",
-                                 "label", "preferences-system",
-                                 "tooltip", "preferences-system",
+                                 "display-name", "Preferences",
+                                 "label", "_Preferences",
+                                 "tooltip", "Preferences",
                                  "icon-name", "preferences-system",
                                  "closure-callback", moo_app_prefs_dialog,
                                  nullptr);
 
     moo_window_class_new_action (klass, "About", NULL,
-                                 "label", "help-about",
+                                 "label", "_About",
                                  "no-accel", TRUE,
                                  "icon-name", "help-about",
                                  "closure-callback", moo_app_about_dialog,
