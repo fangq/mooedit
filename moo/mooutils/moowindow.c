@@ -279,9 +279,9 @@ moo_window_class_init (MooWindowClass *klass)
                                         NULL, NULL);
 
     moo_window_class_new_action (klass, "Cut", NULL,
-                                 "display-name", "edit-cut",
-                                 "label", "edit-cut",
-                                 "tooltip", "edit-cut",
+                                 "display-name", "Cut",
+                                 "label", "_Cut",
+                                 "tooltip", "Cut",
                                  "icon-name", "edit-cut",
                                  "default-accel", MOO_ACCEL_CUT,
                                  "closure-callback", moo_window_action_cut,
@@ -289,9 +289,9 @@ moo_window_class_init (MooWindowClass *klass)
                                  NULL);
 
     moo_window_class_new_action (klass, "Copy", NULL,
-                                 "display-name", "edit-copy",
-                                 "label", "edit-copy",
-                                 "tooltip", "edit-copy",
+                                 "display-name", "Copy",
+                                 "label", "_Copy",
+                                 "tooltip", "Copy",
                                  "icon-name", "edit-copy",
                                  "default-accel", MOO_ACCEL_COPY,
                                  "closure-callback", moo_window_action_copy,
@@ -299,9 +299,9 @@ moo_window_class_init (MooWindowClass *klass)
                                  NULL);
 
     moo_window_class_new_action (klass, "Paste", NULL,
-                                 "display-name", "edit-paste",
-                                 "label", "edit-paste",
-                                 "tooltip", "edit-paste",
+                                 "display-name", "Paste",
+                                 "label", "_Paste",
+                                 "tooltip", "Paste",
                                  "icon-name", "edit-paste",
                                  "default-accel", MOO_ACCEL_PASTE,
                                  "closure-callback", moo_window_action_paste,
@@ -309,18 +309,18 @@ moo_window_class_init (MooWindowClass *klass)
                                  NULL);
 
     moo_window_class_new_action (klass, "Delete", NULL,
-                                 "display-name", "edit-delete",
-                                 "label", "edit-delete",
-                                 "tooltip", "edit-delete",
+                                 "display-name", "Delete",
+                                 "label", "_Delete",
+                                 "tooltip", "Delete",
                                  "icon-name", "edit-delete",
                                  "closure-callback", moo_window_action_delete,
                                  "condition::sensitive", "can-delete",
                                  NULL);
 
     moo_window_class_new_action (klass, "SelectAll", NULL,
-                                 "display-name", "edit-select-all",
-                                 "label", "edit-select-all",
-                                 "tooltip", "edit-select-all",
+                                 "display-name", "Select All",
+                                 "label", "Select _All",
+                                 "tooltip", "Select All",
                                  "icon-name", "edit-select-all",
                                  "default-accel", MOO_ACCEL_SELECT_ALL,
                                  "closure-callback", moo_window_action_select_all,
@@ -328,9 +328,9 @@ moo_window_class_init (MooWindowClass *klass)
                                  NULL);
 
     moo_window_class_new_action (klass, "Undo", NULL,
-                                 "display-name", "edit-undo",
-                                 "label", "edit-undo",
-                                 "tooltip", "edit-undo",
+                                 "display-name", "Undo",
+                                 "label", "_Undo",
+                                 "tooltip", "Undo",
                                  "icon-name", "edit-undo",
                                  "default-accel", MOO_ACCEL_UNDO,
                                  "closure-callback", moo_window_action_undo,
@@ -338,9 +338,9 @@ moo_window_class_init (MooWindowClass *klass)
                                  NULL);
 
     moo_window_class_new_action (klass, "Redo", NULL,
-                                 "display-name", "edit-redo",
-                                 "label", "edit-redo",
-                                 "tooltip", "edit-redo",
+                                 "display-name", "Redo",
+                                 "label", "_Redo",
+                                 "tooltip", "Redo",
                                  "icon-name", "edit-redo",
                                  "default-accel", MOO_ACCEL_REDO,
                                  "closure-callback", moo_window_action_redo,
@@ -566,12 +566,7 @@ parse_shadow_style (void)
 
     if (!been_here)
     {
-        gtk_rc_parse_string (
-            "style \"no-shadow\" {\n"
-            "    GtkStatusbar::shadow-type = GTK_SHADOW_NONE\n"
-            "}\n"
-            "widget \"no-shadow\" style \"no-shadow\"\n"
-        );
+        /* GTK3: gtk_rc_parse_string removed */
         been_here = TRUE;
     }
 }
@@ -590,18 +585,12 @@ moo_window_init (MooWindow *window)
 
     window->status_area = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
     window->statusbar = g_object_new (GTK_TYPE_STATUSBAR,
-                                      "has-resize-grip", FALSE,
                                       (const char*) NULL);
     gtk_widget_set_name (GTK_WIDGET (window->statusbar), "no-shadow");
     gtk_box_pack_start (GTK_BOX (window->status_area),
                         GTK_WIDGET (window->statusbar),
                         TRUE, TRUE, 0);
     rg = g_object_new (GTK_TYPE_STATUSBAR,
-#ifdef GDK_WINDOWING_QUARTZ
-                       "has-resize-grip", FALSE,
-#else
-                       "has-resize-grip", TRUE,
-#endif
                        (const char*) NULL);
     gtk_widget_set_name (rg, "no-shadow");
     gtk_box_pack_end (GTK_BOX (window->status_area),

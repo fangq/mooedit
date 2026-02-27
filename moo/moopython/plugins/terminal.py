@@ -1,7 +1,7 @@
 # Terminal plugin requires VTE which needs GTK 3.
-# medit is currently built against GTK 2, so VTE cannot load.
-# This plugin will become functional after medit is migrated to GTK 3.
+# medit is now built against GTK 3.
+# TODO: Re-enable VTE terminal support.
 import sys
 import moo
-print("Terminal plugin: requires GTK 3 (medit uses GTK 2) — disabled", file=sys.stderr)
+# Terminal plugin: TODO re-enable VTE support
 moo._cancel_plugin_loading()

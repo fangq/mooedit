@@ -652,9 +652,9 @@ void
 _moo_edit_class_init_actions (MooEditClass *klass)
 {
     moo_edit_class_new_action (klass, "Undo",
-                               "display-name", "edit-undo",
-                               "label", "edit-undo",
-                               "tooltip", "edit-undo",
+                               "display-name", "Undo",
+                               "label", "_Undo",
+                               "tooltip", "Undo",
                                "icon-name", "edit-undo",
                                "closure-signal", "undo",
                                "closure-proxy-func", moo_edit_get_view,
@@ -662,9 +662,9 @@ _moo_edit_class_init_actions (MooEditClass *klass)
                                (char*) 0);
 
     moo_edit_class_new_action (klass, "Redo",
-                               "display-name", "edit-redo",
-                               "label", "edit-redo",
-                               "tooltip", "edit-redo",
+                               "display-name", "Redo",
+                               "label", "_Redo",
+                               "tooltip", "Redo",
                                "icon-name", "edit-redo",
                                "closure-signal", "redo",
                                "closure-proxy-func", moo_edit_get_view,
@@ -672,7 +672,7 @@ _moo_edit_class_init_actions (MooEditClass *klass)
                                (char*) 0);
 
     moo_edit_class_new_action (klass, "Cut",
-                               "display-name", "edit-cut",
+                               "display-name", "Cut",
                                "icon-name", "edit-cut",
                                "closure-signal", "cut-clipboard",
                                "closure-proxy-func", moo_edit_get_view,
@@ -680,7 +680,7 @@ _moo_edit_class_init_actions (MooEditClass *klass)
                                (char*) 0);
 
     moo_edit_class_new_action (klass, "Copy",
-                               "display-name", "edit-copy",
+                               "display-name", "Copy",
                                "icon-name", "edit-copy",
                                "closure-signal", "copy-clipboard",
                                "closure-proxy-func", moo_edit_get_view,
@@ -688,16 +688,16 @@ _moo_edit_class_init_actions (MooEditClass *klass)
                                (char*) 0);
 
     moo_edit_class_new_action (klass, "Paste",
-                               "display-name", "edit-paste",
+                               "display-name", "Paste",
                                "icon-name", "edit-paste",
                                "closure-signal", "paste-clipboard",
                                "closure-proxy-func", moo_edit_get_view,
                                (char*) 0);
 
     moo_edit_class_new_action (klass, "SelectAll",
-                               "display-name", "edit-select-all",
-                               "label", "edit-select-all",
-                               "tooltip", "edit-select-all",
+                               "display-name", "Select All",
+                               "label", "Select _All",
+                               "tooltip", "Select All",
                                "icon-name", "edit-select-all",
                                "closure-callback", moo_text_view_select_all,
                                "closure-proxy-func", moo_edit_get_view,

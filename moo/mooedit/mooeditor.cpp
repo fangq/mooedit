@@ -721,8 +721,7 @@ static void
 recent_item_activated (GSList   *items,
                        gpointer  data)
 {
-    MooEditWindow *window = MOO_EDIT_WINDOW (data);
-    MooEditor *editor = moo_editor_instance ();
+    MooEditor *editor = moo_editor_instance(); MooEditWindow *window = moo_editor_get_active_window(editor);
 
     g_return_if_fail (MOO_IS_EDIT_WINDOW (window));
     g_return_if_fail (MOO_IS_EDITOR (editor));

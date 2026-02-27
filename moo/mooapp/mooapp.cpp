@@ -54,6 +54,8 @@
 
 #ifdef HAVE_SIGNAL_H
 #include <signal.h>
+
+static GtkWidget *_prefs_dialog_instance = NULL;
 #endif
 
 #define MOO_UI_XML_FILE     "ui.xml"
@@ -375,6 +377,7 @@ moo_app_constructor (GType           type,
 static void
 moo_app_finalize (GObject *object)
 {
+    if (_prefs_dialog_instance) { gtk_widget_destroy (_prefs_dialog_instance); _prefs_dialog_instance = NULL; }
     MooApp *app = MOO_APP(object);
 
     moo_app_do_quit (app);
@@ -984,7 +987,7 @@ install_common_actions (void)
                                  nullptr);
 
     moo_window_class_new_action (klass, "Help", NULL,
-                                 "label", "help-browser",
+                                 "label", "_Help",
                                  "default-accel", MOO_APP_ACCEL_HELP,
                                  "icon-name", "help-browser",
                                  "closure-callback", moo_app_help,
@@ -996,9 +999,9 @@ install_common_actions (void)
                                  nullptr);
 
     moo_window_class_new_action (klass, "Quit", NULL,
-                                 "display-name", "application-exit",
-                                 "label", "application-exit",
-                                 "tooltip", "application-exit",
+                                 "display-name", "Quit",
+                                 "label", "_Quit",
+                                 "tooltip", "Quit",
                                  "icon-name", "application-exit",
                                  "default-accel", MOO_APP_ACCEL_QUIT,
                                  "closure-callback", moo_app_quit,
@@ -1381,7 +1384,8 @@ moo_app_report_bug (GtkWidget *window)
 void
 moo_app_prefs_dialog (GtkWidget *parent)
 {
-    GtkWidget *dialog = moo_app_create_prefs_dialog (moo_app_instance ());
+    if (!_prefs_dialog_instance) _prefs_dialog_instance = moo_app_create_prefs_dialog (moo_app_instance ());
+    GtkWidget *dialog = _prefs_dialog_instance;
     g_return_if_fail (MOO_IS_PREFS_DIALOG (dialog));
     moo_prefs_dialog_run (MOO_PREFS_DIALOG (dialog), parent);
 }
@@ -1401,6 +1405,7 @@ moo_app_create_prefs_dialog (MooApp *app)
 
     /* Prefs dialog title */
     dialog = MOO_PREFS_DIALOG (moo_prefs_dialog_new (_("Preferences")));
+    g_object_set (dialog, "hide_on_delete", TRUE, NULL);
 
     moo_prefs_dialog_append_page (dialog, moo_edit_prefs_page_new_1 (moo_app_get_editor (app)));
     moo_prefs_dialog_append_page (dialog, moo_edit_prefs_page_new_2 (moo_app_get_editor (app)));

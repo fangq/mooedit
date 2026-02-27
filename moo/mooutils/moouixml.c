@@ -1089,7 +1089,7 @@ moo_ui_xml_insert_after (MooUiXml       *xml,
     if (!parent)
         parent = xml->priv->ui;
 
-    g_return_if_fail (!after || gtk_widget_get_parent (after) == parent);
+    g_return_if_fail (!after || after->parent == parent);
 
     if (!after)
         position = 0;
@@ -1123,7 +1123,7 @@ moo_ui_xml_insert_before (MooUiXml       *xml,
     if (!parent)
         parent = xml->priv->ui;
 
-    g_return_if_fail (!before || gtk_widget_get_parent (before) == parent);
+    g_return_if_fail (!before || before->parent == parent);
 
     if (!before)
         position = g_slist_length (parent->children);
@@ -1260,7 +1260,7 @@ node_is_ancestor (Node           *node,
     g_return_val_if_fail (node != NULL, FALSE);
     g_return_val_if_fail (ancestor != NULL, FALSE);
 
-    for (n = node; n != NULL; n = gtk_widget_get_parent (n))
+    for (n = node; n != NULL; n = n->parent)
         if (n == ancestor)
             return TRUE;
 
@@ -1476,7 +1476,7 @@ moo_ui_node_get_path (MooUiNode *node)
 
     while (node->parent && node->parent->parent)
     {
-        node = gtk_widget_get_parent (node);
+        node = node->parent;
         g_string_prepend_c (path, '/');
         g_string_prepend (path, node->name);
     }

@@ -3230,7 +3230,7 @@ ask_delete_files (MooFileView *fileview,
 
     moo_window_set_parent (dialog, GTK_WIDGET (fileview));
     gtk_dialog_add_buttons (GTK_DIALOG (dialog),
-                            "dialog-cancel", GTK_RESPONSE_CANCEL,
+                            "_Cancel", GTK_RESPONSE_CANCEL,
                             "edit-delete", GTK_RESPONSE_OK, NULL);
     gtk_dialog_set_default_response (GTK_DIALOG (dialog), GTK_RESPONSE_CANCEL);
 
@@ -6027,7 +6027,7 @@ moo_file_view_drop_uris (MooFileView    *fileview,
         gtk_widget_show (item);
         gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
 
-        item = gtk_image_menu_item_new_from_stock ("dialog-cancel", NULL);
+        item = gtk_menu_item_new_with_label ("Cancel");
         gtk_widget_show (item);
         _moo_menu_item_set_accel_label (item, "Escape");
         gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);

@@ -1572,8 +1572,8 @@ moo_history_mgr_create_dialog (MooHistoryMgr   *mgr,
     g_return_val_if_fail (callback != NULL, NULL);
 
     dialog = gtk_dialog_new_with_buttons ("", NULL, GTK_DIALOG_DESTROY_WITH_PARENT,
-                                          "dialog-cancel", GTK_RESPONSE_CANCEL,
-                                          "document-open", GTK_RESPONSE_OK,
+                                          "_Cancel", GTK_RESPONSE_CANCEL,
+                                          "_Open", GTK_RESPONSE_OK,
                                           NULL);
     gtk_dialog_set_alternative_button_order (GTK_DIALOG (dialog),
                                              GTK_RESPONSE_OK,

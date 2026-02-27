@@ -79,6 +79,7 @@ struct _Widget {
     GtkWidget *widget;
     char *id;
     GType type;
+    char *class_name;
     WidgetProps *props;
     ChildList *children;
     SignalList *signals;
@@ -737,6 +738,15 @@ moo_glade_xml_create_widget (MooGladeXML *xml,
     {
         widget = GTK_WIDGET (g_object_newv (type, props->n_params,
                                             props->params));
+
+
+        /* GTK3: Set orientation for GtkBox based on original class name */
+        if (GTK_IS_ORIENTABLE (widget) && node->class_name)
+        {
+            if (strstr (node->class_name, "GtkV") == node->class_name)
+                gtk_orientable_set_orientation (GTK_ORIENTABLE (widget), GTK_ORIENTATION_VERTICAL);
+        }
+
     }
     else
     {
@@ -1034,6 +1044,7 @@ widget_free (Widget *widget)
     if (widget)
     {
         g_free (widget->id);
+        g_free (widget->class_name);
         widget_props_free (widget->props);
         child_list_foreach (widget->children, (ChildListFunc) child_free, NULL);
         child_list_free_links (widget->children);
@@ -1186,6 +1197,7 @@ widget_new (MooGladeXML    *xml,
     widget->children = NULL;
 
     widget->id = g_strdup (id);
+    widget->class_name = g_strdup (class_name);
     id = NULL;
     g_free (freeme);
 
@@ -2667,6 +2679,8 @@ get_type_by_name (const char *name)
         add_type ("GtkAspectFrame", gtk_aspect_frame_get_type);
         add_type ("GtkBin", gtk_bin_get_type);
         add_type ("GtkBox", gtk_box_get_type);
+        add_type ("GtkHBox", gtk_box_get_type);
+        add_type ("GtkVBox", gtk_box_get_type);
         add_type ("GtkButton", gtk_button_get_type);
         add_type ("GtkButtonBox", gtk_button_box_get_type);
         add_type ("GtkCalendar", gtk_calendar_get_type);
@@ -2696,13 +2710,13 @@ get_type_by_name (const char *name)
         add_type ("GtkFontSelectionDialog", gtk_font_selection_dialog_get_type);
         add_type ("GtkFrame", gtk_frame_get_type);
         add_type ("GtkGammaCurve", 0 /* removed */);
-        add_type ("GtkBox", gtk_hbox_get_type);
-        add_type ("GtkHButtonBox", gtk_hbutton_box_get_type);
-        add_type ("GtkHPaned", gtk_hpaned_get_type);
+        add_type ("GtkBox", gtk_box_get_type);
+        add_type ("GtkHButtonBox", gtk_button_box_get_type);
+        add_type ("GtkHPaned", gtk_paned_get_type);
         add_type ("GtkHRuler", 0 /* removed */);
-        add_type ("GtkHScale", gtk_hscale_get_type);
-        add_type ("GtkHScrollbar", gtk_hscrollbar_get_type);
-        add_type ("GtkHSeparator", gtk_hseparator_get_type);
+        add_type ("GtkHScale", gtk_scale_get_type);
+        add_type ("GtkHScrollbar", gtk_scrollbar_get_type);
+        add_type ("GtkHSeparator", gtk_separator_get_type);
         add_type ("GtkHandleBox", gtk_handle_box_get_type);
         add_type ("GtkIconFactory", gtk_icon_factory_get_type);
         add_type ("GtkIconSet", gtk_icon_set_get_type);
@@ -2742,9 +2756,10 @@ get_type_by_name (const char *name)
         add_type ("GtkSettings", gtk_settings_get_type);
         add_type ("GtkSizeGroup", gtk_size_group_get_type);
         add_type ("GtkSpinButton", gtk_spin_button_get_type);
+        add_type ("GtkTable", gtk_table_get_type);
         add_type ("GtkStatusbar", gtk_statusbar_get_type);
         add_type ("GtkStyle", gtk_style_get_type);
-        add_type ("GtkGrid", gtk_table_get_type);
+        add_type ("GtkGrid", gtk_grid_get_type);
         add_type ("GtkTearoffMenuItem", gtk_tearoff_menu_item_get_type);
         add_type ("GtkTextBuffer", gtk_text_buffer_get_type);
         add_type ("GtkTextChildAnchor", gtk_text_child_anchor_get_type);
@@ -2767,14 +2782,14 @@ get_type_by_name (const char *name)
         add_type ("GtkTreeView", gtk_tree_view_get_type);
         add_type ("GtkTreeViewColumn", gtk_tree_view_column_get_type);
         add_type ("GtkTreeViewMode", 0 /* removed */);
-        add_type ("GtkBox", gtk_vbox_get_type);
-        add_type ("GtkVButtonBox", gtk_vbutton_box_get_type);
+        add_type ("GtkBox", gtk_box_get_type);
+        add_type ("GtkVButtonBox", gtk_button_box_get_type);
         add_type ("GtkViewport", gtk_viewport_get_type);
-        add_type ("GtkVPaned", gtk_vpaned_get_type);
+        add_type ("GtkVPaned", gtk_paned_get_type);
         add_type ("GtkVRuler", 0 /* removed */);
-        add_type ("GtkVScale", gtk_vscale_get_type);
-        add_type ("GtkVScrollbar", gtk_vscrollbar_get_type);
-        add_type ("GtkVSeparator", gtk_vseparator_get_type);
+        add_type ("GtkVScale", gtk_scale_get_type);
+        add_type ("GtkVScrollbar", gtk_scrollbar_get_type);
+        add_type ("GtkVSeparator", gtk_separator_get_type);
         add_type ("GtkWidget", gtk_widget_get_type);
         add_type ("GtkWidgetFlags", 0 /* removed */);
         add_type ("GtkWidgetHelpType", gtk_widget_help_type_get_type);

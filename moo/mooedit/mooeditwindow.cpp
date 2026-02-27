@@ -430,8 +430,8 @@ moo_edit_window_class_init (MooEditWindowClass *klass)
     moo_window_class_set_id (window_class, "Editor", "Editor");
 
     moo_window_class_new_action (window_class, "NewDoc", nullptr,
-                                 "display-name", "document-new",
-                                 "label", "document-new",
+                                 "display-name", "New",
+                                 "label", "_New",
                                  "tooltip", _("Create new document"),
                                  "icon-name", "document-new",
                                  "default-accel", MOO_EDIT_ACCEL_NEW,
@@ -439,7 +439,7 @@ moo_edit_window_class_init (MooEditWindowClass *klass)
                                  nullptr);
 
     moo_window_class_new_action (window_class, "Open", nullptr,
-                                 "display-name", "document-open",
+                                 "display-name", "Open",
                                  "label", _("_Open..."),
                                  "tooltip", _("Open..."),
                                  "icon-name", "document-open",
@@ -470,9 +470,9 @@ moo_edit_window_class_init (MooEditWindowClass *klass)
                                         nullptr, nullptr);
 
     moo_window_class_new_action (window_class, "Save", nullptr,
-                                 "display-name", "document-save",
-                                 "label", "document-save",
-                                 "tooltip", "document-save",
+                                 "display-name", "Save",
+                                 "label", "_Save",
+                                 "tooltip", "Save",
                                  "icon-name", "document-save",
                                  "default-accel", MOO_EDIT_ACCEL_SAVE,
                                  "closure-callback", action_save,
@@ -480,7 +480,7 @@ moo_edit_window_class_init (MooEditWindowClass *klass)
                                  nullptr);
 
     moo_window_class_new_action (window_class, "SaveAs", nullptr,
-                                 "display-name", "document-save-as",
+                                 "display-name", "Save As",
                                  "label", _("Save _As..."),
                                  "tooltip", _("Save as..."),
                                  "icon-name", "document-save-as",
@@ -490,10 +490,10 @@ moo_edit_window_class_init (MooEditWindowClass *klass)
                                  nullptr);
 
     moo_window_class_new_action (window_class, "Close", nullptr,
-                                 "display-name", "window-close",
-                                 "label", "window-close",
+                                 "display-name", "Close",
+                                 "label", "_Close",
                                  "tooltip", _("Close document"),
-                                 "icon-name", "window-close",
+                                 "icon-name", "_Close",
                                  "default-accel", MOO_EDIT_ACCEL_CLOSE,
                                  "closure-callback", action_close_tab,
                                  "condition::sensitive", "has-open-document",
@@ -547,9 +547,9 @@ moo_edit_window_class_init (MooEditWindowClass *klass)
                                  nullptr);
 
     moo_window_class_new_action (window_class, "Find", nullptr,
-                                 "display-name", "edit-find",
-                                 "label", "edit-find",
-                                 "tooltip", "edit-find",
+                                 "display-name", "Find",
+                                 "label", "_Find",
+                                 "tooltip", "Find",
                                  "icon-name", "edit-find",
                                  "default-accel", MOO_EDIT_ACCEL_FIND,
                                  "closure-signal", "find-interactive",
@@ -580,9 +580,9 @@ moo_edit_window_class_init (MooEditWindowClass *klass)
                                  nullptr);
 
     moo_window_class_new_action (window_class, "Replace", nullptr,
-                                 "display-name", "edit-find-replace",
-                                 "label", "edit-find-replace",
-                                 "tooltip", "edit-find-replace",
+                                 "display-name", "Replace",
+                                 "label", "_Replace",
+                                 "tooltip", "Replace",
                                  "icon-name", "edit-find-replace",
                                  "default-accel", MOO_EDIT_ACCEL_REPLACE,
                                  "closure-signal", "replace-interactive",
@@ -682,9 +682,9 @@ moo_edit_window_class_init (MooEditWindowClass *klass)
                                  nullptr);
 
     moo_window_class_new_action (window_class, STOP_ACTION_ID, nullptr,
-                                 "display-name", "process-stop",
-                                 "label", "process-stop",
-                                 "tooltip", "process-stop",
+                                 "display-name", "Stop",
+                                 "label", "_Stop",
+                                 "tooltip", "Stop",
                                  "icon-name", "process-stop",
                                  "default-accel", MOO_EDIT_ACCEL_STOP,
                                  "closure-callback", action_abort_jobs,
@@ -765,9 +765,9 @@ moo_edit_window_class_init (MooEditWindowClass *klass)
                                  nullptr);
 
     moo_window_class_new_action (window_class, "Indent", nullptr,
-                                 "display-name", "format-indent-more",
-                                 "label", "format-indent-more",
-                                 "tooltip", "format-indent-more",
+                                 "display-name", "Indent",
+                                 "label", "In_dent",
+                                 "tooltip", "Indent",
                                  "icon-name", "format-indent-more",
                                  "closure-callback", moo_text_view_indent,
                                  "closure-proxy-func", moo_edit_window_get_active_view,
@@ -775,9 +775,9 @@ moo_edit_window_class_init (MooEditWindowClass *klass)
                                  nullptr);
 
     moo_window_class_new_action (window_class, "Unindent", nullptr,
-                                 "display-name", "format-indent-less",
-                                 "label", "format-indent-less",
-                                 "tooltip", "format-indent-less",
+                                 "display-name", "Unindent",
+                                 "label", "Uninden_t",
+                                 "tooltip", "Unindent",
                                  "icon-name", "format-indent-less",
                                  "closure-callback", moo_text_view_unindent,
                                  "closure-proxy-func", moo_edit_window_get_active_view,
@@ -802,16 +802,16 @@ moo_edit_window_class_init (MooEditWindowClass *klass)
                                  nullptr);
 
     moo_window_class_new_action (window_class, "PrintPreview", nullptr,
-                                 "display-name", "document-print-preview",
-                                 "label", "document-print-preview",
-                                 "tooltip", "document-print-preview",
+                                 "display-name", "Print Preview",
+                                 "label", "Print Pre_view",
+                                 "tooltip", "Print Preview",
                                  "icon-name", "document-print-preview",
                                  "closure-callback", action_print_preview,
                                  "condition::sensitive", "has-open-document",
                                  nullptr);
 
     moo_window_class_new_action (window_class, "Print", nullptr,
-                                 "display-name", "document-print",
+                                 "display-name", "Print",
                                  "label", _("Print..."),
                                  "tooltip", _("Print..."),
                                  "default-accel", MOO_EDIT_ACCEL_PRINT,

@@ -629,8 +629,8 @@ moo_file_selector_constructor (GType           type,
                                  "closure-callback", file_selector_create_file,
                                  nullptr);
     moo_action_group_add_action (group, "Open",
-                                 "label", "document-open",
-                                 "tooltip", "document-open",
+                                 "label", "_Open",
+                                 "tooltip", "Open",
                                  "icon-name", "document-open",
                                  "closure-object", filesel,
                                  "closure-callback", file_selector_open_files,
@@ -1148,7 +1148,7 @@ create_drop_doc_menu (MooFileSelector *filesel,
     gtk_widget_show (item);
     gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
 
-    item = gtk_image_menu_item_new_from_stock ("dialog-cancel", nullptr);
+    item = gtk_menu_item_new_with_label ("Cancel");
     gtk_widget_show (item);
     _moo_menu_item_set_accel_label (item, "Escape");
     gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);

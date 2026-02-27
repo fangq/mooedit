@@ -47,7 +47,7 @@ create_message_dialog (GtkWindow  *parent,
     if (buttons == GTK_BUTTONS_CLOSE || buttons == GTK_BUTTONS_OK)
     {
         gtk_dialog_add_buttons (GTK_DIALOG (dialog),
-                                buttons == GTK_BUTTONS_CLOSE ? "window-close" : "dialog-ok",
+                                buttons == GTK_BUTTONS_CLOSE ? "_Close" : "_OK",
                                 GTK_RESPONSE_CANCEL,
                                 NULL);
         gtk_dialog_set_default_response (GTK_DIALOG (dialog),
@@ -372,7 +372,7 @@ moo_overwrite_file_dialog (const char *display_name,
                                               "overwrite its contents.",
                                               display_dirname);
 
-    gtk_dialog_add_button (GTK_DIALOG (dialog), "dialog-cancel", GTK_RESPONSE_CANCEL);
+    gtk_dialog_add_button (GTK_DIALOG (dialog), "_Cancel", GTK_RESPONSE_CANCEL);
 
     button = gtk_button_new_with_mnemonic ("_Replace");
     gtk_button_set_image (GTK_BUTTON (button),
@@ -427,8 +427,8 @@ moo_save_changes_dialog (const char *display_name,
 
     gtk_dialog_add_buttons (dialog,
         "edit-delete", GTK_RESPONSE_NO,
-        "dialog-cancel", GTK_RESPONSE_CANCEL,
-        "document-save", GTK_RESPONSE_YES,
+        "_Cancel", GTK_RESPONSE_CANCEL,
+        "_Save", GTK_RESPONSE_YES,
         NULL);
 
     gtk_dialog_set_alternative_button_order (dialog,

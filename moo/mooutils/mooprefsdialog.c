@@ -136,10 +136,10 @@ moo_prefs_dialog_init (MooPrefsDialog *dialog)
     gtk_window_set_destroy_with_parent (GTK_WINDOW (dialog), TRUE);
 
     gtk_dialog_add_buttons (GTK_DIALOG (dialog),
-                            "help-browser", GTK_RESPONSE_HELP,
-                            "dialog-ok-apply", GTK_RESPONSE_APPLY,
-                            "dialog-cancel", GTK_RESPONSE_CANCEL,
-                            "dialog-ok", GTK_RESPONSE_OK,
+                            "_Help", GTK_RESPONSE_HELP,
+                            "_Apply", GTK_RESPONSE_APPLY,
+                            "_Cancel", GTK_RESPONSE_CANCEL,
+                            "_OK", GTK_RESPONSE_OK,
                             NULL);
 #if GTK_MINOR_VERSION >= 6
     gtk_dialog_set_alternative_button_order (GTK_DIALOG (dialog),
@@ -185,10 +185,9 @@ destroy_page (GtkTreeModel  *model,
     GtkWidget *page = NULL;
 
     gtk_tree_model_get (model, iter, PAGE_COLUMN, &page, -1);
-    g_return_val_if_fail (page != NULL, FALSE);
+    if (page == NULL) return FALSE;
 
     g_object_set_data (G_OBJECT (page), "moo-prefs-dialog-row", NULL);
-    gtk_widget_destroy (page);
     g_object_unref (page);
 
     return FALSE;
@@ -200,6 +199,8 @@ static void moo_prefs_dialog_destroy (GtkWidget *object)
 
     if (dialog->store)
     {
+        if (!GTK_IS_TREE_VIEW (dialog->pages_list)) { g_object_unref (dialog->store); dialog->store = NULL;
+        dialog->pages_list = NULL; goto skip_destroy; }
         GtkTreeSelection *selection = gtk_tree_view_get_selection (dialog->pages_list);
         g_signal_handlers_disconnect_by_func (selection,
                                               (gpointer) pages_list_selection_changed,
@@ -209,8 +210,10 @@ static void moo_prefs_dialog_destroy (GtkWidget *object)
                                 destroy_page, NULL);
         g_object_unref (dialog->store);
         dialog->store = NULL;
+        dialog->pages_list = NULL;
     }
 
+skip_destroy:
     GTK_WIDGET_CLASS(moo_prefs_dialog_parent_class)->destroy (object);
 }
 

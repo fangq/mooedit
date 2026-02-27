@@ -2035,7 +2035,7 @@ popup_menu (WindowPlugin *plugin,
 
     if (can_open (plugin->list, selected))
     {
-        menuitem = gtk_image_menu_item_new_from_stock ("document-open", nullptr);
+        menuitem = gtk_menu_item_new_with_label ("Open");
         g_signal_connect (menuitem, "activate", G_CALLBACK (open_activated), plugin);
         gtk_menu_shell_append (GTK_MENU_SHELL (menu), menuitem);
     }

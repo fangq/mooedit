@@ -360,7 +360,7 @@ moo_paned_class_init (MooPanedClass *klass)
 static void
 moo_paned_init (MooPaned *paned)
 {
-    gtk_widget_set_has_window (GTK_WIDGET (paned), FALSE);
+    gtk_widget_set_has_window (GTK_WIDGET (paned), TRUE);
 
     paned->priv = G_TYPE_INSTANCE_GET_PRIVATE (paned,
                                                MOO_TYPE_PANED,
@@ -606,9 +606,8 @@ moo_paned_realize (GtkWidget *widget)
 
     paned = MOO_PANED (widget);
 
-    gtk_widget_set_window (widget, g_object_ref (gtk_widget_get_parent_window (widget)));
-    /* GTK3: window already ref'd by set_window */
-
+    /* GTK3: Create bin_window as the widget's own window so that
+     * GTK3's draw system properly routes draw signals to it. */
     attributes.x = moo_widget_get_alloc(widget).x;
     attributes.y = moo_widget_get_alloc(widget).y;
     attributes.width = moo_widget_get_alloc(widget).width;
@@ -624,7 +623,8 @@ moo_paned_realize (GtkWidget *widget)
 
     paned->priv->bin_window = gdk_window_new (gtk_widget_get_parent_window (widget),
                                               &attributes, attributes_mask);
-    gdk_window_set_user_data (paned->priv->bin_window, widget);
+    gtk_widget_set_window (widget, paned->priv->bin_window);
+    gtk_widget_register_window (widget, paned->priv->bin_window);
 
     /* GTK3: style_attach removed */
         /* GTK3: background from CSS */
@@ -708,7 +708,7 @@ realize_handle (MooPaned *paned)
 
     paned->priv->handle_window = gdk_window_new (paned->priv->pane_window,
             &attributes, attributes_mask);
-    gdk_window_set_user_data (paned->priv->handle_window, widget);
+    gtk_widget_register_window (widget, paned->priv->handle_window);
         /* GTK3: background from CSS */
 
     gdk_cursor_unref (attributes.cursor);
@@ -778,7 +778,7 @@ realize_pane (MooPaned *paned)
 
     paned->priv->pane_window =
             gdk_window_new (gtk_widget_get_window (widget), &attributes, attributes_mask);
-    gdk_window_set_user_data (paned->priv->pane_window, widget);
+    gtk_widget_register_window (widget, paned->priv->pane_window);
         /* GTK3: background from CSS */
 
     realize_handle (paned);
@@ -796,7 +796,7 @@ moo_paned_unrealize (GtkWidget *widget)
 
     if (paned->priv->handle_window)
     {
-        gdk_window_set_user_data (paned->priv->handle_window, NULL);
+        gtk_widget_unregister_window (widget, paned->priv->handle_window);
         gdk_window_destroy (paned->priv->handle_window);
         paned->priv->handle_window = NULL;
         paned->priv->handle_visible = FALSE;
@@ -805,19 +805,16 @@ moo_paned_unrealize (GtkWidget *widget)
 
     if (paned->priv->pane_window)
     {
-        gdk_window_set_user_data (paned->priv->pane_window, NULL);
+        gtk_widget_unregister_window (widget, paned->priv->pane_window);
         gdk_window_destroy (paned->priv->pane_window);
         paned->priv->pane_window = NULL;
         paned->priv->pane_widget_visible = FALSE;
         paned->priv->pane_widget_size = 0;
     }
 
-    if (paned->priv->bin_window)
-    {
-        gdk_window_set_user_data (paned->priv->bin_window, NULL);
-        gdk_window_destroy (paned->priv->bin_window);
-        paned->priv->bin_window = NULL;
-    }
+    /* bin_window is the widget's own window; parent class unrealize
+     * will destroy it. Just clear our pointer. */
+    paned->priv->bin_window = NULL;
 
     GTK_WIDGET_CLASS(moo_paned_parent_class)->unrealize (widget);
 }
@@ -1453,11 +1450,11 @@ moo_paned_expose (GtkWidget      *widget, cairo_t *cr)
         gtk_container_propagate_draw (GTK_CONTAINER (paned),
                                         _moo_pane_get_frame (paned->priv->current_pane), cr);
 
-    if (paned->priv->handle_visible && gtk_cairo_should_draw_window (cr, paned->priv->handle_window))
+    if (paned->priv->handle_visible && paned->priv->handle_window && GDK_IS_WINDOW(paned->priv->handle_window) && gtk_cairo_should_draw_window (cr, paned->priv->handle_window))
         draw_handle (paned, cr);
 
     if (paned->priv->button_box_visible && !paned->priv->pane_widget_visible &&
-        paned->priv->border_size && gtk_cairo_should_draw_window (cr, paned->priv->bin_window))
+        paned->priv->border_size && paned->priv->bin_window && GDK_IS_WINDOW(paned->priv->bin_window) && gtk_cairo_should_draw_window (cr, paned->priv->bin_window))
             draw_border (paned, cr);
 
     return TRUE;
@@ -1507,7 +1504,7 @@ moo_paned_add (GtkContainer   *container,
     }
 
     gtk_widget_set_parent_window (child, MOO_PANED(container)->priv->bin_window);
-    gtk_widget_set_parent (child, GTK_WIDGET (bin));
+    GTK_CONTAINER_CLASS (moo_paned_parent_class)->add (container, child);
     /* GTK3: child set via gtk_widget_set_parent */
 }
 
@@ -2444,9 +2441,15 @@ moo_paned_set_focus_child (GtkContainer *container,
 
     if (widget)
     {
-        if (widget == gtk_bin_get_child (GTK_BIN (paned)))
+        /* GTK3: set_focus_child can be called with a descendant widget,
+         * not just a direct child. Check identity first, then ancestry. */
+        GtkWidget *bin_child = gtk_bin_get_child (GTK_BIN (paned));
+
+        if (widget == bin_child ||
+            (bin_child && gtk_widget_is_ancestor (widget, bin_child)))
             new_focus = FOCUS_CHILD;
-        else if (widget == paned->button_box)
+        else if (widget == paned->button_box ||
+                 gtk_widget_is_ancestor (widget, paned->button_box))
             new_focus = FOCUS_BUTTON;
 
         if (!new_focus)
@@ -2454,8 +2457,10 @@ moo_paned_set_focus_child (GtkContainer *container,
             for (l = paned->priv->panes; l != NULL; l = l->next)
             {
                 MooPane *pane = l->data;
+                GtkWidget *frame = _moo_pane_get_frame (pane);
 
-                if (widget == _moo_pane_get_frame (pane))
+                if (widget == frame ||
+                    (frame && gtk_widget_is_ancestor (widget, frame)))
                 {
                     new_focus_pane = pane;
                     new_focus = FOCUS_PANE;
@@ -2466,11 +2471,10 @@ moo_paned_set_focus_child (GtkContainer *container,
 
         if (!new_focus)
         {
-            g_critical ("oops");
+            /* Unrecognized focus child — can happen during widget
+             * construction/destruction in GTK3. Chain up silently. */
             GTK_CONTAINER_CLASS(moo_paned_parent_class)->set_focus_child (container, widget);
-            paned->priv->focus = FOCUS_NONE;
-            paned->priv->focus_pane = NULL;
-            g_return_if_reached ();
+            return;
         }
     }
 

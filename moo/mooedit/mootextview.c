@@ -18,6 +18,7 @@
  **/
 
 #include "mooedit/mooedit-accels.h"
+#define SAFE_GDK_WINDOW_GET_WIDTH(w) ((w) && GDK_IS_WINDOW(w) ? gdk_window_get_width(w) : 0)
 #include "mooedit/mootextview-private.h"
 #include "mooedit/mootextview.h"
 #include "mooedit/mootextbuffer.h"
@@ -2417,7 +2418,7 @@ moo_text_view_expose (GtkWidget      *widget,
         update_n_lines_idle (view);
 
     if (gtk_widget_get_sensitive (GTK_WIDGET (view)) &&
-        gtk_cairo_should_draw_window (cr, text_window))
+        text_window && GDK_IS_WINDOW(text_window) && gtk_cairo_should_draw_window (cr, text_window))
     {
         if ((gtk_widget_has_focus (GTK_WIDGET (view)) ||
              view->priv->highlight_current_line_unfocused)
@@ -2433,12 +2434,12 @@ moo_text_view_expose (GtkWidget      *widget,
                 moo_text_view_draw_right_margin (text_view, cr);
     }
 
-    if (gtk_cairo_should_draw_window (cr, left_window))
+    if (left_window && GDK_IS_WINDOW(left_window) && gtk_cairo_should_draw_window (cr, left_window))
         draw_left_margin (view, cr);
-    else if (gtk_cairo_should_draw_window (cr, text_window))
+    else if (text_window && GDK_IS_WINDOW(text_window) && gtk_cairo_should_draw_window (cr, text_window))
         draw_marks_background (view, cr);
 
-    if (gtk_cairo_should_draw_window (cr, text_window))
+    if (text_window && GDK_IS_WINDOW(text_window) && gtk_cairo_should_draw_window (cr, text_window))
     {
         GdkRectangle visible_rect;
 
@@ -2453,7 +2454,7 @@ moo_text_view_expose (GtkWidget      *widget,
 
     handled = GTK_WIDGET_CLASS(moo_text_view_parent_class)->draw (widget, cr);
 
-    if (gtk_cairo_should_draw_window (cr, text_window))
+    if (text_window && GDK_IS_WINDOW(text_window) && gtk_cairo_should_draw_window (cr, text_window))
     {
         int first_line = gtk_text_iter_get_line (&start);
         int last_line = gtk_text_iter_get_line (&end);
@@ -2687,13 +2688,13 @@ moo_text_view_populate_popup (GtkTextView    *text_view,
     gtk_widget_show (item);
     gtk_menu_shell_prepend (GTK_MENU_SHELL (menu), item);
 
-    item = gtk_image_menu_item_new_from_stock ("edit-redo", NULL);
+    item = gtk_menu_item_new_with_label ("Redo");
     gtk_widget_show (item);
     gtk_menu_shell_prepend (GTK_MENU_SHELL (menu), item);
     g_signal_connect_swapped (item, "activate", G_CALLBACK (moo_text_view_redo), view);
     gtk_widget_set_sensitive (item, moo_text_view_can_redo (view));
 
-    item = gtk_image_menu_item_new_from_stock ("edit-undo", NULL);
+    item = gtk_menu_item_new_with_label ("Undo");
     gtk_widget_show (item);
     gtk_menu_shell_prepend (GTK_MENU_SHELL (menu), item);
     g_signal_connect_swapped (item, "activate", G_CALLBACK (moo_text_view_undo), view);
@@ -3009,7 +3010,7 @@ draw_left_margin (MooTextView    *view,
 
     text_view = GTK_TEXT_VIEW (view);
     buffer = gtk_text_view_get_buffer (text_view);
-    window_width = gdk_window_get_width (gtk_text_view_get_window (GTK_TEXT_VIEW (view), GTK_TEXT_WINDOW_LEFT));
+    window_width = SAFE_GDK_WINDOW_GET_WIDTH (gtk_text_view_get_window (GTK_TEXT_VIEW (view), GTK_TEXT_WINDOW_LEFT));
     text_width = 0;
     mark_icon_width = 0;
 
@@ -3131,7 +3132,7 @@ draw_marks_background (MooTextView    *view,
                                            area.x, area.y,
                                            &area.x, &area.y);
 
-    window_width = gdk_window_get_width (gtk_text_view_get_window (GTK_TEXT_VIEW (view), GTK_TEXT_WINDOW_LEFT));
+    window_width = SAFE_GDK_WINDOW_GET_WIDTH (gtk_text_view_get_window (GTK_TEXT_VIEW (view), GTK_TEXT_WINDOW_LEFT));
     window_width -= gtk_text_view_get_left_margin (text_view);
 
     gtk_text_view_get_line_at_y (text_view, &iter, area.y, NULL);
@@ -3447,7 +3448,7 @@ invalidate_line (MooTextView *view,
                                                       GTK_TEXT_WINDOW_LEFT);
         if (window)
         {
-            rect.width = gdk_window_get_width (window);
+            rect.width = SAFE_GDK_WINDOW_GET_WIDTH (window);
             gdk_window_invalidate_rect (window, &rect, FALSE);
         }
     }
@@ -3458,7 +3459,7 @@ invalidate_line (MooTextView *view,
                                                       GTK_TEXT_WINDOW_TEXT);
         if (window)
         {
-            rect.width = gdk_window_get_width (window);
+            rect.width = SAFE_GDK_WINDOW_GET_WIDTH (window);
             gdk_window_invalidate_rect (window, &rect, FALSE);
         }
     }

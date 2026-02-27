@@ -806,9 +806,9 @@ _moo_accel_prefs_dialog_new (MooActionCollection *collection)
 
     dialog = gtk_dialog_new_with_buttons (_("Configure Shortcuts"), NULL,
                                           (GtkDialogFlags) 0,
-                                          "help-browser", GTK_RESPONSE_HELP,
-                                          "dialog-cancel", GTK_RESPONSE_CANCEL,
-                                          "dialog-ok", GTK_RESPONSE_OK,
+                                          "_Help", GTK_RESPONSE_HELP,
+                                          "_Cancel", GTK_RESPONSE_CANCEL,
+                                          "_OK", GTK_RESPONSE_OK,
                                           NULL);
     gtk_dialog_set_alternative_button_order (GTK_DIALOG (dialog),
                                              GTK_RESPONSE_OK,

@@ -551,14 +551,14 @@ moo_entry_populate_popup (GtkEntry           *gtkentry,
         gtk_widget_show (item);
         gtk_menu_shell_prepend (GTK_MENU_SHELL (menu), item);
 
-        item = gtk_image_menu_item_new_from_stock ("edit-redo", NULL);
+        item = gtk_menu_item_new_with_label ("Redo");
         gtk_widget_show (item);
         gtk_menu_shell_prepend (GTK_MENU_SHELL (menu), item);
         gtk_widget_set_sensitive (item, entry->priv->enable_undo &&
                 moo_undo_stack_can_redo (entry->priv->undo_stack));
         g_signal_connect_swapped (item, "activate", G_CALLBACK (moo_entry_redo), entry);
 
-        item = gtk_image_menu_item_new_from_stock ("edit-undo", NULL);
+        item = gtk_menu_item_new_with_label ("Undo");
         gtk_widget_show (item);
         gtk_menu_shell_prepend (GTK_MENU_SHELL (menu), item);
         gtk_widget_set_sensitive (item, entry->priv->enable_undo &&

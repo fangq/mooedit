@@ -242,7 +242,7 @@ _moo_stock_init (void)
 
     register_stock_icon_alias (factory, "document-new", MOO_STOCK_NEW_PROJECT, NULL);
     register_stock_icon_alias (factory, "document-open", MOO_STOCK_OPEN_PROJECT, NULL);
-    register_stock_icon_alias (factory, "window-close", MOO_STOCK_CLOSE_PROJECT, NULL);
+    register_stock_icon_alias (factory, "_Close", MOO_STOCK_CLOSE_PROJECT, NULL);
     register_stock_icon_alias (factory, "preferences-system", MOO_STOCK_PROJECT_OPTIONS, NULL);
     register_stock_icon_alias (factory, "go-bottom", MOO_STOCK_BUILD, NULL);
     register_stock_icon_alias (factory, "go-down", MOO_STOCK_COMPILE, NULL);

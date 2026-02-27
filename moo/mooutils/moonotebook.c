@@ -1305,16 +1305,16 @@ moo_notebook_expose (GtkWidget      *widget,
 {
     MooNotebook *nb = MOO_NOTEBOOK (widget);
 
-    if (gtk_cairo_should_draw_window (cr, nb->priv->tab_window))
+    if (nb->priv->tab_window && GDK_IS_WINDOW(nb->priv->tab_window) && gtk_cairo_should_draw_window (cr, nb->priv->tab_window))
         moo_notebook_draw_labels (nb, cr);
 
-    if (gtk_cairo_should_draw_window (cr, gtk_widget_get_window (widget)) && nb->priv->tabs_visible)
+    if (gtk_widget_get_window(widget) && GDK_IS_WINDOW(gtk_widget_get_window(widget)) && gtk_cairo_should_draw_window (cr, gtk_widget_get_window (widget)) && nb->priv->tabs_visible)
         moo_notebook_draw_child_border (nb, cr);
 
     /* do not let GtkNotebook try to draw */
     GTK_WIDGET_CLASS(moo_notebook_grand_parent_class)->draw (widget, cr);
 
-    if (nb->priv->in_drag && gtk_cairo_should_draw_window (cr, nb->priv->tab_window))
+    if (nb->priv->in_drag && nb->priv->tab_window && GDK_IS_WINDOW(nb->priv->tab_window) && gtk_cairo_should_draw_window (cr, nb->priv->tab_window))
         moo_notebook_draw_dragged_label (nb, cr);
 
     return FALSE;

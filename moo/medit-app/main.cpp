@@ -24,6 +24,7 @@
 #include "plugins/mooplugin-builtin.h"
 #include <gtk/gtk.h>
 #include <stdlib.h>
+#include <signal.h>
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>

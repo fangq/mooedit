@@ -299,7 +299,7 @@ GtkWidget *file_chooser_dialog_new (const char *title,
 {
     GtkWidget *dialog =
             gtk_file_chooser_dialog_new (title, NULL, action,
-                                         "dialog-cancel", GTK_RESPONSE_CANCEL,
+                                         "_Cancel", GTK_RESPONSE_CANCEL,
                                          okbtn, GTK_RESPONSE_OK,
                                          NULL);
 
@@ -317,7 +317,7 @@ GtkWidget *file_chooser_dialog_new (const char *title,
     {
         moo_help_set_id (dialog, help_id);
         moo_help_connect_keys (dialog);
-        gtk_dialog_add_button (GTK_DIALOG (dialog), "help-browser", GTK_RESPONSE_HELP);
+        gtk_dialog_add_button (GTK_DIALOG (dialog), "_Help", GTK_RESPONSE_HELP);
     }
 
     return dialog;
@@ -378,7 +378,7 @@ moo_file_dialog_create_widget (MooFileDialog *dialog)
 
             widget = file_chooser_dialog_new (dialog->priv->title,
                                               chooser_action,
-                                              "document-open",
+                                              "_Open",
                                               dialog->priv->current_dir,
                                               dialog->priv->help_id);
             file_chooser_set_select_multiple (widget, dialog->priv->multiple);
@@ -389,7 +389,7 @@ moo_file_dialog_create_widget (MooFileDialog *dialog)
 
             widget = file_chooser_dialog_new (dialog->priv->title,
                                               chooser_action,
-                                              "document-save",
+                                              "_Save",
                                               dialog->priv->current_dir,
                                               dialog->priv->help_id);
 
