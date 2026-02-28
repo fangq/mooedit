@@ -138,9 +138,18 @@ update_label_widgets (MooPane *pane)
             gtk_image_set_from_pixbuf (GTK_IMAGE (pane->icon_widget),
                                        pane->label->icon_pixbuf);
         else if (pane->label->icon_stock_id)
-            gtk_image_set_from_stock (GTK_IMAGE (pane->icon_widget),
-                                      pane->label->icon_stock_id,
-                                      GTK_ICON_SIZE_MENU);
+        {
+            /* GTK3 fix: try icon_name first, fall back to stock */
+            GtkIconTheme *theme = gtk_icon_theme_get_default ();
+            if (gtk_icon_theme_has_icon (theme, pane->label->icon_stock_id))
+                gtk_image_set_from_icon_name (GTK_IMAGE (pane->icon_widget),
+                                              pane->label->icon_stock_id,
+                                              GTK_ICON_SIZE_MENU);
+            else
+                gtk_image_set_from_stock (GTK_IMAGE (pane->icon_widget),
+                                          pane->label->icon_stock_id,
+                                          GTK_ICON_SIZE_MENU);
+        }
 
         g_object_set (pane->icon_widget, "visible",
                       pane->label->icon_pixbuf || pane->label->icon_stock_id,
@@ -607,6 +616,37 @@ create_button (MooPane      *pane,
     return button;
 }
 
+/* GTK3 fix: paint background on pane frame vbox.
+ * GtkBox/GtkGrid are no-window widgets that don't paint background. */
+static gboolean
+_moo_pane_draw_bg (GtkWidget *widget, cairo_t *cr, G_GNUC_UNUSED gpointer data)
+{
+    GtkStyleContext *ctx;
+    GdkRGBA bg;
+    int w = gtk_widget_get_allocated_width (widget);
+    int h = gtk_widget_get_allocated_height (widget);
+
+    /* Try theme background first */
+    ctx = gtk_widget_get_style_context (widget);
+    gtk_style_context_get_background_color (ctx,
+        gtk_widget_get_state_flags (widget), &bg);
+    if (bg.alpha < 0.01)
+    {
+        /* Theme returned transparent — use parent's bg or dark fallback */
+        GtkWidget *toplevel = gtk_widget_get_toplevel (widget);
+        if (toplevel)
+            gtk_style_context_get_background_color (
+                gtk_widget_get_style_context (toplevel),
+                gtk_widget_get_state_flags (toplevel), &bg);
+        if (bg.alpha < 0.01)
+            { bg.red = 0.22; bg.green = 0.22; bg.blue = 0.22; bg.alpha = 1.0; }
+    }
+    cairo_set_source_rgba (cr, bg.red, bg.green, bg.blue, bg.alpha);
+    cairo_rectangle (cr, 0, 0, w, h);
+    cairo_fill (cr);
+    return FALSE; /* continue drawing children */
+}
+
 static GtkWidget *
 create_frame_widget (MooPane        *pane,
                      MooPanePosition position,
@@ -617,8 +657,12 @@ create_frame_widget (MooPane        *pane,
 
     vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_widget_show (vbox);
+    /* GTK3 fix: paint background on vbox (covers toolbar + content) */
+    g_signal_connect (vbox, "draw", G_CALLBACK (_moo_pane_draw_bg), NULL);
 
     toolbar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    /* GTK3 fix: also paint background on toolbar specifically */
+    g_signal_connect (toolbar, "draw", G_CALLBACK (_moo_pane_draw_bg), NULL);
 
     handle = gtk_event_box_new ();
     gtk_widget_show (handle);

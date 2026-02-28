@@ -72,6 +72,8 @@ class Terminal(Vte.Terminal):
             cs.set_on_terminal(self)
 
     def color_scheme_item_activated(self, item, color_scheme):
+        if not item.get_active():
+            return
         self.set_color_scheme(color_scheme)
         if color_scheme.colors:
             moo.prefs_set_string(COLOR_SCHEME_KEY, color_scheme.name)
@@ -320,7 +322,11 @@ class ColorScheme(object):
 
 # Color schemes shamelessly stolen from Konsole
 color_schemes = [ColorScheme(cs[0], cs[1]) for cs in [
-    [_("Default"), None],
+    [_("Default"),
+        ['#b2b2b2', '#000000',
+         '#000000', '#b21818', '#18b218', '#b26818', '#5C5CFF', '#b218b2', '#18b2b2', '#b2b2b2',
+         '#ffffff', '#000000',
+         '#686868', '#ff5454', '#54ff54', '#ffff54', '#7D7DFF', '#ff54ff', '#54ffff', '#ffffff']],
     [_("Black on White"),
         ['#000000', '#ffffff', '#000000', '#b21818', '#18b218', '#b26818', '#1818b2', '#b218b2', '#18b2b2', '#b2b2b2',
          '#000000', '#ffffff', '#686868', '#ff5454', '#54ff54', '#ffff54', '#5454ff', '#ff54ff', '#54ffff', '#ffffff']],
