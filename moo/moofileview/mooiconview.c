@@ -262,7 +262,9 @@ static void     dnd_info_free               (DndInfo        *info);
 
 
 /* MOO_TYPE_ICON_VIEW */
-G_DEFINE_TYPE (MooIconView, _moo_icon_view, GTK_TYPE_WIDGET)
+static void moo_icon_view_scrollable_init (GtkScrollableInterface *iface);
+G_DEFINE_TYPE_WITH_CODE (MooIconView, _moo_icon_view, GTK_TYPE_WIDGET,
+    G_IMPLEMENT_INTERFACE (GTK_TYPE_SCROLLABLE, moo_icon_view_scrollable_init))
 
 /* GTK3: draw_entry and friends need the cairo_t from the draw handler.
    We stash it here during the draw vfunc call. */
@@ -279,7 +281,12 @@ enum {
     PROP_0,
     PROP_PIXBUF_CELL,
     PROP_TEXT_CELL,
-    PROP_MODEL
+    PROP_MODEL,
+    /* GTK3 GtkScrollable */
+    PROP_HADJUSTMENT,
+    PROP_VADJUSTMENT,
+    PROP_HSCROLL_POLICY,
+    PROP_VSCROLL_POLICY
 };
 
 enum {
@@ -353,6 +360,12 @@ _moo_icon_view_class_init (MooIconViewClass *klass)
                                              "model",
                                              GTK_TYPE_TREE_MODEL,
                                              (GParamFlags) G_PARAM_READWRITE));
+
+    /* GTK3: GtkScrollable properties */
+    g_object_class_override_property (gobject_class, PROP_HADJUSTMENT, "hadjustment");
+    g_object_class_override_property (gobject_class, PROP_VADJUSTMENT, "vadjustment");
+    g_object_class_override_property (gobject_class, PROP_HSCROLL_POLICY, "hscroll-policy");
+    g_object_class_override_property (gobject_class, PROP_VSCROLL_POLICY, "vscroll-policy");
 
     signals[ROW_ACTIVATED] =
             g_signal_new ("row-activated",
@@ -518,6 +531,10 @@ _moo_icon_view_init (MooIconView *view)
     gtk_widget_set_has_window (GTK_WIDGET (view), TRUE);
     gtk_widget_set_can_focus (GTK_WIDGET (view), TRUE);
 
+    /* GTK3 fix: add "view" CSS class so the theme paints the correct
+     * background (same class GtkTreeView and GtkIconView use) */
+    gtk_style_context_add_class (gtk_widget_get_style_context (GTK_WIDGET (view)), "view");
+
     view->priv = G_TYPE_INSTANCE_GET_PRIVATE (view, MOO_TYPE_ICON_VIEW, MooIconViewPrivate);
 
     view->priv->pixbuf.cell = gtk_cell_renderer_pixbuf_new ();
@@ -648,6 +665,15 @@ static void         moo_icon_view_set_property  (GObject        *object,
                                      MOO_ICON_VIEW_CELL_TEXT,
                                      g_value_get_object (value));
             break;
+        /* GTK3 GtkScrollable */
+        case PROP_HADJUSTMENT:
+            _moo_icon_view_set_adjustment (view, g_value_get_object (value));
+            break;
+        case PROP_VADJUSTMENT:
+            break; /* horizontal-only scrolling */
+        case PROP_HSCROLL_POLICY:
+        case PROP_VSCROLL_POLICY:
+            break; /* accept but ignore */
         default:
             G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
     }
@@ -671,6 +697,19 @@ static void         moo_icon_view_get_property  (GObject        *object,
             break;
         case PROP_TEXT_CELL:
             g_value_set_object (value, view->priv->text.cell);
+            break;
+        /* GTK3 GtkScrollable */
+        case PROP_HADJUSTMENT:
+            g_value_set_object (value, view->priv->adjustment);
+            break;
+        case PROP_VADJUSTMENT:
+            g_value_set_object (value, NULL);
+            break;
+        case PROP_HSCROLL_POLICY:
+            g_value_set_enum (value, GTK_SCROLL_NATURAL);
+            break;
+        case PROP_VSCROLL_POLICY:
+            g_value_set_enum (value, GTK_SCROLL_NATURAL);
             break;
         default:
             G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -984,7 +1023,7 @@ moo_icon_view_realize (GtkWidget *widget)
     window = gdk_window_new (gtk_widget_get_parent_window (widget),
                              &attributes, attributes_mask);
     gtk_widget_set_window (widget, window);
-    gdk_window_set_user_data (window, widget);
+    gtk_widget_register_window (widget, window); /* GTK3 fix */
 
     moo_icon_view_invalidate_layout (view);
 }
@@ -995,7 +1034,7 @@ moo_icon_view_unrealize (GtkWidget *widget)
 {
     MooIconView *view = MOO_ICON_VIEW (widget);
 
-    gdk_window_set_user_data (gtk_widget_get_window (widget), NULL);
+    gtk_widget_unregister_window (widget, gtk_widget_get_window (widget)); /* GTK3 fix */
     gdk_window_destroy (gtk_widget_get_window (widget));
     gtk_widget_set_window (widget, NULL);
     gtk_widget_set_realized (widget, FALSE);
@@ -1147,6 +1186,14 @@ moo_icon_view_expose (GtkWidget      *widget,
     MooIconView *view = MOO_ICON_VIEW (widget);
     Layout *layout = view->priv->layout;
 
+    /* GTK3 fix: paint background using theme "view" class */
+    {
+        GtkStyleContext *_ctx = gtk_widget_get_style_context (widget);
+        GtkAllocation _a;
+        gtk_widget_get_allocation (widget, &_a);
+        gtk_render_background (_ctx, event, 0, 0, _a.width, _a.height);
+    }
+
     if (check_empty (view))
         return TRUE;
 
@@ -1192,24 +1239,23 @@ moo_icon_view_expose (GtkWidget      *widget,
     {
         cairo_t *cr;
         GdkRectangle rect;
-        GdkRGBA *color;
         double dash_len = 1.;
+        GdkRGBA _sel_stroke_color;
 
         cr = event;  /* GTK3 draw() already provides a cairo_t */
         get_drag_select_rect (view, &rect);
 
         {
             GtkStyleContext *ctx = gtk_widget_get_style_context (widget);
-            GdkRGBA sel_color;
             gtk_style_context_save (ctx);
             gtk_style_context_set_state (ctx, GTK_STATE_FLAG_SELECTED);
-            gtk_style_context_get_background_color (ctx, gtk_style_context_get_state (ctx), &sel_color);
+            gtk_style_context_get_background_color (ctx, gtk_style_context_get_state (ctx), &_sel_stroke_color);
             gtk_style_context_restore (ctx);
 
             cairo_set_source_rgba (cr,
-                                   sel_color.red,
-                                   sel_color.green,
-                                   sel_color.blue,
+                                   _sel_stroke_color.red,
+                                   _sel_stroke_color.green,
+                                   _sel_stroke_color.blue,
                                    1 / 3.);
         }
         gdk_cairo_rectangle (cr, &rect);
@@ -1217,7 +1263,7 @@ moo_icon_view_expose (GtkWidget      *widget,
 
         cairo_set_dash (cr, &dash_len, 1, .5);
         cairo_set_line_width (cr, 1.);
-        gdk_cairo_set_source_rgba (cr, color);
+        gdk_cairo_set_source_rgba (cr, &_sel_stroke_color); /* GTK3 fix */
         cairo_rectangle (cr,
                          rect.x + .5,
                          rect.y + .5,
@@ -1790,6 +1836,14 @@ moo_icon_view_set_scroll_adjustments    (GtkWidget      *widget,
                                          G_GNUC_UNUSED GtkAdjustment *vadj)
 {
     _moo_icon_view_set_adjustment (MOO_ICON_VIEW (widget), hadj);
+}
+
+/* GTK3: GtkScrollable interface — use default implementations;
+ * scrolling is handled via hadjustment/vadjustment properties above */
+static void
+moo_icon_view_scrollable_init (GtkScrollableInterface *iface)
+{
+    (void) iface;
 }
 
 
@@ -2631,6 +2685,9 @@ static gboolean moo_icon_view_scroll_event  (GtkWidget      *widget,
         case GDK_SCROLL_DOWN:
         case GDK_SCROLL_RIGHT:
             offset += get_wheel_delta (view);
+            break;
+        case GDK_SCROLL_SMOOTH: /* GTK3 */
+            offset += (int)(event->delta_x * get_wheel_delta (view));
             break;
     }
 

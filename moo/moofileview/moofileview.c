@@ -488,6 +488,17 @@ enum {
 
 static guint signals[LAST_SIGNAL];
 
+/* GTK3 fix: paint theme background for MooFileView (GtkVBox, no own window) */
+static gboolean
+moo_file_view_draw (GtkWidget *widget, cairo_t *cr)
+{
+    GtkStyleContext *ctx = gtk_widget_get_style_context (widget);
+    gtk_render_background (ctx, cr, 0, 0,
+                          gtk_widget_get_allocated_width (widget),
+                          gtk_widget_get_allocated_height (widget));
+    return GTK_WIDGET_CLASS (moo_file_view_parent_class)->draw (widget, cr);
+}
+
 static void
 moo_file_view_class_init (MooFileViewClass *klass)
 {
@@ -499,6 +510,7 @@ moo_file_view_class_init (MooFileViewClass *klass)
     gobject_class->set_property = moo_file_view_set_property;
     gobject_class->get_property = moo_file_view_get_property;
 
+    widget_class->draw = moo_file_view_draw; /* GTK3 fix */
     widget_class->destroy = moo_file_view_destroy;
     widget_class->hide = moo_file_view_hide;
     widget_class->popup_menu = moo_file_view_popup_menu;
