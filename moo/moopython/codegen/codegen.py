@@ -384,6 +384,25 @@ class Wrapper:
             substdict['typename'] = self.objinfo.c_name
         substdict.setdefault('cname',  function_obj.c_name)
         substdict['varlist'] = info.get_varlist()
+        # Fix uninitialized GtkTextIter* pointers — add = NULL
+        # (argtypes.py generates "GtkTextIter *name;" without initialization)
+        import re as _re
+        def _init_iter_ptrs(varlist):
+            def _fix_line(line):
+                s = line.strip()
+                if s.startswith('GtkTextIter *') and s.endswith(';'):
+                    parts = s[len('GtkTextIter '):].rstrip(';').split(',')
+                    new_parts = []
+                    for p in parts:
+                        p = p.strip()
+                        if '=' not in p:
+                            p = p + ' = NULL'
+                        new_parts.append(p)
+                    indent = line[:len(line) - len(line.lstrip())]
+                    return indent + 'GtkTextIter ' + ', '.join(new_parts) + ';\n'
+                return line
+            return ''.join(_fix_line(l) for l in varlist.splitlines(True))
+        substdict['varlist'] = _init_iter_ptrs(substdict['varlist'])
         substdict['typecodes'] = info.parsestr
         substdict['parselist'] = info.get_parselist()
         substdict['arglist'] = info.get_arglist()
@@ -1429,7 +1448,12 @@ class SourceWriter:
             self.fp.write('#define PY_SSIZE_T_CLEAN\n')
         self.fp.write('#include <Python.h>\n')
         self.fp.write('#include <gtk/gtk.h>\n')  # Add GTK headers for GtkTextIter and other types
-        self.fp.write('\n\n')
+        self.fp.write('\n')
+        # Suppress -Wcast-function-type for PyCFunction casts (standard Python C API)
+        self.fp.write('#if defined(__GNUC__) && __GNUC__ >= 8\n')
+        self.fp.write('#pragma GCC diagnostic ignored "-Wcast-function-type"\n')
+        self.fp.write('#endif\n')
+        self.fp.write('\n')
         
         # Python 3 / PyGObject compatibility definitions
         self.fp.write('''#include <string.h>

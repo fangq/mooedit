@@ -138,17 +138,9 @@ update_label_widgets (MooPane *pane)
             gtk_image_set_from_pixbuf (GTK_IMAGE (pane->icon_widget),
                                        pane->label->icon_pixbuf);
         else if (pane->label->icon_stock_id)
-        {
-            GtkIconTheme *theme = gtk_icon_theme_get_default ();
-            if (gtk_icon_theme_has_icon (theme, pane->label->icon_stock_id))
-                gtk_image_set_from_icon_name (GTK_IMAGE (pane->icon_widget),
-                                              pane->label->icon_stock_id,
-                                              GTK_ICON_SIZE_MENU);
-            else
-                gtk_image_set_from_stock (GTK_IMAGE (pane->icon_widget),
-                                          pane->label->icon_stock_id,
-                                          GTK_ICON_SIZE_MENU);
-        }
+            gtk_image_set_from_stock (GTK_IMAGE (pane->icon_widget),
+                                      pane->label->icon_stock_id,
+                                      GTK_ICON_SIZE_MENU);
 
         g_object_set (pane->icon_widget, "visible",
                       pane->label->icon_pixbuf || pane->label->icon_stock_id,
@@ -601,6 +593,12 @@ create_button (MooPane      *pane,
     gtk_button_set_relief (GTK_BUTTON (button), GTK_RELIEF_NONE);
     _moo_widget_set_tooltip (button, tip);
 
+    /* GTK3 fix: minimize button size to reduce pane title bar height.
+     * GTK3 buttons have ~24px default min-height; force 16px for 7x7 icons. */
+    gtk_widget_set_size_request (button, 16, 16);
+    gtk_widget_set_margin_top (button, 0);
+    gtk_widget_set_margin_bottom (button, 0);
+
     icon_widget = _moo_create_small_icon (icon);
     gtk_container_add (GTK_CONTAINER (button), icon_widget);
     gtk_box_pack_end (GTK_BOX (toolbar), button, FALSE, FALSE, padding);
@@ -623,9 +621,8 @@ create_frame_widget (MooPane        *pane,
     toolbar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 
     handle = gtk_event_box_new ();
-    gtk_event_box_set_visible_window (GTK_EVENT_BOX (handle), TRUE);
     gtk_widget_show (handle);
-    gtk_box_pack_start (GTK_BOX (toolbar), handle, TRUE, TRUE, 3);
+    gtk_box_pack_start (GTK_BOX (toolbar), handle, TRUE, TRUE, 1); /* GTK3: reduced from 3 */
     pane->handle = handle;
 
     handle_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
@@ -636,7 +633,7 @@ create_frame_widget (MooPane        *pane,
     gtk_widget_show (frame_label);
     gtk_box_pack_start (GTK_BOX (handle_hbox), frame_label, TRUE, TRUE, 0);
     gtk_misc_set_alignment (GTK_MISC (frame_label), .0, .5);
-    gtk_misc_set_padding (GTK_MISC (frame_label), 6, 0);
+    gtk_misc_set_padding (GTK_MISC (frame_label), 2, 0); /* GTK3: reduced */
     gtk_label_set_ellipsize (GTK_LABEL (frame_label), PANGO_ELLIPSIZE_END);
     if (pane->frame_label_markup)
         gtk_label_set_markup (GTK_LABEL (frame_label), pane->frame_label_text);
@@ -648,7 +645,6 @@ create_frame_widget (MooPane        *pane,
         pane->frame_label_window = frame_label;
 
     pane->small_handle = gtk_event_box_new ();
-    gtk_event_box_set_visible_window (GTK_EVENT_BOX (pane->small_handle), TRUE);
     gtk_widget_show (pane->small_handle);
     gtk_box_pack_start (GTK_BOX (handle_hbox), pane->small_handle, TRUE, TRUE, 0);
 
@@ -714,18 +710,6 @@ create_frame_widget (MooPane        *pane,
         pane->child_holder = child_holder;
     else
         pane->window_child_holder = child_holder;
-
-    /* GTK3 fix: wrap vbox in an opaque GtkEventBox so the entire pane
-     * content area has a solid background, preventing transparency with
-     * compositing window managers. */
-    {
-        GtkWidget *opaque_bg = gtk_event_box_new ();
-        gtk_event_box_set_visible_window (GTK_EVENT_BOX (opaque_bg), TRUE);
-        gtk_container_add (GTK_CONTAINER (opaque_bg), vbox);
-        gtk_widget_show (opaque_bg);
-        /* Replace vbox with the wrapper for grid attachment below */
-        vbox = opaque_bg;
-    }
 
     table = gtk_grid_new();
 

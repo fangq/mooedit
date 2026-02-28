@@ -625,9 +625,10 @@ moo_paned_realize (GtkWidget *widget)
                                               &attributes, attributes_mask);
     gtk_widget_set_window (widget, paned->priv->bin_window);
     gtk_widget_register_window (widget, paned->priv->bin_window);
-    /* GTK3 fix: transparent bg removed — pane uses opaque GtkEventBox */
+    gdk_window_set_background_rgba (paned->priv->bin_window, &(GdkRGBA){0,0,0,0});
 
     /* GTK3: style_attach removed */
+        /* GTK3: background from CSS */
 
     gtk_widget_set_realized (GTK_WIDGET (widget), TRUE);
 
@@ -709,7 +710,8 @@ realize_handle (MooPaned *paned)
     paned->priv->handle_window = gdk_window_new (paned->priv->pane_window,
             &attributes, attributes_mask);
     gtk_widget_register_window (widget, paned->priv->handle_window);
-    /* GTK3 fix: transparent bg removed */
+    gdk_window_set_background_rgba (paned->priv->handle_window, &(GdkRGBA){0,0,0,0});
+        /* GTK3: background from CSS */
 
     gdk_cursor_unref (attributes.cursor);
 }
@@ -720,6 +722,11 @@ get_pane_window_rect (MooPaned     *paned,
                       GdkRectangle *rect)
 {
     { GtkAllocation _a; gtk_widget_get_allocation(GTK_WIDGET(paned), &_a); *rect = *(GdkRectangle*)&_a; }
+
+    /* GTK3 fix: pane_window is a child of bin_window, which is already at
+     * (alloc.x, alloc.y). Coordinates within bin_window start at (0,0). */
+    rect->x = 0;
+    rect->y = 0;
 
     switch (paned->priv->pane_position)
     {
@@ -779,7 +786,8 @@ realize_pane (MooPaned *paned)
     paned->priv->pane_window =
             gdk_window_new (gtk_widget_get_window (widget), &attributes, attributes_mask);
     gtk_widget_register_window (widget, paned->priv->pane_window);
-    /* GTK3 fix: transparent bg removed */
+    gdk_window_set_background_rgba (paned->priv->pane_window, &(GdkRGBA){0,0,0,0});
+        /* GTK3: background from CSS */
 
     realize_handle (paned);
 
