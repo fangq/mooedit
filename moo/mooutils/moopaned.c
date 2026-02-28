@@ -625,10 +625,9 @@ moo_paned_realize (GtkWidget *widget)
                                               &attributes, attributes_mask);
     gtk_widget_set_window (widget, paned->priv->bin_window);
     gtk_widget_register_window (widget, paned->priv->bin_window);
-    gdk_window_set_background_rgba (paned->priv->bin_window, &(GdkRGBA){0,0,0,0});
+    /* GTK3 fix: transparent bg removed — pane uses opaque GtkEventBox */
 
     /* GTK3: style_attach removed */
-        /* GTK3: background from CSS */
 
     gtk_widget_set_realized (GTK_WIDGET (widget), TRUE);
 
@@ -710,8 +709,7 @@ realize_handle (MooPaned *paned)
     paned->priv->handle_window = gdk_window_new (paned->priv->pane_window,
             &attributes, attributes_mask);
     gtk_widget_register_window (widget, paned->priv->handle_window);
-    gdk_window_set_background_rgba (paned->priv->handle_window, &(GdkRGBA){0,0,0,0});
-        /* GTK3: background from CSS */
+    /* GTK3 fix: transparent bg removed */
 
     gdk_cursor_unref (attributes.cursor);
 }
@@ -781,8 +779,7 @@ realize_pane (MooPaned *paned)
     paned->priv->pane_window =
             gdk_window_new (gtk_widget_get_window (widget), &attributes, attributes_mask);
     gtk_widget_register_window (widget, paned->priv->pane_window);
-    gdk_window_set_background_rgba (paned->priv->pane_window, &(GdkRGBA){0,0,0,0});
-        /* GTK3: background from CSS */
+    /* GTK3 fix: transparent bg removed */
 
     realize_handle (paned);
 

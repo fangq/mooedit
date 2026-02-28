@@ -534,37 +534,19 @@ moo_combo_popdown (MooCombo   *combo)
 }
 
 
-/* XXX _gtk_entry_get_borders from gtkentry.c */
+/* GTK3 fix: query CSS padding+border */
 static void
 entry_get_borders (GtkEntry *entry,
                    gint     *xborder,
                    gint     *yborder)
 {
-    GtkWidget *widget = GTK_WIDGET (entry);
-    gint focus_width;
-    gboolean interior_focus;
-
-    gtk_widget_style_get (widget,
-                          "interior-focus", &interior_focus,
-                          "focus-line-width", &focus_width,
-                          NULL);
-
-    if (gtk_entry_get_has_frame (entry))
-    {
-        *xborder = 1 /* GTK3: use CSS padding instead */;
-        *yborder = 1 /* GTK3: use CSS padding instead */;
-    }
-    else
-    {
-        *xborder = 0;
-        *yborder = 0;
-    }
-
-    if (!interior_focus)
-    {
-        *xborder += focus_width;
-        *yborder += focus_width;
-    }
+    GtkStyleContext *ctx = gtk_widget_get_style_context (GTK_WIDGET (entry));
+    GtkBorder padding, border;
+    GtkStateFlags state = gtk_widget_get_state_flags (GTK_WIDGET (entry));
+    gtk_style_context_get_padding (ctx, state, &padding);
+    gtk_style_context_get_border (ctx, state, &border);
+    *xborder = padding.left + border.left;
+    *yborder = padding.top + border.top;
 }
 
 
@@ -690,44 +672,49 @@ count_separators (GtkTreeModel *model,
     return FALSE;
 }
 
-/* XXX gtk_entry_resize_popup from gtkentrycompletion.c */
+/* GTK3 fix: rewritten popup positioning and sizing. */
 static gboolean
 resize_popup (MooCombo *combo)
 {
-    GtkWidget *widget = GTK_WIDGET (combo->entry);
+    GtkWidget *combo_widget = GTK_WIDGET (combo);
     int x, y;
     int matches, items, height, x_border, y_border;
     GdkScreen *screen;
     int monitor_num;
     GdkRectangle monitor;
     GtkRequisition popup_req;
-    GtkRequisition combo_req;
     gboolean above;
     int width;
     int separator_height = 0, vert_separator = 0;
     int selected;
+    GtkAllocation combo_alloc;
 
     g_return_val_if_fail (gtk_widget_get_realized (GTK_WIDGET (combo->entry)), FALSE);
 
-    gdk_window_get_origin (gtk_widget_get_window (widget), &x, &y);
-    /* XXX */
-    entry_get_borders (GTK_ENTRY (combo->entry), &x_border, &y_border);
+    gtk_widget_get_allocation (combo_widget, &combo_alloc);
+    {
+        GdkWindow *parent_win = gtk_widget_get_parent_window (combo_widget);
+        if (parent_win)
+        {
+            gdk_window_get_origin (parent_win, &x, &y);
+            x += combo_alloc.x;
+            y += combo_alloc.y;
+        }
+        else
+            gdk_window_get_origin (gtk_widget_get_window (combo_widget), &x, &y);
+    }
 
+    entry_get_borders (GTK_ENTRY (combo->entry), &x_border, &y_border);
     matches = gtk_tree_model_iter_n_children (combo->priv->model, NULL);
 
-    /* XXX */
     if (combo->priv->row_separator_func)
     {
         CountSeparatorsData data;
-
         int focus_line_width;
-
         data.combo = combo;
         data.count = 0;
         gtk_tree_model_foreach (combo->priv->model,
-                                (GtkTreeModelForeachFunc) count_separators,
-                                &data);
-
+                                (GtkTreeModelForeachFunc) count_separators, &data);
         if (data.count)
         {
             matches -= data.count;
@@ -740,51 +727,40 @@ resize_popup (MooCombo *combo)
     }
 
     items = MIN (matches, MAX_POPUP_LEN);
-
     gtk_tree_view_column_cell_get_size (combo->priv->column, NULL,
                                         NULL, NULL, NULL, &height);
 
-    screen = gtk_widget_get_screen (widget);
-    monitor_num = gdk_screen_get_monitor_at_window (screen, gtk_widget_get_window (widget));
+    screen = gtk_widget_get_screen (combo_widget);
+    monitor_num = gdk_screen_get_monitor_at_window (screen,
+                      gtk_widget_get_window (combo_widget));
     gdk_screen_get_monitor_geometry (screen, monitor_num, &monitor);
 
-    width = MIN (moo_widget_get_alloc(GTK_WIDGET(combo)).width, monitor.width) - 2 * x_border;
+    width = MIN (combo_alloc.width, monitor.width);
     gtk_widget_style_get (GTK_WIDGET (combo->priv->treeview), "vertical-separator",
                           &vert_separator, NULL);
-    gtk_widget_set_size_request (GTK_WIDGET (combo->priv->treeview), width,
+    gtk_widget_set_size_request (GTK_WIDGET (combo->priv->treeview), -1,
                                  separator_height + items * (height + vert_separator));
-
-    gtk_widget_set_size_request (combo->priv->popup, -1, -1);
+    gtk_widget_set_size_request (combo->priv->popup, width, -1);
     gtk_widget_size_request (combo->priv->popup, &popup_req);
-    gtk_widget_size_request (widget, &combo_req);
 
-    if (x < monitor.x)
-        x = monitor.x;
+    if (x < monitor.x) x = monitor.x;
     else if (x + popup_req.width > monitor.x + monitor.width)
         x = monitor.x + monitor.width - popup_req.width;
 
-    if (y + combo_req.height + popup_req.height <= monitor.y + monitor.height)
-    {
-        y += combo_req.height;
-        above = FALSE;
-    }
+    if (y + combo_alloc.height + popup_req.height <= monitor.y + monitor.height)
+    { y += combo_alloc.height; above = FALSE; }
     else
-    {
-        y -= popup_req.height;
-        above = TRUE;
-    }
+    { y -= popup_req.height; above = TRUE; }
 
     gtk_window_move (GTK_WINDOW (combo->priv->popup), x, y);
 
     selected = popup_get_selected (combo);
-
     if (selected >= 0)
     {
         GtkTreePath *path = gtk_tree_path_new_from_indices (selected, -1);
         gtk_tree_view_scroll_to_cell (combo->priv->treeview, path, NULL, FALSE, 0, 0);
         gtk_tree_path_free (path);
     }
-
     return above;
 }
 

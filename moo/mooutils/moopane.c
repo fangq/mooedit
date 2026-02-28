@@ -138,9 +138,17 @@ update_label_widgets (MooPane *pane)
             gtk_image_set_from_pixbuf (GTK_IMAGE (pane->icon_widget),
                                        pane->label->icon_pixbuf);
         else if (pane->label->icon_stock_id)
-            gtk_image_set_from_stock (GTK_IMAGE (pane->icon_widget),
-                                      pane->label->icon_stock_id,
-                                      GTK_ICON_SIZE_MENU);
+        {
+            GtkIconTheme *theme = gtk_icon_theme_get_default ();
+            if (gtk_icon_theme_has_icon (theme, pane->label->icon_stock_id))
+                gtk_image_set_from_icon_name (GTK_IMAGE (pane->icon_widget),
+                                              pane->label->icon_stock_id,
+                                              GTK_ICON_SIZE_MENU);
+            else
+                gtk_image_set_from_stock (GTK_IMAGE (pane->icon_widget),
+                                          pane->label->icon_stock_id,
+                                          GTK_ICON_SIZE_MENU);
+        }
 
         g_object_set (pane->icon_widget, "visible",
                       pane->label->icon_pixbuf || pane->label->icon_stock_id,
@@ -615,6 +623,7 @@ create_frame_widget (MooPane        *pane,
     toolbar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 
     handle = gtk_event_box_new ();
+    gtk_event_box_set_visible_window (GTK_EVENT_BOX (handle), TRUE);
     gtk_widget_show (handle);
     gtk_box_pack_start (GTK_BOX (toolbar), handle, TRUE, TRUE, 3);
     pane->handle = handle;
@@ -639,6 +648,7 @@ create_frame_widget (MooPane        *pane,
         pane->frame_label_window = frame_label;
 
     pane->small_handle = gtk_event_box_new ();
+    gtk_event_box_set_visible_window (GTK_EVENT_BOX (pane->small_handle), TRUE);
     gtk_widget_show (pane->small_handle);
     gtk_box_pack_start (GTK_BOX (handle_hbox), pane->small_handle, TRUE, TRUE, 0);
 
@@ -704,6 +714,18 @@ create_frame_widget (MooPane        *pane,
         pane->child_holder = child_holder;
     else
         pane->window_child_holder = child_holder;
+
+    /* GTK3 fix: wrap vbox in an opaque GtkEventBox so the entire pane
+     * content area has a solid background, preventing transparency with
+     * compositing window managers. */
+    {
+        GtkWidget *opaque_bg = gtk_event_box_new ();
+        gtk_event_box_set_visible_window (GTK_EVENT_BOX (opaque_bg), TRUE);
+        gtk_container_add (GTK_CONTAINER (opaque_bg), vbox);
+        gtk_widget_show (opaque_bg);
+        /* Replace vbox with the wrapper for grid attachment below */
+        vbox = opaque_bg;
+    }
 
     table = gtk_grid_new();
 
