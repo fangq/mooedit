@@ -995,7 +995,7 @@ moo_expander_cell_render (GtkCellRenderer      *cell,
     MooExpanderCell *exp_cell = MOO_EXPANDER_CELL (cell);
     GdkRectangle pix_rect;
     GdkRectangle draw_rect;
-    GtkStateFlags state_flags = GTK_STATE_FLAG_NORMAL;
+    G_GNUC_UNUSED GtkStateFlags state_flags = GTK_STATE_FLAG_NORMAL;
 
     moo_expander_cell_get_size (cell, widget, cell_area,
                                 &pix_rect.x,

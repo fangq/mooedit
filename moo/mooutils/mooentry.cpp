@@ -770,15 +770,15 @@ static void     delete_action_destroy   (DeleteAction   *action);
 static MooUndoActionClass InsertActionClass = {
     (MooUndoActionUndo) insert_action_undo,
     (MooUndoActionRedo) insert_action_redo,
-    (MooUndoActionMerge) insert_action_merge,
-    (MooUndoActionDestroy) insert_action_destroy
+    (MooUndoActionMerge)(void(*)(void)) insert_action_merge,
+    (MooUndoActionDestroy)(void(*)(void)) insert_action_destroy
 };
 
 static MooUndoActionClass DeleteActionClass = {
     (MooUndoActionUndo) delete_action_undo,
     (MooUndoActionRedo) delete_action_redo,
-    (MooUndoActionMerge) delete_action_merge,
-    (MooUndoActionDestroy) delete_action_destroy
+    (MooUndoActionMerge)(void(*)(void)) delete_action_merge,
+    (MooUndoActionDestroy)(void(*)(void)) delete_action_destroy
 };
 
 

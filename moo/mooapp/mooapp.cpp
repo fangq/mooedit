@@ -891,7 +891,7 @@ moo_app_run (MooApp *app)
     app->priv->quit_handler_id =
             /* GTK3: gtk_quit_add removed; quit handler called after gtk_main() */
 
-    g_timeout_add (100, (GSourceFunc) check_signal, NULL);
+    g_timeout_add (100, (GSourceFunc)(void(*)(void)) check_signal, NULL);
 
 #ifndef __WIN32__
     app->priv->sm_client = egg_sm_client_get ();

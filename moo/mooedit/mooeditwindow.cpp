@@ -458,15 +458,15 @@ moo_edit_window_class_init (MooEditWindowClass *klass)
                                  nullptr);
 
     moo_window_class_new_action_custom (window_class, "ReopenWithEncoding", nullptr,
-                                        (MooWindowActionFunc) create_reopen_with_encoding_action,
+                                        (MooWindowActionFunc)(void(*)(void))create_reopen_with_encoding_action,
                                         nullptr, nullptr);
 
     moo_window_class_new_action_custom (window_class, "EncodingMenu", nullptr,
-                                        (MooWindowActionFunc) create_doc_encoding_action,
+                                        (MooWindowActionFunc)(void(*)(void))create_doc_encoding_action,
                                         nullptr, nullptr);
 
     moo_window_class_new_action_custom (window_class, "LineEndMenu", nullptr,
-                                        (MooWindowActionFunc) create_doc_line_end_action,
+                                        (MooWindowActionFunc)(void(*)(void))create_doc_line_end_action,
                                         nullptr, nullptr);
 
     moo_window_class_new_action (window_class, "Save", nullptr,
@@ -831,7 +831,7 @@ moo_edit_window_class_init (MooEditWindowClass *klass)
 #endif
 
     moo_window_class_new_action_custom (window_class, LANG_ACTION_ID, nullptr,
-                                        (MooWindowActionFunc) create_lang_action,
+                                        (MooWindowActionFunc)(void(*)(void))create_lang_action,
                                         nullptr, nullptr);
 
     {

@@ -2126,10 +2126,10 @@ create_treeview (WindowPlugin *plugin)
     plugin->treeview = GTK_TREE_VIEW (gtk_tree_view_new ());
     gtk_tree_view_set_headers_visible (plugin->treeview, FALSE);
     gtk_tree_view_set_row_separator_func (plugin->treeview,
-                                          (GtkTreeViewRowSeparatorFunc) row_separator_func,
+                                          (GtkTreeViewRowSeparatorFunc)(void(*)(void)) row_separator_func,
                                           nullptr, nullptr);
     gtk_tree_view_set_search_equal_func (plugin->treeview,
-                                         (GtkTreeViewSearchEqualFunc) tree_view_search_equal_func,
+                                         (GtkTreeViewSearchEqualFunc)(void(*)(void)) tree_view_search_equal_func,
                                          nullptr, nullptr);
     gtk_tree_view_set_tooltip_column (plugin->treeview, COLUMN_TOOLTIP);
 

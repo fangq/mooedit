@@ -150,7 +150,7 @@ _moo_ctags_view_init (MooCtagsView *view)
     _moo_tree_view_setup_expander (GTK_TREE_VIEW (view), column);
 
     gtk_tree_view_set_search_equal_func (GTK_TREE_VIEW (view),
-                                         (GtkTreeViewSearchEqualFunc) tree_view_search_equal_func,
+                                         (GtkTreeViewSearchEqualFunc)(void(*)(void)) tree_view_search_equal_func,
                                          NULL, NULL);
 
     cell = gtk_cell_renderer_text_new ();

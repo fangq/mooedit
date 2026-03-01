@@ -260,7 +260,7 @@ _moo_file_entry_completion_init (MooFileEntryCompletion *cmpl)
     cmpl->priv->do_complete = FALSE;
 
     cmpl->priv->case_sensitive = CASE_SENSITIVE_DEFAULT;
-    cmpl->priv->visible_func = (MooFileVisibleFunc) completion_default_visible_func;
+    cmpl->priv->visible_func = (MooFileVisibleFunc)(void(*)(void)) completion_default_visible_func;
     set_text_funcs(&cmpl->priv->text_funcs, cmpl->priv->case_sensitive);
 
     model = _moo_folder_model_new (NULL);
@@ -779,7 +779,7 @@ completion_popup (MooFileEntryCompletion *cmpl)
 
     gtk_widget_realize (cmpl->priv->popup);
 
-    GTK_WIDGET_SET_CAN_FOCUS (cmpl->priv->treeview);
+    gtk_widget_set_can_focus (GTK_WIDGET (cmpl->priv->treeview), TRUE);
 
     if (gtk_window_get_group (GTK_WINDOW (window)))
         gtk_window_group_add_window (gtk_window_get_group (GTK_WINDOW (window)),

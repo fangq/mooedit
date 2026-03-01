@@ -271,7 +271,7 @@ dispatch (const char *id,
     }
 
     clients = client_info_list_copy_links (clients);
-    client_info_list_foreach (clients, (ClientInfoListFunc) client_info_ref, NULL);
+    client_info_list_foreach (clients, (ClientInfoListFunc)(void(*)(void)) client_info_ref, NULL);
     while (clients)
     {
         ClientInfo *ci = clients->data;

@@ -263,7 +263,7 @@ parse_args (int argc, char *argv[])
 
     grp = g_option_group_new ("medit", "medit", "medit", NULL, NULL);
     g_option_group_add_entries (grp, medit_options);
-    g_option_group_set_parse_hooks (grp, NULL, (GOptionParseFunc) post_parse_func);
+    g_option_group_set_parse_hooks (grp, NULL, (GOptionParseFunc)(void(*)(void))post_parse_func);
     g_option_group_set_translation_domain (grp, GETTEXT_PACKAGE);
 
     ctx = g_option_context_new (NULL);

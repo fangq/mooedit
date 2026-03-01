@@ -1221,11 +1221,11 @@ moo_notebook_forall (GtkContainer *container,
 
 static void
 moo_notebook_draw_child_border (MooNotebook    *nb,
-                                cairo_t *cr)
+                                G_GNUC_UNUSED cairo_t *cr)
 {
-    GtkWidget *widget = GTK_WIDGET (nb);
+    G_GNUC_UNUSED GtkWidget *widget = GTK_WIDGET (nb);
     Page *page = nb->priv->current_page;
-    int border_width = get_border_width (nb);
+    G_GNUC_UNUSED int border_width = get_border_width (nb);
     gboolean draw_gap = TRUE;
     int gap_x = 0;
     int gap_width = 0;
@@ -2257,7 +2257,6 @@ static void
 moo_notebook_draw_dragged_label (MooNotebook    *nb,
                                  cairo_t *cr)
 {
-    GtkWidget *widget = GTK_WIDGET (nb);
     int width, height;
 
     g_return_if_fail (nb->priv->drag_page != NULL);
@@ -2315,7 +2314,7 @@ nb->priv->snapshot_pixbuf = pixbuf;
         if (nb->priv->snapshot_pixbuf)
             /* GTK3: gdk_draw_pixbuf removed — use gdk_cairo_set_source_pixbuf + cairo_paint */;
         else
-            /* GTK3: gdk_draw_drawable removed — use cairo_set_source_surface + cairo_paint */;
+            /* GTK3: gdk_draw_drawable removed — use cairo_set_source_surface + cairo_paint */ {}
     }
 }
 

@@ -1721,7 +1721,7 @@ draw_pixbuf (GtkWidget      *widget,
 
 static void
 draw_arrow (GtkWidget      *widget,
-            cairo_t *cr)
+            G_GNUC_UNUSED cairo_t *cr)
 {
     GtkArrowType arrow_type;
     int x, y, width, height;
@@ -1750,7 +1750,7 @@ draw_arrow (GtkWidget      *widget,
     y = height / 6;
 
     gtk_paint_arrow (gtk_widget_get_style (widget),
-                     gtk_widget_get_window (widget),
+                     (cairo_t*) gtk_widget_get_window (widget), /* GTK3 compat */
                      gtk_widget_get_state (GTK_WIDGET (widget)),
                      GTK_SHADOW_IN,
                      widget,

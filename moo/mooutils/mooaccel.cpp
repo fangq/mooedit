@@ -1036,7 +1036,7 @@ void
 moo_test_mooaccel (void)
 {
     MooTestSuite& suite = moo_test_suite_new ("mooaccel", "mooutils/mooaccel.c",
-                                              (MooTestSuiteInit) test_suite_init,
+                                              (MooTestSuiteInit)(void(*)(void)) test_suite_init,
                                               (MooTestSuiteCleanup) test_suite_cleanup,
                                               NULL);
     moo_test_suite_add_test (suite, "_moo_get_accel_label", "test of _moo_get_accel_label()",

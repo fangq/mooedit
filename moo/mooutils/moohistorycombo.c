@@ -358,7 +358,7 @@ moo_history_combo_popup (MooCombo *combo)
 
     if (do_sort)
         gtk_tree_sortable_set_default_sort_func (GTK_TREE_SORTABLE (entry->priv->model),
-                                                 (GtkTreeIterCompareFunc) default_sort_func,
+                                                 (GtkTreeIterCompareFunc)(void(*)(void))default_sort_func,
                                                  NULL, NULL);
     else
         gtk_tree_model_sort_reset_default_sort_func (GTK_TREE_MODEL_SORT (entry->priv->model));

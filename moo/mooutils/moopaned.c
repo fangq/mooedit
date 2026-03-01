@@ -168,8 +168,8 @@ static void     moo_paned_remove            (GtkContainer   *container,
 
 static void     realize_handle              (MooPaned       *paned);
 static void     realize_pane                (MooPaned       *paned);
-static void     draw_handle                 (MooPaned       *paned, cairo_t *cr);
-static void     draw_border                 (MooPaned       *paned, cairo_t *cr);
+static void     draw_handle                 (MooPaned       *paned, cairo_t *cr G_GNUC_UNUSED);
+static void     draw_border                 (MooPaned       *paned, cairo_t *cr G_GNUC_UNUSED);
 static void     button_box_visible_notify   (MooPaned     *paned);
 
 static void     pane_button_toggled         (GtkToggleButton *button,
@@ -937,7 +937,7 @@ static void
 moo_paned_size_request (GtkWidget      *widget,
                         GtkRequisition *requisition)
 {
-    GtkBin *bin = GTK_BIN (widget);
+    G_GNUC_UNUSED GtkBin *bin = GTK_BIN (widget);
     MooPaned *paned = MOO_PANED (widget);
     GtkRequisition child_requisition;
 
@@ -1294,13 +1294,11 @@ static void
 moo_paned_size_allocate (GtkWidget     *widget,
                          GtkAllocation *allocation)
 {
-    GtkBin *bin;
     MooPaned *paned;
     GtkAllocation child_allocation;
     GtkRequisition child_requisition = {0, 0};
 
     gtk_widget_set_allocation (widget, allocation);
-    bin = GTK_BIN (widget);
     paned = MOO_PANED (widget);
 
     if (!paned->priv->handle_visible)
@@ -1428,7 +1426,6 @@ moo_paned_forall (GtkContainer   *container,
                   gpointer        callback_data)
 {
     MooPaned *paned = MOO_PANED (container);
-    GtkBin *bin = GTK_BIN (container);
 
     if (!paned->priv->forall_bottom_to_top && include_internals)
         forall_internals (paned, callback, callback_data);
@@ -1530,7 +1527,7 @@ moo_paned_remove (GtkContainer   *container,
 
 
 static void
-draw_handle (MooPaned       *paned, cairo_t *cr)
+draw_handle (MooPaned       *paned, cairo_t *cr G_GNUC_UNUSED)
 {
     GtkWidget *widget = GTK_WIDGET (paned);
     GtkStateFlags state_flags;
@@ -1572,8 +1569,8 @@ draw_handle (MooPaned       *paned, cairo_t *cr)
         state_flags = gtk_widget_get_state_flags (widget);
 
     gtk_paint_handle (gtk_widget_get_style (widget),
-                      paned->priv->handle_window,
-                      state_flags,
+                      (cairo_t*) paned->priv->handle_window,
+                      (GtkStateType) state_flags,
                       GTK_SHADOW_NONE,
                       widget,
                       "paned",
@@ -1588,7 +1585,7 @@ draw_handle (MooPaned       *paned, cairo_t *cr)
             area.width = shadow_size;
 
             gtk_paint_vline (gtk_widget_get_style (widget),
-                             paned->priv->handle_window,
+                             (cairo_t*) paned->priv->handle_window,
                              GTK_STATE_NORMAL,
                              widget,
                              "moo-paned",
@@ -1599,7 +1596,7 @@ draw_handle (MooPaned       *paned, cairo_t *cr)
             area.x = paned->priv->handle_size - shadow_size;
 
             gtk_paint_vline (gtk_widget_get_style (widget),
-                             paned->priv->handle_window,
+                             (cairo_t*) paned->priv->handle_window,
                              GTK_STATE_NORMAL,
                              widget,
                              "moo-paned",
@@ -1613,7 +1610,7 @@ draw_handle (MooPaned       *paned, cairo_t *cr)
             area.height = shadow_size;
 
             gtk_paint_hline (gtk_widget_get_style (widget),
-                             paned->priv->handle_window,
+                             (cairo_t*) paned->priv->handle_window,
                              GTK_STATE_NORMAL,
                              widget,
                              "moo-paned",
@@ -1624,7 +1621,7 @@ draw_handle (MooPaned       *paned, cairo_t *cr)
             area.y = paned->priv->handle_size - shadow_size;
 
             gtk_paint_hline (gtk_widget_get_style (widget),
-                             paned->priv->handle_window,
+                             (cairo_t*) paned->priv->handle_window,
                              GTK_STATE_NORMAL,
                              widget,
                              "moo-paned",
@@ -1637,7 +1634,7 @@ draw_handle (MooPaned       *paned, cairo_t *cr)
 
 
 static void
-draw_border (MooPaned       *paned, cairo_t *cr)
+draw_border (MooPaned       *paned, cairo_t *cr G_GNUC_UNUSED)
 {
     GdkRectangle rect;
     GtkWidget *widget = GTK_WIDGET (paned);
@@ -1658,7 +1655,7 @@ draw_border (MooPaned       *paned, cairo_t *cr)
             rect.width = paned->priv->border_size;
 
             gtk_paint_vline (gtk_widget_get_style (widget),
-                             paned->priv->bin_window,
+                             (cairo_t*) paned->priv->bin_window,
                              GTK_STATE_NORMAL,
                              widget,
                              "moo-paned",
@@ -1678,7 +1675,7 @@ draw_border (MooPaned       *paned, cairo_t *cr)
             rect.height = paned->priv->border_size;
 
             gtk_paint_hline (gtk_widget_get_style (widget),
-                             paned->priv->bin_window,
+                             (cairo_t*) paned->priv->bin_window,
                              GTK_STATE_NORMAL,
                              widget,
                              "moo-paned",
@@ -3193,7 +3190,7 @@ handle_button_release (GtkWidget      *widget,
 
 static gboolean
 handle_expose (GtkWidget      *widget,
-               cairo_t *event,
+               G_GNUC_UNUSED cairo_t *event,
                MooPaned       *paned)
 {
     int height;
@@ -3204,8 +3201,8 @@ handle_expose (GtkWidget      *widget,
     height = MIN (moo_widget_get_alloc(widget).height, HANDLE_HEIGHT);
 
     gtk_paint_handle (gtk_widget_get_style (widget),
-                      gtk_widget_get_window (widget),
-                      gtk_widget_get_state_flags (widget),
+                      (cairo_t*) gtk_widget_get_window (widget),
+                      (GtkStateType) gtk_widget_get_state_flags (widget),
                       GTK_SHADOW_ETCHED_IN,
                       widget,
                       "moo-pane-handle",

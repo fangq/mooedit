@@ -212,7 +212,7 @@ moo_history_mgr_dispose (GObject *object)
 
         if (mgr->priv->files)
         {
-            moo_history_item_queue_foreach (mgr->priv->files, (MooHistoryItemListFunc) moo_history_item_free, NULL);
+            moo_history_item_queue_foreach (mgr->priv->files, (MooHistoryItemListFunc)(void(*)(void))moo_history_item_free, NULL);
             moo_history_item_queue_free_links (mgr->priv->files);
             g_hash_table_destroy (mgr->priv->hash);
         }
@@ -1163,7 +1163,7 @@ callback_data_free (CallbackData *data)
     if (data)
     {
         if (data->notify)
-            data->notify (gtk_selection_data_get_data (data));
+            data->notify (data->data);
         g_slice_free (CallbackData, data);
     }
 }
@@ -1241,7 +1241,7 @@ menu_item_activated (GtkWidget *menu_item)
     g_return_if_fail (data && item);
 
     list = g_slist_prepend (NULL, moo_history_item_copy (item));
-    data->callback (list, gtk_selection_data_get_data (data));
+    data->callback (list, data->data);
     moo_history_item_free ((MooHistoryItem*) list->data);
     g_slist_free (list);
 }
@@ -1339,7 +1339,7 @@ open_selected (GtkTreeView *tree_view)
     items = g_slist_reverse (items);
 
     if (items)
-        data->callback (items, gtk_selection_data_get_data (data));
+        data->callback (items, data->data);
 
     g_slist_free_full (items, (GDestroyNotify) moo_history_item_free);
 }
@@ -1401,7 +1401,7 @@ idle_loader_free (IdleLoader *data)
 {
     if (data->idle)
         g_source_remove (data->idle);
-    moo_history_item_list_foreach (data->items, (MooHistoryItemListFunc) moo_history_item_free, NULL);
+    moo_history_item_list_foreach (data->items, (MooHistoryItemListFunc)(void(*)(void)) moo_history_item_free, NULL);
     moo_history_item_list_free_links (data->items);
     g_free (data);
 }

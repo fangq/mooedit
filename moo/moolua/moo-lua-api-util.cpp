@@ -942,7 +942,7 @@ static GClosure *signal_closure_new (lua_State *L, int cb_ref)
     data->closures = g_slist_prepend (data->closures, closure);
     medit_lua_ref (L);
 
-    g_closure_set_marshal (gclosure, (GClosureMarshal) signal_closure_marshal);
+    g_closure_set_marshal (gclosure, (GClosureMarshal)(void(*)(void)) signal_closure_marshal);
     g_closure_add_finalize_notifier (gclosure, NULL, signal_closure_finalize);
 
     return gclosure;

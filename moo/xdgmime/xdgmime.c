@@ -392,7 +392,7 @@ xdg_mime_init (void)
       icon_list = _xdg_mime_icon_list_new ();
       generic_icon_list = _xdg_mime_icon_list_new ();
 
-      xdg_run_command_on_dirs ((XdgDirectoryFunc) xdg_mime_init_from_directory,
+      xdg_run_command_on_dirs ((XdgDirectoryFunc)(void(*)(void))xdg_mime_init_from_directory,
 			       NULL);
 
       need_reread = FALSE;

@@ -1295,7 +1295,7 @@ _moo_edit_queue_recheck_config_all (void)
 {
     if (!moo_edit_apply_config_all_idle)
         moo_edit_apply_config_all_idle =
-            g_idle_add ((GSourceFunc) moo_edit_apply_config_all_in_idle, NULL);
+            g_idle_add ((GSourceFunc)(void(*)(void))moo_edit_apply_config_all_in_idle, NULL);
 }
 
 

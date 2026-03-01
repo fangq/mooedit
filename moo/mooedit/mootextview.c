@@ -290,7 +290,7 @@ static void moo_text_view_class_init (MooTextViewClass *klass)
     text_view_class->copy_clipboard = moo_text_view_copy_clipboard;
     text_view_class->cut_clipboard = moo_text_view_cut_clipboard;
     text_view_class->paste_clipboard = moo_text_view_paste_clipboard;
-    text_view_class->populate_popup = moo_text_view_populate_popup;
+    text_view_class->populate_popup = (void(*)(GtkTextView*,GtkWidget*)) moo_text_view_populate_popup;
 
     klass->extend_selection = _moo_text_view_extend_selection;
     klass->find_word_at_cursor = find_word_at_cursor;
@@ -2968,7 +2968,7 @@ draw_marks (MooTextView    *view,
 static void
 draw_fold_mark (MooTextView    *view,
                 cairo_t *cr_param,
-                MooFold        *fold,
+                G_GNUC_UNUSED MooFold        *fold,
                 int             y,
                 int             height,
                 int             window_width)
@@ -3062,7 +3062,7 @@ draw_left_margin (MooTextView    *view,
 
             gtk_paint_layout (gtk_widget_get_style (GTK_WIDGET (view)),
                               cr_param,
-                              gtk_widget_get_state_flags (GTK_WIDGET (view)),
+                              (GtkStateType) gtk_widget_get_state_flags (GTK_WIDGET (view)),
                               FALSE,
                               GTK_WIDGET(view), NULL,
                               x, y, layout);
@@ -3104,6 +3104,7 @@ draw_fold_background (MooTextView    *view,
                       int             window_width)
 {
     if (fold->collapsed)
+    {
         cairo_set_line_width (cr_param, 1.0);
         cairo_move_to (cr_param,
                        gtk_text_view_get_left_margin (GTK_TEXT_VIEW (view)),
@@ -3112,6 +3113,7 @@ draw_fold_background (MooTextView    *view,
                        gtk_text_view_get_left_margin (GTK_TEXT_VIEW (view)) + window_width,
                        y + height - 1);
         cairo_stroke (cr_param);
+    }
 }
 
 static void
@@ -3654,9 +3656,9 @@ moo_text_view_add_child_in_border (MooTextView        *view,
 }
 
 
-static void
-moo_text_view_size_request (GtkWidget      *widget,
-                            GtkRequisition *requisition)
+static void __attribute__((unused))
+moo_text_view_size_request (G_GNUC_UNUSED GtkWidget      *widget,
+                            G_GNUC_UNUSED GtkRequisition *requisition)
 {
     guint i;
     MooTextView *view;

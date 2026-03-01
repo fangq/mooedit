@@ -398,7 +398,7 @@ slist_to_pyobject (GSList  *list,
 PyObject *
 _moo_object_slist_to_pyobject (GSList *list)
 {
-    return slist_to_pyobject (list, (PtrToPy) pygobject_new, NULL);
+    return slist_to_pyobject (list, (PtrToPy)(void(*)(void)) pygobject_new, NULL);
 }
 
 
@@ -440,7 +440,7 @@ string_to_pyobject (gpointer str)
 PyObject *
 _moo_string_slist_to_pyobject (GSList *list)
 {
-    return slist_to_pyobject (list, (PtrToPy) string_to_pyobject, NULL);
+    return slist_to_pyobject (list, (PtrToPy)(void(*)(void)) string_to_pyobject, NULL);
 }
 
 

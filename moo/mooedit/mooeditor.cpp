@@ -719,7 +719,7 @@ _moo_editor_get_history_mgr (MooEditor *editor)
 
 static void
 recent_item_activated (GSList   *items,
-                       gpointer  data)
+                       G_GNUC_UNUSED gpointer  data)
 {
     MooEditor *editor = moo_editor_instance(); MooEditWindow *window = moo_editor_get_active_window(editor);
 

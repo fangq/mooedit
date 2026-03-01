@@ -640,7 +640,7 @@ apply_cursor_style (GtkSourceStyleScheme *scheme,
 	if (has_primary)
 	{
 		G_GNUC_BEGIN_IGNORE_DEPRECATIONS
-		gtk_widget_modify_cursor (widget, &primary_color, &secondary_color);
+		gtk_widget_modify_cursor (widget, (const GdkColor*) &primary_color, (const GdkColor*) &secondary_color);
 		G_GNUC_END_IGNORE_DEPRECATIONS
 		g_object_set_data (G_OBJECT (widget),
 				   "gtk-source-view-cursor-color-set",

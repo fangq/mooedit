@@ -764,7 +764,7 @@ setup_combo (GtkComboBox      *combo,
 					NULL, NULL);
 
     if (use_separators)
-	gtk_combo_box_set_row_separator_func (combo, (GtkTreeViewRowSeparatorFunc) row_separator_func,
+	gtk_combo_box_set_row_separator_func (combo, (GtkTreeViewRowSeparatorFunc)(void(*)(void)) row_separator_func,
 					      NULL, NULL);
 
     if (save_mode)

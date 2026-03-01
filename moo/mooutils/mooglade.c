@@ -1046,9 +1046,9 @@ widget_free (Widget *widget)
         g_free (widget->id);
         g_free (widget->class_name);
         widget_props_free (widget->props);
-        child_list_foreach (widget->children, (ChildListFunc) child_free, NULL);
+        child_list_foreach (widget->children, (ChildListFunc)(void(*)(void)) child_free, NULL);
         child_list_free_links (widget->children);
-        signal_list_foreach (widget->signals, (SignalListFunc) signal_free, NULL);
+        signal_list_foreach (widget->signals, (SignalListFunc)(void(*)(void)) signal_free, NULL);
         signal_list_free_links (widget->signals);
         g_free (widget);
     }
@@ -1987,7 +1987,7 @@ parse_adjustment (const char *value)
         }
     }
 
-    adj = gtk_adjustment_new (vals[0], vals[1], vals[2],
+    adj = (GInitiallyUnowned*) gtk_adjustment_new (vals[0], vals[1], vals[2],
                               vals[3], vals[4], vals[5]);
 
 out:
