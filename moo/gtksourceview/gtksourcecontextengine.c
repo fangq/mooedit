@@ -46,9 +46,9 @@
 #undef ENABLE_TREE_OUTPUT /* define it to make engine print syntax trees to stdout */
 
 #ifdef ENABLE_DEBUG
-#define DEBUG(x) (x)
+#define GSV_DEBUG(x) (x)
 #else
-#define DEBUG(x)
+#define GSV_DEBUG(x)
 #endif
 
 #ifdef ENABLE_PROFILE
@@ -1025,7 +1025,7 @@ add_invalid (GtkSourceContextEngine *ce,
 						   segment,
 						   (GCompareFunc) segment_cmp);
 
-	DEBUG (g_print ("%d invalid\n", g_slist_length (ce->priv->invalid)));
+	GSV_DEBUG(g_print ("%d invalid\n", g_slist_length (ce->priv->invalid)));
 }
 
 /**
@@ -1539,7 +1539,7 @@ invalidate_region (GtkSourceContextEngine *ce,
 		region->delta += length;
 	}
 
-	DEBUG (({
+	GSV_DEBUG(({
 		gint start, end;
 		gtk_text_buffer_get_iter_at_mark (buffer, &iter, region->start);
 		start = gtk_text_iter_get_offset (&iter);
@@ -3423,7 +3423,7 @@ context_unref (Context *context)
 	if (context == NULL || --context->ref_count != 0)
 		return;
 
-	DEBUG (g_print ("destroying context %s\n", context->definition->id));
+	GSV_DEBUG(g_print ("destroying context %s\n", context->definition->id));
 
 	children = context->children;
 	context->children = NULL;

@@ -1,0 +1,323 @@
+cmake_minimum_required(VERSION 3.16)
+
+# ── Version metadata ──────────────────────────────────────────────────────────
+set(MOO_MAJOR_VERSION  1)
+set(MOO_MINOR_VERSION  2)
+set(MOO_MICRO_VERSION  92)
+set(MOO_VERSION_SUFFIX "devel")          # set to "" for a release build
+set(MOO_MODULE_MAJOR_VERSION 2)
+set(MOO_MODULE_MINOR_VERSION 0)
+
+set(MOO_VERSION "${MOO_MAJOR_VERSION}.${MOO_MINOR_VERSION}.${MOO_MICRO_VERSION}")
+if(MOO_VERSION_SUFFIX)
+    set(MOO_DISPLAY_VERSION "${MOO_VERSION}-${MOO_VERSION_SUFFIX}")
+else()
+    set(MOO_DISPLAY_VERSION "${MOO_VERSION}")
+endif()
+
+# Project contact / copyright
+set(MOO_WEBSITE     "http://mooedit.sourceforge.net/")
+set(MOO_WEB_CONTACT "http://mooedit.sourceforge.net/contact.html")
+set(MOO_EMAIL       "emuntyan@users.sourceforge.net")
+set(MOO_COPYRIGHT   "2004-2014 Yevgen Muntyan <${MOO_EMAIL}>")
+
+project(medit
+    VERSION  ${MOO_MAJOR_VERSION}.${MOO_MINOR_VERSION}.${MOO_MICRO_VERSION}
+    LANGUAGES C CXX
+)
+
+# ── Module search path ────────────────────────────────────────────────────────
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
+# ── Required build tools ──────────────────────────────────────────────────────
+find_program(MOO_PYTHON
+    NAMES python3 python3.13 python3.12 python3.11 python3.10
+          python3.9 python3.8 python3.7 python3.6 python)
+if(NOT MOO_PYTHON)
+    message(FATAL_ERROR "Python interpreter not found; it is required for the build")
+endif()
+message(STATUS "Build Python: ${MOO_PYTHON}")
+
+find_program(WINDRES windres)
+find_program(TXT2TAGS txt2tags)
+find_program(XSLTPROC  xsltproc)
+
+# ── Package / install-dir constants ──────────────────────────────────────────
+set(MOO_PACKAGE_NAME  "medit-1")
+set(GETTEXT_PACKAGE       "${MOO_PACKAGE_NAME}")
+set(GETTEXT_PACKAGE_GSV   "${MOO_PACKAGE_NAME}-gsv")
+
+include(GNUInstallDirs)   # gives CMAKE_INSTALL_DATADIR, LIBDIR, etc.
+
+set(MOO_DATA_DIR        "${CMAKE_INSTALL_FULL_DATADIR}/${MOO_PACKAGE_NAME}")
+set(MOO_LIB_DIR         "${CMAKE_INSTALL_FULL_LIBDIR}/${MOO_PACKAGE_NAME}")
+set(MOO_DOC_DIR         "${CMAKE_INSTALL_FULL_DATADIR}/doc/${MOO_PACKAGE_NAME}")
+set(MOO_HELP_DIR        "${MOO_DOC_DIR}/help")
+set(MOO_TEXT_LANG_FILES_DIR "${MOO_DATA_DIR}/language-specs")
+set(MOO_PYTHON_PLUGIN_DIR   "${MOO_DATA_DIR}/plugins")
+set(MOO_PYTHON_LIB_DIR      "${MOO_DATA_DIR}/python")
+set(MOO_LOCALE_DIR      "${CMAKE_INSTALL_FULL_LOCALEDIR}")
+
+# File-name constants (go into config.h)
+set(MOO_PREFS_XML_FILE_NAME          "prefs.xml")
+set(MOO_STATE_XML_FILE_NAME          "state.xml")
+set(MOO_NAMED_SESSION_XML_FILE_NAME  "session-%s.xml")
+set(MOO_SESSION_XML_FILE_NAME        "session.xml")
+set(MEDIT_PORTABLE_MAGIC_FILE_NAME   "medit-portable")
+set(MEDIT_PORTABLE_DATA_DIR          "medit-portable-data")
+set(MEDIT_PORTABLE_CACHE_DIR         "medit-portable-cache")
+
+# ── OS detection ──────────────────────────────────────────────────────────────
+include(MooOS)
+
+# ── Compiler flags / debug / strict options ───────────────────────────────────
+include(MooCompilerFlags)
+moo_collect_compiler_flags()   # sets MOO_EXTRA_CFLAGS, MOO_EXTRA_CXXFLAGS, MOO_EXTRA_DEFS
+
+# System-extensions equivalent of AC_USE_SYSTEM_EXTENSIONS
+if(UNIX)
+    add_compile_definitions(_GNU_SOURCE)
+endif()
+
+# ── GTK / GLib / libxml2 ─────────────────────────────────────────────────────
+include(MooGtk)
+
+# ── NLS / intltool / gettext ─────────────────────────────────────────────────
+include(MooNLS)
+
+# ── Header / function checks (replaces autoconf AC_CHECK_HEADERS) ─────────────
+include(CheckIncludeFile)
+include(CheckFunctionExists)
+
+check_include_file("dlfcn.h" HAVE_DLFCN_H)
+check_include_file("inttypes.h" HAVE_INTTYPES_H)
+check_include_file("locale.h" HAVE_LOCALE_H)
+check_include_file("signal.h" HAVE_SIGNAL_H)
+check_include_file("stdint.h" HAVE_STDINT_H)
+check_include_file("stdio.h" HAVE_STDIO_H)
+check_include_file("stdlib.h" HAVE_STDLIB_H)
+check_include_file("strings.h" HAVE_STRINGS_H)
+check_include_file("string.h" HAVE_STRING_H)
+check_include_file("sys/stat.h" HAVE_SYS_STAT_H)
+check_include_file("sys/types.h" HAVE_SYS_TYPES_H)
+check_include_file("sys/utsname.h" HAVE_SYS_UTSNAME_H)
+check_include_file("sys/wait.h" HAVE_SYS_WAIT_H)
+check_include_file("unistd.h" HAVE_UNISTD_H)
+check_include_file("wchar.h" HAVE_WCHAR_H)
+
+check_function_exists(getc_unlocked HAVE_GETC_UNLOCKED)
+check_function_exists(mmap HAVE_MMAP)
+
+# ── Python bindings ───────────────────────────────────────────────────────────
+include(MooPython)  # sets MOO_ENABLE_PYTHON, PYTHON_INCLUDES, PYTHON_LIBS, PYGTK_*
+
+# ── Build-target options ──────────────────────────────────────────────────────
+option(MOO_BUILD_MODULE "Build standalone Python module instead of medit app" OFF)
+
+if(MOO_BUILD_MODULE)
+    if(NOT MOO_ENABLE_PYTHON)
+        message(FATAL_ERROR "Python bindings are not enabled; can't build Python module")
+    endif()
+    if(NOT BUILD_SHARED_LIBS)
+        message(FATAL_ERROR "Python module requires -DBUILD_SHARED_LIBS=ON")
+    endif()
+    set(MOO_BUILD_APP OFF)
+else()
+    set(MOO_BUILD_APP ON)
+endif()
+
+# ctags plugin (Unix-only, mirrors AM_CONDITIONAL(MOO_BUILD_CTAGS, $MOO_OS_UNIX))
+set(MOO_BUILD_CTAGS ${MOO_OS_UNIX})
+
+# ── Coverage ──────────────────────────────────────────────────────────────────
+option(MOO_ENABLE_COVERAGE "Enable code-coverage instrumentation" OFF)
+if(MOO_ENABLE_COVERAGE)
+    add_compile_options(--coverage)
+    add_link_options(--coverage)
+endif()
+
+# ── Install hooks (gtk-update-icon-cache) ─────────────────────────────────────
+if(MOO_BUILD_APP)
+    option(MOO_ENABLE_INSTALL_HOOKS
+        "Run gtk-update-icon-cache during install" ON)
+else()
+    option(MOO_ENABLE_INSTALL_HOOKS
+        "Run gtk-update-icon-cache during install" OFF)
+endif()
+
+# ── Windows / Inno Setup ─────────────────────────────────────────────────────
+if(MOO_OS_WIN32)
+    set(MEDIT_WIN32_APP_UID "7F9F899F-EE8A-47F0-9981-8C525AF78E4D")
+
+    if(CYGWIN)
+        set(MEDIT_INNO_COMPILER
+            "\"/cygdrive/c/Program Files (x86)/Inno Setup 5/ISCC.exe\"")
+        set(MEDIT_INNO_TOP_SRCDIR   "$(shell cygpath -m ${CMAKE_SOURCE_DIR})")
+        set(MEDIT_INNO_TOP_BUILDDIR "$(shell cygpath -m ${CMAKE_BINARY_DIR})")
+        set(MEDIT_INNO_INSTDIR      "$(shell cygpath -m ${CMAKE_INSTALL_PREFIX})")
+    elseif(EXISTS "$ENV{HOME}/.wine/drive_c/windows/syswow64")
+        set(MEDIT_INNO_COMPILER
+            "wine \"c:\\\\program files (x86)\\\\inno setup 5\\\\ISCC.exe\"")
+        set(MEDIT_INNO_TOP_SRCDIR   "Z:${CMAKE_SOURCE_DIR}")
+        set(MEDIT_INNO_TOP_BUILDDIR "Z:${CMAKE_BINARY_DIR}")
+        set(MEDIT_INNO_INSTDIR      "Z:${CMAKE_INSTALL_PREFIX}")
+    else()
+        set(MEDIT_INNO_COMPILER
+            "wine \"c:\\\\program files\\\\inno setup 5\\\\ISCC.exe\"")
+        set(MEDIT_INNO_TOP_SRCDIR   "Z:${CMAKE_SOURCE_DIR}")
+        set(MEDIT_INNO_TOP_BUILDDIR "Z:${CMAKE_BINARY_DIR}")
+        set(MEDIT_INNO_INSTDIR      "Z:${CMAKE_INSTALL_PREFIX}")
+    endif()
+    message(STATUS "Inno compiler:           ${MEDIT_INNO_COMPILER}")
+    message(STATUS "MEDIT_INNO_TOP_SRCDIR:   ${MEDIT_INNO_TOP_SRCDIR}")
+    message(STATUS "MEDIT_INNO_TOP_BUILDDIR: ${MEDIT_INNO_TOP_BUILDDIR}")
+    message(STATUS "MEDIT_INNO_INSTDIR:      ${MEDIT_INNO_INSTDIR}")
+
+    if(MOO_ENABLE_DEBUG)
+        set(MOO_WIN32_CONFIG "debug")
+    else()
+        set(MOO_WIN32_CONFIG "release")
+    endif()
+    message(STATUS "Win32 build configuration: ${MOO_WIN32_CONFIG}")
+
+    if(MOO_WIN32_CONFIG STREQUAL "release")
+        set(MEDIT_INNO_INSTALLER_SUFFIX "")
+    else()
+        set(MEDIT_INNO_INSTALLER_SUFFIX "-${MOO_WIN32_CONFIG}")
+    endif()
+    set(MEDIT_SETUP_NAME
+        "medit-${MOO_DISPLAY_VERSION}${MEDIT_INNO_INSTALLER_SUFFIX}")
+    message(STATUS "Win32 setup name: ${MEDIT_SETUP_NAME}")
+endif()
+
+# ── Global INTERFACE target ───────────────────────────────────────────────────
+# Replaces MOO_CFLAGS / MOO_CPPFLAGS / MOO_LIBS AC_SUBST variables.
+# Subdirectories link against this target instead of repeating flags.
+add_library(moo_build_settings INTERFACE)
+
+# Note: PkgConfig::GTK/GLIB/etc. imported targets propagate their own
+# include directories, so we don't need to list *_INCLUDE_DIRS separately.
+target_include_directories(moo_build_settings INTERFACE
+    "${CMAKE_BINARY_DIR}"                   # generated config.h
+    "${CMAKE_SOURCE_DIR}/moo"
+    ${MOO_X_CFLAGS}
+    $<$<BOOL:${MOO_ENABLE_PYTHON}>:${PYGTK_INCLUDE_DIRS}>
+    $<$<BOOL:${MOO_ENABLE_PYTHON}>:${Python3_INCLUDE_DIRS}>
+)
+
+target_compile_definitions(moo_build_settings INTERFACE
+    MOO_CONFIG_H_INCLUDED=1
+    GETTEXT_PACKAGE="${GETTEXT_PACKAGE}"
+    XDG_PREFIX=_moo_edit_xdg
+    "G_LOG_DOMAIN=\"Moo\""
+    ${MOO_EXTRA_DEFS}
+    $<$<BOOL:${MOO_ENABLE_PYTHON}>:MOO_ENABLE_PYTHON=1>
+    $<$<BOOL:${MOO_BUILD_CTAGS}>:MOO_BUILD_CTAGS=1>
+    $<$<BOOL:${MOO_ENABLE_COVERAGE}>:MOO_ENABLE_COVERAGE=1>
+    $<$<BOOL:${MOO_BROKEN_GTK_THEME}>:MOO_BROKEN_GTK_THEME=1>
+)
+
+if(MOO_OS_WIN32)
+    target_compile_definitions(moo_build_settings INTERFACE
+        UNICODE _UNICODE STRICT WIN32_LEAN_AND_MEAN
+        U__STRICT_ANSI__
+    )
+    if(MOO_OS_MINGW)
+        target_include_directories(moo_build_settings INTERFACE
+            "${CMAKE_SOURCE_DIR}/moo/mooutils/moowin32/mingw")
+    endif()
+endif()
+
+if(MOO_OS_UNIX)
+    target_compile_definitions(moo_build_settings INTERFACE
+        "MOO_DATA_DIR=\"${MOO_DATA_DIR}\""
+        "MOO_LIB_DIR=\"${MOO_LIB_DIR}\""
+        "MOO_LOCALE_DIR=\"${MOO_LOCALE_DIR}\""
+        "MOO_HELP_DIR=\"${MOO_HELP_DIR}\""
+    )
+endif()
+
+if(NOT MOO_STRICT_MODE)
+    target_compile_definitions(moo_build_settings INTERFACE
+        GLIB_DISABLE_DEPRECATION_WARNINGS=1)
+endif()
+
+# Convert space-separated flag strings from MooCompilerFlags into proper
+# CMake lists (semicolon-separated) so they can be passed individually.
+# This avoids SHELL: which can leak flags into the linker command line.
+separate_arguments(_moo_c_flags_list   UNIX_COMMAND "${MOO_EXTRA_CFLAGS}")
+separate_arguments(_moo_cxx_flags_list UNIX_COMMAND "${MOO_EXTRA_CXXFLAGS}")
+target_compile_options(moo_build_settings INTERFACE
+    $<$<COMPILE_LANGUAGE:C>:${_moo_c_flags_list}>
+    $<$<COMPILE_LANGUAGE:CXX>:${_moo_cxx_flags_list}>
+)
+
+target_link_libraries(moo_build_settings INTERFACE
+    ${GTK_LIBRARIES}
+    ${GTHREAD_LIBRARIES}
+    ${GMODULE_LIBRARIES}
+    ${XML_LIBRARIES}
+    ${MOO_X_LIBS}
+    ${MOO_LIBM}
+    $<$<BOOL:${MOO_ENABLE_PYTHON}>:${PYGTK_LIBRARIES}>
+    $<$<BOOL:${MOO_OS_WIN32}>:-lmooglib>
+)
+
+# ── Generate config.h ─────────────────────────────────────────────────────────
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/config.h.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/config.h"
+)
+
+# ── Subdirectories ────────────────────────────────────────────────────────────
+add_subdirectory(api)
+add_subdirectory(doc)
+add_subdirectory(moo)
+add_subdirectory(po)
+add_subdirectory(po-gsv)
+
+# ── Windows installer / portable targets (from root-Makefile.am) ──────────────
+if(MOO_OS_WIN32)
+    # Generate installer.iss from template
+    configure_file(
+        "${CMAKE_SOURCE_DIR}/plat/win32/installer.iss.in"
+        "${CMAKE_BINARY_DIR}/plat/win32/installer.iss"
+        @ONLY
+    )
+
+    add_custom_target(installer
+        COMMAND ${CMAKE_COMMAND} --build . --target install
+        COMMAND ${MEDIT_INNO_COMPILER} "${CMAKE_BINARY_DIR}/plat/win32/installer.iss"
+        COMMENT "Building Win32 installer"
+    )
+
+    add_custom_target(portable
+        COMMAND ${CMAKE_COMMAND} --build . --target install
+        COMMAND ${CMAKE_COMMAND} -E remove_directory medit-win-dist-tmp
+        COMMAND ${CMAKE_COMMAND} -E make_directory   medit-win-dist-tmp
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_INSTALL_PREFIX}"
+                "medit-win-dist-tmp/${PACKAGE}-${MOO_DISPLAY_VERSION}"
+        COMMAND bash -c
+            "cd medit-win-dist-tmp && zip -r9 ${PACKAGE}-${MOO_DISPLAY_VERSION}.zip ${PACKAGE}-${MOO_DISPLAY_VERSION}"
+        COMMAND bash -c
+            "echo 'This file enables portable mode for medit' > medit-win-dist-tmp/${PACKAGE}-${MOO_DISPLAY_VERSION}/bin/${MEDIT_PORTABLE_MAGIC_FILE_NAME}"
+        COMMAND bash -c
+            "cd medit-win-dist-tmp && zip -r9 ${PACKAGE}-portable-${MOO_DISPLAY_VERSION}.zip ${PACKAGE}-${MOO_DISPLAY_VERSION}"
+        COMMAND ${CMAKE_COMMAND} -E rename
+                "medit-win-dist-tmp/${PACKAGE}-portable-${MOO_DISPLAY_VERSION}.zip" "."
+        COMMAND ${CMAKE_COMMAND} -E rename
+                "medit-win-dist-tmp/${PACKAGE}-${MOO_DISPLAY_VERSION}.zip" "."
+        COMMAND ${CMAKE_COMMAND} -E remove_directory medit-win-dist-tmp
+        COMMENT "Building Win32 portable zip"
+    )
+
+    add_custom_target(bdist DEPENDS installer portable)
+endif()
+
+# ── Convenience test targets (from root-Makefile.am) ─────────────────────────
+add_custom_target(fullcheck
+    COMMAND ${CMAKE_COMMAND} --build . --target all
+    COMMAND ${CMAKE_CTEST_COMMAND}
+    COMMENT "Full check: build + test"
+)

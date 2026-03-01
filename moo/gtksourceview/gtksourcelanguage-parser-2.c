@@ -28,9 +28,9 @@
 #undef ENABLE_DEBUG
 
 #ifdef ENABLE_DEBUG
-#define DEBUG(x) x
+#define GSV_DEBUG(x) x
 #else
-#define DEBUG(x)
+#define GSV_DEBUG(x)
 #endif
 
 #include <string.h>
@@ -199,7 +199,7 @@ generate_new_id (ParserState *parser_state)
 	id = g_strdup_printf ("unnamed-%u", parser_state->id_cookie);
 	parser_state->id_cookie++;
 
-	DEBUG (g_message ("generated id %s", id));
+	GSV_DEBUG(g_message ("generated id %s", id));
 
 	return id;
 }
@@ -236,7 +236,7 @@ decorate_id (ParserState *parser_state,
 	decorated_id = g_strdup_printf ("%s:%s",
 			parser_state->current_lang_id, id);
 
-	DEBUG (g_message ("decorated '%s' to '%s'", id, decorated_id));
+	GSV_DEBUG(g_message ("decorated '%s' to '%s'", id, decorated_id));
 
 	return decorated_id;
 }
@@ -328,7 +328,7 @@ create_definition (ParserState *parser_state,
 
 	flags = get_context_flags (parser_state);
 
-	DEBUG (g_message ("creating context %s, child of %s", id, parent_id ? parent_id : "(null)"));
+	GSV_DEBUG(g_message ("creating context %s, child of %s", id, parent_id ? parent_id : "(null)"));
 
 	/* Fetch the content of the sublements using the tree API on
 	 * the current node */
@@ -440,9 +440,9 @@ create_definition (ParserState *parser_state,
 		match_flags = parser_state->regex_compile_flags;
 	}
 
-	DEBUG (g_message ("start: '%s'", start ? start : "(null)"));
-	DEBUG (g_message ("end: '%s'", end ? end : "(null)"));
-	DEBUG (g_message ("match: '%s'", match ? match : "(null)"));
+	GSV_DEBUG(g_message ("start: '%s'", start ? start : "(null)"));
+	GSV_DEBUG(g_message ("end: '%s'", end ? end : "(null)"));
+	GSV_DEBUG(g_message ("match: '%s'", match ? match : "(null)"));
 
 
 	if (tmp_error == NULL && start != NULL)
@@ -592,7 +592,7 @@ add_ref (ParserState               *parser_state,
 						  all,
 						  &tmp_error);
 
-		DEBUG (g_message ("appended %s in %s", ref_id, container_id));
+		GSV_DEBUG(g_message ("appended %s in %s", ref_id, container_id));
 	}
 
 	g_free (lang_id);
@@ -905,7 +905,7 @@ update_regex_flags (GRegexCompileFlags  flags,
 	GRegexCompileFlags single_flag;
 	gboolean set_flag;
 
-	DEBUG (g_message ("setting the '%s' regex flag to %s", option_name, value));
+	GSV_DEBUG(g_message ("setting the '%s' regex flag to %s", option_name, value));
 
 	set_flag = str_to_bool (value);
 
@@ -979,7 +979,7 @@ expand_regex_vars (ParserState *parser_state, gchar *regex, gint len, GError **e
 
 	if (data.error == NULL)
         {
-		DEBUG (g_message ("expanded regex vars '%s' to '%s'",
+		GSV_DEBUG(g_message ("expanded regex vars '%s' to '%s'",
 				  regex, expanded_regex));
         }
 
@@ -1007,7 +1007,7 @@ replace_delimiter (const GMatchInfo *match_info,
 	g_string_append (expanded_regex, escapes);
 
 	delim = g_match_info_fetch (match_info, 2);
-	DEBUG (g_message ("replacing '\\%%%s'", delim));
+	GSV_DEBUG(g_message ("replacing '\\%%%s'", delim));
 
 	switch (delim[0])
 	{
@@ -1061,7 +1061,7 @@ expand_regex_delimiters (ParserState *parser_state,
 	expanded_regex = g_regex_replace_eval (egg_re, regex, len, 0, 0,
 					       replace_delimiter, parser_state, NULL);
 
-	DEBUG (g_message ("expanded regex delims '%s' to '%s'",
+	GSV_DEBUG(g_message ("expanded regex delims '%s' to '%s'",
 				regex, expanded_regex));
 
 	return expanded_regex;
@@ -1236,7 +1236,7 @@ handle_define_regex_element (ParserState *parser_state)
 
 	if (tmp_error == NULL)
 	{
-		DEBUG (g_message ("defined regex %s: \"%s\"", id, (gchar *)regex));
+		GSV_DEBUG(g_message ("defined regex %s: \"%s\"", id, (gchar *)regex));
 		g_hash_table_insert (parser_state->defined_regexes, id, expanded_regex);
 	}
 
@@ -1356,7 +1356,7 @@ parse_style (ParserState *parser_state)
 		parse_language_with_id (parser_state, lang_id);
 	}
 
-	DEBUG (g_message ("style %s (%s) to be mapped to '%s'",
+	GSV_DEBUG(g_message ("style %s (%s) to be mapped to '%s'",
 			  name, id, map_to ? (char*) map_to : "(null)"));
 
 	if (map_to != NULL &&
@@ -1536,7 +1536,7 @@ file_parse (gchar                     *filename,
 
 	g_return_val_if_fail (error == NULL || *error == NULL, FALSE);
 
-	DEBUG (g_message ("loading file '%s'", filename));
+	GSV_DEBUG(g_message ("loading file '%s'", filename));
 
 	/*
 	 * Use fd instead of filename so that it's utf8 safe on w32.
@@ -1725,7 +1725,7 @@ _gtk_source_language_file_parse_version2 (GtkSourceLanguage       *language,
 	xmlKeepBlanksDefault (0);
 	xmlLineNumbersDefault (1);
 	xmlSubstituteEntitiesDefault (1);
-	DEBUG (xmlPedanticParserDefault (1));
+	GSV_DEBUG(xmlPedanticParserDefault (1));
 
 	defined_regexes = g_hash_table_new_full (g_str_hash, g_str_equal,
 						 g_free, g_free);

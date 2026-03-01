@@ -13,6 +13,8 @@
  *   License along with medit.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/* Ensure config.h HAVE_* macros are defined before mooappabout.h */
+#include "mooglib/moo-glib.h"
 #include "mooappabout.h"
 #include "mooapp.h"
 #include "mooapp-credits.h"
