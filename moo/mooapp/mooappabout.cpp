@@ -109,6 +109,19 @@ show_credits (void)
     g_object_add_weak_pointer (G_OBJECT (credits_dialog), &credits_dialog);
     g_signal_connect (credits_dialog, "response", G_CALLBACK (gtk_widget_destroy), NULL);
 
+    /* GTK3 fix: ensure the notebook expands to fill the dialog.
+     * In GTK2, the content area child expanded by default.
+     * In GTK3, we need to set expand explicitly. */
+    {
+        GtkWidget *content = gtk_dialog_get_content_area (GTK_DIALOG (credits_dialog));
+        GList *children = gtk_container_get_children (GTK_CONTAINER (content));
+        GList *l = children;
+        if(l) {  // expand the first child, i.e. the credit text-box
+            gtk_widget_set_vexpand (GTK_WIDGET (l->data), TRUE);
+        }
+        g_list_free (children);
+    }
+
 #ifdef MOO_USE_HTML
     _moo_html_load_memory (GTK_TEXT_VIEW (gxml->written_by),
                            "Yevgen Muntyan <a href=\"mailto://" MOO_EMAIL
