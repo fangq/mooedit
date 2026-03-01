@@ -2453,6 +2453,20 @@ moo_text_view_expose (GtkWidget      *widget,
     }
 
     handled = GTK_WIDGET_CLASS(moo_text_view_parent_class)->draw (widget, cr);
+    /* Fill left margin background after parent draw */
+    if (left_window && GDK_IS_WINDOW(left_window) && gtk_cairo_should_draw_window(cr, left_window))
+    {
+        int lw_w = gdk_window_get_width(left_window);
+        int lw_h = gdk_window_get_height(left_window);
+        cairo_save(cr);
+        gtk_cairo_transform_to_window(cr, widget, left_window);
+        cairo_rectangle(cr, 0, 0, lw_w, lw_h);
+        cairo_clip(cr);
+        cairo_set_source_rgb(cr, 0.22, 0.22, 0.22);
+        cairo_paint(cr);
+        cairo_restore(cr);
+        draw_left_margin(view, cr);
+    }
 
     if (text_window && GDK_IS_WINDOW(text_window) && gtk_cairo_should_draw_window (cr, text_window))
     {
