@@ -47,7 +47,7 @@ Ulrich Eckhardt
 Vlastimil Ott
 Yannick Duchêne
 
-Qianqian Fang contributed to the migration of 
-the medit codebase from Python-2 to Python-3, 
-as well as from gtk2 to gtk3, facilitated by
-AI coding (Claude)
+Qianqian Fang contributed to migrating the medit 
+codebase from Python 2 to Python 3, as well as 
+from GTK2 to GTK3, with assistance from the AI 
+coding assistant Claude.
