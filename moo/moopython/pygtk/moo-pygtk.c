@@ -96,6 +96,53 @@ static struct PyModuleDef _moo_moduledef = {
     NULL,                      /* m_free */
 };
 
+
+
+
+
+/* ================================================================ */
+/* Pre-register parent GTypes in pygobject's type map.              */
+/* In PyGObject 3.x, types are registered lazily when imported from */
+/* gi.repository. We must trigger this before registering Moo types */
+/* so pygobject_register_class() can find the parent types.         */
+/* ================================================================ */
+static void
+_moo_preregister_parent_gtypes(void)
+{
+    /* Import gi with proper version requirements, then import Gtk.
+     * This causes PyGObject to register all Gtk GTypes internally,
+     * so when we call pygobject_register_class() for MooEdit (whose
+     * GType parent is GtkTextView), pygobject can find GtkTextView
+     * in its type map. */
+    const char *preregister_script =
+        "import gi\n"
+        "gi.require_version('Gtk', '3.0')\n"
+        "gi.require_version('GdkPixbuf', '2.0')\n"
+        "from gi.repository import GObject, Gio, Gtk, GdkPixbuf\n"
+        "# Force registration of specific types we need as parents\n"
+        "_ = [\n"
+        "    Gtk.Widget, Gtk.Container, Gtk.Bin, Gtk.Window,\n"
+        "    Gtk.Dialog, Gtk.Frame, Gtk.Table, Gtk.Entry,\n"
+        "    Gtk.Notebook, Gtk.VBox, Gtk.TextView, Gtk.TextBuffer,\n"
+        "    Gtk.ToggleToolButton, Gtk.Action,\n"
+        "    GObject.Object, Gio.File, GdkPixbuf.Pixbuf,\n"
+        "]\n"
+        "# Also register via pygobject's internal mechanism\n"
+        "for cls in _:\n"
+        "    try:\n"
+        "        cls.__gtype__\n"  
+        "    except:\n"
+        "        pass\n";
+
+
+    if (PyRun_SimpleString(preregister_script) != 0) {
+        g_warning("_moo_preregister_parent_gtypes: failed to import gi types");
+        if (PyErr_Occurred())
+            PyErr_Print();
+    }
+
+}
+
 gboolean
 _moo_module_init (void)
 {
@@ -109,6 +156,9 @@ _moo_module_init (void)
     init_pygobject_mod ();
     if (PyErr_Occurred ())
         return FALSE;
+    /* Resolve real GTK PyTypeObjects from gi.repository */
+    _moo_preregister_parent_gtypes();
+
 
     _moo_module = PyModule_Create (&_moo_moduledef);
     if (!_moo_module)
@@ -140,9 +190,39 @@ _moo_module_init (void)
     );
     if (PyErr_Occurred ()) PyErr_Clear ();
 
+
     _moo_register_classes (PyModule_GetDict (_moo_module));
+
     if (PyErr_Occurred ()) PyErr_Clear ();
 
+    /* HEAPTYPE workaround: tp_methods aren't auto-added to tp_dict for heap types.
+     * Re-process tp_methods for all registered types. */
+    {
+        PyObject *mod_dict = PyModule_GetDict(_moo_module);
+        PyObject *key, *value;
+        Py_ssize_t pos = 0;
+        while (PyDict_Next(mod_dict, &pos, &key, &value)) {
+            if (PyType_Check(value)) {
+                PyTypeObject *tp = (PyTypeObject *)value;
+                if (tp->tp_methods && (tp->tp_flags & Py_TPFLAGS_HEAPTYPE)) {
+                    PyMethodDef *ml;
+                    for (ml = tp->tp_methods; ml->ml_name != NULL; ml++) {
+                        if (!PyDict_GetItemString(tp->tp_dict, ml->ml_name)) {
+                            PyObject *descr = PyDescr_NewMethod(tp, ml);
+                            if (descr) {
+                                PyDict_SetItemString(tp->tp_dict, ml->ml_name, descr);
+                                Py_DECREF(descr);
+                            } else {
+                                PyErr_Clear();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (PyErr_Occurred ()) PyErr_Clear ();
     initialized = TRUE;
     return TRUE;
 }

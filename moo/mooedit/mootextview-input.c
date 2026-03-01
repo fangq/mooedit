@@ -422,7 +422,7 @@ _moo_text_view_update_text_cursor (MooTextView *view,
 
     tcursor = MOO_TEXT_VIEW_GET_CLASS (view)->get_text_cursor (view, x, y);
 
-    if (tcursor == view->priv->text_cursor && TRUE /* GTK3: mouse_cursor_obscured check removed */)
+    if (tcursor == view->priv->text_cursor && FALSE /* GTK3: mouse_cursor_obscured check removed */)
         return;
 
     switch (tcursor)
@@ -462,7 +462,7 @@ set_invisible_cursor (GdkWindow *window)
 static void
 text_view_obscure_mouse_cursor (GtkTextView *text_view)
 {
-    if (TRUE /* GTK3: mouse_cursor_obscured check removed */)
+    if (FALSE /* GTK3: mouse_cursor_obscured check removed */)
     {
         GdkWindow *window =
                 gtk_text_view_get_window (text_view,

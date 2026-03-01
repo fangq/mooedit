@@ -1469,7 +1469,10 @@ class SourceWriter:
 #define PyInt_AsLong PyLong_AsLong
 #define PyInt_AS_LONG PyLong_AsLong
 #endif
-#ifndef PyGtkWidget_Type
+/* PyGObject 3.x compatibility: use PyGObject_Type as base for all types.
+ * Parent GType hierarchy is handled internally by pygobject_register_class()
+ * as long as parent GTypes are registered in pygobject's type map first.
+ * We ensure this by importing gi.repository.Gtk before registration. */
 extern PyTypeObject PyGObject_Type;
 #define PyGtkWidget_Type PyGObject_Type
 #define PyGtkAction_Type PyGObject_Type
@@ -1488,7 +1491,7 @@ extern PyTypeObject PyGObject_Type;
 #define PyGFile_Type PyGObject_Type
 #define PyGtkAccelGroup_Type PyGObject_Type
 #define PyGdkPixbuf_Type PyGObject_Type
-#endif
+
 static int pygtk_text_iter_from_pyobject(PyObject *obj, GtkTextIter *iter) {
     if (!obj || obj == Py_None) { memset(iter, 0, sizeof(GtkTextIter)); return 1; }
     { typedef struct { PyObject_HEAD GType gtype; void *boxed; } _B;

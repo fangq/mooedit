@@ -73,6 +73,111 @@ headers
 
 #include "moolua/medit-lua.h"
 
+
+/* ==================================================================
+ * PyGObject 3.x / Python 3.8+ compatibility fix
+ *
+ * PyGObject_Type (gi._gi.GObject) is a heap type. Our static
+ * PyMoo*_Type structs cannot inherit from heap types in Python 3.8+.
+ *
+ * This wrapper intercepts pygobject_register_class() to fix each
+ * type before PyType_Ready() is called.
+ * ================================================================== */
+
+/* GType quark for stashing Python type - same key pygobject uses internally */
+static GQuark _moo_pygobject_class_quark = 0;
+static GQuark _moo_get_class_quark(void) {
+        _moo_pygobject_class_quark = g_quark_from_static_string("PyGObject::class");
+    return _moo_pygobject_class_quark;
+}
+
+/* Save the real pygobject_register_class before we redefine it */
+static inline void
+_real_pygobject_register_class(PyObject *dict, const gchar *type_name,
+                               GType gtype, PyTypeObject *type,
+                               PyObject *bases)
+{
+    /* This calls the REAL function from pygobject.h */
+    /* We need to call it through the function pointer API */
+    if (_PyGObject_API && _PyGObject_API->register_class)
+        _PyGObject_API->register_class(dict, type_name, gtype, type, bases);
+}
+
+/* Our wrapper: register types with proper parent chain */
+static void
+_moo_pygobject_register_class_compat(PyObject *dict, const gchar *type_name,
+                                     GType gtype, PyTypeObject *type,
+                                     PyObject *bases)
+{
+    PyObject *o;
+    const char *short_name;
+    PyTypeObject *base_type = NULL;
+
+    (void)type_name;
+    PyErr_Clear();
+
+    /* Find correct parent: check GType hierarchy for already-registered types */
+    if (gtype) {
+        GType parent_gtype = g_type_parent(gtype);
+        while (parent_gtype) {
+            PyTypeObject *parent_pytype = (PyTypeObject *)
+                g_type_get_qdata(parent_gtype, _moo_get_class_quark());
+            if (parent_pytype && (parent_pytype->tp_flags & Py_TPFLAGS_READY)) {
+                base_type = parent_pytype;
+                break;
+            }
+            parent_gtype = g_type_parent(parent_gtype);
+        }
+    }
+
+    /* Also check the bases tuple for already-registered Moo types */
+    if (!base_type && bases && PyTuple_Check(bases) && PyTuple_GET_SIZE(bases) > 0) {
+        PyTypeObject *suggested = (PyTypeObject *)PyTuple_GET_ITEM(bases, 0);
+        if (suggested != &PyGObject_Type && (suggested->tp_flags & Py_TPFLAGS_READY))
+            base_type = suggested;
+    }
+
+    if (!base_type)
+        base_type = &PyGObject_Type;
+
+    Py_XDECREF(bases);
+
+    type->tp_base = base_type;
+    Py_INCREF(base_type);
+
+    if (base_type->tp_flags & Py_TPFLAGS_HEAPTYPE) {
+        type->tp_flags |= Py_TPFLAGS_HEAPTYPE;
+#if PY_VERSION_HEX >= 0x030900A4
+        Py_SET_TYPE(type, &PyType_Type);
+        Py_SET_REFCNT(type, 1);
+#else
+        Py_TYPE(type) = &PyType_Type;
+        Py_REFCNT(type) = 1;
+#endif
+    }
+
+    if (PyType_Ready(type) < 0) {
+        g_warning("couldn't make the type '%s' ready", type->tp_name);
+        if (PyErr_Occurred()) PyErr_Print();
+        return;
+    }
+
+    short_name = type->tp_name;
+    { const char *dot = strrchr(short_name, '.'); if (dot) short_name = dot + 1; }
+    if (dict) PyDict_SetItemString(dict, short_name, (PyObject *)type);
+
+    if (gtype) {
+        o = pyg_type_wrapper_new(gtype);
+        if (o) { PyDict_SetItemString(type->tp_dict, "__gtype__", o); Py_DECREF(o); }
+        Py_INCREF(type);
+        g_type_set_qdata(gtype, _moo_get_class_quark(), type);
+    }
+}
+/* Redirect all pygobject_register_class calls to our wrapper */
+#undef pygobject_register_class
+#define pygobject_register_class _moo_pygobject_register_class_compat
+
+
 %%
 modulename moo
 %%
@@ -119,4 +224,3 @@ include mooutils.override
 //include mooedit.override
 //%%
 // include mooapp.override
-// %%

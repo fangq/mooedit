@@ -184,7 +184,7 @@ moo_file_dialog_get_property (GObject        *object,
             break;
 
         case PROP_PARENT:
-            g_value_set_object (value, gtk_widget_get_parent (GTK_WIDGET(dialog)));
+            g_value_set_object (value, dialog->priv->parent);
             break;
 
         case PROP_FILTER_MGR_ID:
@@ -428,8 +428,8 @@ moo_file_dialog_create_widget (MooFileDialog *dialog)
     if (dialog->priv->size_prefs_key)
         _moo_window_set_remember_size (GTK_WINDOW (widget),
                                        dialog->priv->size_prefs_key, -1, -1, TRUE);
-    if (gtk_widget_get_parent (GTK_WIDGET(dialog)))
-        moo_window_set_parent (widget, gtk_widget_get_parent (GTK_WIDGET (dialog)));
+    if (dialog->priv->parent)
+        moo_window_set_parent (widget, dialog->priv->parent);
 
     return widget;
 }

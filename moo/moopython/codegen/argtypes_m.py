@@ -1779,3 +1779,34 @@ def main(argv):
     vaccessors_coverage.printstats()
     iproxies_coverage.printstats()
 
+
+# Register GTK/GIO types that were previously loaded from .defs files
+# (gtk-types.defs, gdk-types.defs, gio-types.defs) which don't exist
+# in PyGObject 3.x. This allows codegen to generate wrappers for methods
+# that use GtkWidget*, GFile*, etc. as parameter or return types.
+import argtypes as _at
+
+# GTK object types
+_at.matcher.register_object('GtkWidget', 'GtkObject', 'GTK_TYPE_WIDGET')
+_at.matcher.register_object('GtkContainer', 'GtkWidget', 'GTK_TYPE_CONTAINER')
+_at.matcher.register_object('GtkBin', 'GtkContainer', 'GTK_TYPE_BIN')
+_at.matcher.register_object('GtkWindow', 'GtkBin', 'GTK_TYPE_WINDOW')
+_at.matcher.register_object('GtkDialog', 'GtkWindow', 'GTK_TYPE_DIALOG')
+_at.matcher.register_object('GtkFrame', 'GtkBin', 'GTK_TYPE_FRAME')
+_at.matcher.register_object('GtkEntry', 'GtkWidget', 'GTK_TYPE_ENTRY')
+_at.matcher.register_object('GtkTextView', 'GtkContainer', 'GTK_TYPE_TEXT_VIEW')
+_at.matcher.register_object('GtkTextBuffer', 'GObject', 'GTK_TYPE_TEXT_BUFFER')
+_at.matcher.register_object('GtkNotebook', 'GtkContainer', 'GTK_TYPE_NOTEBOOK')
+_at.matcher.register_object('GtkTable', 'GtkContainer', 'GTK_TYPE_TABLE')
+_at.matcher.register_object('GtkVBox', 'GtkContainer', 'GTK_TYPE_VBOX')
+_at.matcher.register_object('GtkAction', 'GObject', 'GTK_TYPE_ACTION')
+_at.matcher.register_object('GtkToggleToolButton', 'GtkWidget', 'GTK_TYPE_TOGGLE_TOOL_BUTTON')
+_at.matcher.register_object('GtkAccelGroup', 'GObject', 'GTK_TYPE_ACCEL_GROUP')
+_at.matcher.register_object('GtkObject', 'GObject', 'GTK_TYPE_OBJECT')
+_at.matcher.register_object('GtkTreeModel', 'GObject', 'GTK_TYPE_TREE_MODEL')
+
+# GIO types
+_at.matcher.register_object('GFile', None, 'G_TYPE_FILE')
+
+# GDK types
+_at.matcher.register_object('GdkPixbuf', 'GObject', 'GDK_TYPE_PIXBUF')
