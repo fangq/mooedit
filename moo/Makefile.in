@@ -6636,9 +6636,6 @@ moopython/pygtk/moo-mod.cpp: $(moo_override_files) moopython/pygtk/moo.defs $(co
 	$(AM_V_at)$(MKDIR_P) moopython/pygtk
 	$(AM_V_GEN)$(codegen) --prefix _moo \
 		--load-types $(srcdir)/moopython/codegen/argtypes_m.py \
-		--register $(PYGOBJECT_DEFS_DIR)/gio-types.defs \
-		--register $(PYGTK_DEFS_DIR)/gtk-types.defs \
-		--register $(PYGTK_DEFS_DIR)/gdk-types.defs \
 		--override $(srcdir)/moopython/pygtk/moo.override \
 		moopython/pygtk/moo.defs > $@.tmp && \
 		mv $@.tmp $@
