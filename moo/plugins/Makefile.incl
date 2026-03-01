@@ -7,6 +7,10 @@ plugins_sources +=			\
 	plugins/moofilelist.cpp		\
 	plugins/moofind.cpp
 
+if MOO_BUILD_TERMINAL
+plugins_sources += plugins/mooterminal.c
+endif
+
 EXTRA_DIST +=						\
 	plugins/glade/moofileselector-prefs.glade	\
 	plugins/glade/moofileselector.glade		\

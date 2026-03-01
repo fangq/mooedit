@@ -682,6 +682,10 @@ MOO_BUILD_MODULE_FALSE
 MOO_BUILD_MODULE_TRUE
 MOO_BUILD_APP_FALSE
 MOO_BUILD_APP_TRUE
+MOO_BUILD_TERMINAL_FALSE
+MOO_BUILD_TERMINAL_TRUE
+VTE_LIBS
+VTE_CFLAGS
 MOO_ENABLE_PYTHON_FALSE
 MOO_ENABLE_PYTHON_TRUE
 PYGOBJECT_DEFS_DIR
@@ -954,6 +958,7 @@ with_python
 with_python_sys_prefix
 with_python_prefix
 with_python_exec_prefix
+with_vte
 enable_moo_module
 enable_coverage
 enable_install_hooks
@@ -995,6 +1000,8 @@ PYTHON_VERSION
 PYGTK_CFLAGS
 PYGTK_LIBS
 PYTHON
+VTE_CFLAGS
+VTE_LIBS
 MOO_WIN32_CONFIG'
 
 
@@ -1666,6 +1673,7 @@ Optional Packages:
   --with-python_prefix    override the default PYTHON_PREFIX
   --with-python_exec_prefix
                           override the default PYTHON_EXEC_PREFIX
+  --with-vte              Build with native VTE terminal (auto/yes/no)
 
 Some influential environment variables:
   CC          C compiler command
@@ -1714,6 +1722,8 @@ Some influential environment variables:
               C compiler flags for PYGTK, overriding pkg-config
   PYGTK_LIBS  linker flags for PYGTK, overriding pkg-config
   PYTHON      the Python interpreter
+  VTE_CFLAGS  C compiler flags for VTE, overriding pkg-config
+  VTE_LIBS    linker flags for VTE, overriding pkg-config
   MOO_WIN32_CONFIG
               $_moo_win32_config
 
@@ -22158,6 +22168,257 @@ printf "%s\n" "#define MOO_ENABLE_PYTHON 1" >>confdefs.h
   fi
 
 
+
+# Check whether --with-vte was given.
+if test ${with_vte+y}
+then :
+  withval=$with_vte;
+else $as_nop
+  with_vte=auto
+fi
+
+
+have_vte=no
+if test "x$with_vte" != "xno"; then
+
+pkg_failed=no
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for vte-2.91" >&5
+printf %s "checking for vte-2.91... " >&6; }
+
+if test -n "$VTE_CFLAGS"; then
+    pkg_cv_VTE_CFLAGS="$VTE_CFLAGS"
+ elif test -n "$PKG_CONFIG"; then
+    if test -n "$PKG_CONFIG" && \
+    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"vte-2.91\""; } >&5
+  ($PKG_CONFIG --exists --print-errors "vte-2.91") 2>&5
+  ac_status=$?
+  printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
+  test $ac_status = 0; }; then
+  pkg_cv_VTE_CFLAGS=`$PKG_CONFIG --cflags "vte-2.91" 2>/dev/null`
+		      test "x$?" != "x0" && pkg_failed=yes
+else
+  pkg_failed=yes
+fi
+ else
+    pkg_failed=untried
+fi
+if test -n "$VTE_LIBS"; then
+    pkg_cv_VTE_LIBS="$VTE_LIBS"
+ elif test -n "$PKG_CONFIG"; then
+    if test -n "$PKG_CONFIG" && \
+    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"vte-2.91\""; } >&5
+  ($PKG_CONFIG --exists --print-errors "vte-2.91") 2>&5
+  ac_status=$?
+  printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
+  test $ac_status = 0; }; then
+  pkg_cv_VTE_LIBS=`$PKG_CONFIG --libs "vte-2.91" 2>/dev/null`
+		      test "x$?" != "x0" && pkg_failed=yes
+else
+  pkg_failed=yes
+fi
+ else
+    pkg_failed=untried
+fi
+
+
+
+if test $pkg_failed = yes; then
+        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+
+if $PKG_CONFIG --atleast-pkgconfig-version 0.20; then
+        _pkg_short_errors_supported=yes
+else
+        _pkg_short_errors_supported=no
+fi
+        if test $_pkg_short_errors_supported = yes; then
+	        VTE_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors --cflags --libs "vte-2.91" 2>&1`
+        else
+	        VTE_PKG_ERRORS=`$PKG_CONFIG --print-errors --cflags --libs "vte-2.91" 2>&1`
+        fi
+	# Put the nasty error message in config.log where it belongs
+	echo "$VTE_PKG_ERRORS" >&5
+
+
+
+pkg_failed=no
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for vte-2.90" >&5
+printf %s "checking for vte-2.90... " >&6; }
+
+if test -n "$VTE_CFLAGS"; then
+    pkg_cv_VTE_CFLAGS="$VTE_CFLAGS"
+ elif test -n "$PKG_CONFIG"; then
+    if test -n "$PKG_CONFIG" && \
+    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"vte-2.90\""; } >&5
+  ($PKG_CONFIG --exists --print-errors "vte-2.90") 2>&5
+  ac_status=$?
+  printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
+  test $ac_status = 0; }; then
+  pkg_cv_VTE_CFLAGS=`$PKG_CONFIG --cflags "vte-2.90" 2>/dev/null`
+		      test "x$?" != "x0" && pkg_failed=yes
+else
+  pkg_failed=yes
+fi
+ else
+    pkg_failed=untried
+fi
+if test -n "$VTE_LIBS"; then
+    pkg_cv_VTE_LIBS="$VTE_LIBS"
+ elif test -n "$PKG_CONFIG"; then
+    if test -n "$PKG_CONFIG" && \
+    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"vte-2.90\""; } >&5
+  ($PKG_CONFIG --exists --print-errors "vte-2.90") 2>&5
+  ac_status=$?
+  printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
+  test $ac_status = 0; }; then
+  pkg_cv_VTE_LIBS=`$PKG_CONFIG --libs "vte-2.90" 2>/dev/null`
+		      test "x$?" != "x0" && pkg_failed=yes
+else
+  pkg_failed=yes
+fi
+ else
+    pkg_failed=untried
+fi
+
+
+
+if test $pkg_failed = yes; then
+        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+
+if $PKG_CONFIG --atleast-pkgconfig-version 0.20; then
+        _pkg_short_errors_supported=yes
+else
+        _pkg_short_errors_supported=no
+fi
+        if test $_pkg_short_errors_supported = yes; then
+	        VTE_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors --cflags --libs "vte-2.90" 2>&1`
+        else
+	        VTE_PKG_ERRORS=`$PKG_CONFIG --print-errors --cflags --libs "vte-2.90" 2>&1`
+        fi
+	# Put the nasty error message in config.log where it belongs
+	echo "$VTE_PKG_ERRORS" >&5
+
+	have_vte=no
+elif test $pkg_failed = untried; then
+        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+	have_vte=no
+else
+	VTE_CFLAGS=$pkg_cv_VTE_CFLAGS
+	VTE_LIBS=$pkg_cv_VTE_LIBS
+        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+printf "%s\n" "yes" >&6; }
+	have_vte=yes
+fi
+
+elif test $pkg_failed = untried; then
+        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+
+
+pkg_failed=no
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for vte-2.90" >&5
+printf %s "checking for vte-2.90... " >&6; }
+
+if test -n "$VTE_CFLAGS"; then
+    pkg_cv_VTE_CFLAGS="$VTE_CFLAGS"
+ elif test -n "$PKG_CONFIG"; then
+    if test -n "$PKG_CONFIG" && \
+    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"vte-2.90\""; } >&5
+  ($PKG_CONFIG --exists --print-errors "vte-2.90") 2>&5
+  ac_status=$?
+  printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
+  test $ac_status = 0; }; then
+  pkg_cv_VTE_CFLAGS=`$PKG_CONFIG --cflags "vte-2.90" 2>/dev/null`
+		      test "x$?" != "x0" && pkg_failed=yes
+else
+  pkg_failed=yes
+fi
+ else
+    pkg_failed=untried
+fi
+if test -n "$VTE_LIBS"; then
+    pkg_cv_VTE_LIBS="$VTE_LIBS"
+ elif test -n "$PKG_CONFIG"; then
+    if test -n "$PKG_CONFIG" && \
+    { { printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$PKG_CONFIG --exists --print-errors \"vte-2.90\""; } >&5
+  ($PKG_CONFIG --exists --print-errors "vte-2.90") 2>&5
+  ac_status=$?
+  printf "%s\n" "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
+  test $ac_status = 0; }; then
+  pkg_cv_VTE_LIBS=`$PKG_CONFIG --libs "vte-2.90" 2>/dev/null`
+		      test "x$?" != "x0" && pkg_failed=yes
+else
+  pkg_failed=yes
+fi
+ else
+    pkg_failed=untried
+fi
+
+
+
+if test $pkg_failed = yes; then
+        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+
+if $PKG_CONFIG --atleast-pkgconfig-version 0.20; then
+        _pkg_short_errors_supported=yes
+else
+        _pkg_short_errors_supported=no
+fi
+        if test $_pkg_short_errors_supported = yes; then
+	        VTE_PKG_ERRORS=`$PKG_CONFIG --short-errors --print-errors --cflags --libs "vte-2.90" 2>&1`
+        else
+	        VTE_PKG_ERRORS=`$PKG_CONFIG --print-errors --cflags --libs "vte-2.90" 2>&1`
+        fi
+	# Put the nasty error message in config.log where it belongs
+	echo "$VTE_PKG_ERRORS" >&5
+
+	have_vte=no
+elif test $pkg_failed = untried; then
+        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+	have_vte=no
+else
+	VTE_CFLAGS=$pkg_cv_VTE_CFLAGS
+	VTE_LIBS=$pkg_cv_VTE_LIBS
+        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+printf "%s\n" "yes" >&6; }
+	have_vte=yes
+fi
+
+else
+	VTE_CFLAGS=$pkg_cv_VTE_CFLAGS
+	VTE_LIBS=$pkg_cv_VTE_LIBS
+        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+printf "%s\n" "yes" >&6; }
+	have_vte=yes
+fi
+
+    if test "x$have_vte" = "xyes"; then
+
+printf "%s\n" "#define HAVE_VTE 1" >>confdefs.h
+
+        MOO_CFLAGS="$MOO_CFLAGS $VTE_CFLAGS"
+        MOO_LIBS="$MOO_LIBS $VTE_LIBS"
+    elif test "x$with_vte" = "xyes"; then
+        as_fn_error $? "VTE terminal requested but vte-2.91 not found" "$LINENO" 5
+    fi
+fi
+
+ if test "x$have_vte" = "xyes"; then
+  MOO_BUILD_TERMINAL_TRUE=
+  MOO_BUILD_TERMINAL_FALSE='#'
+else
+  MOO_BUILD_TERMINAL_TRUE='#'
+  MOO_BUILD_TERMINAL_FALSE=
+fi
+
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: VTE terminal support: $have_vte" >&5
+printf "%s\n" "$as_me: VTE terminal support: $have_vte" >&6;}
+
+
 MOO_BUILD_APP=true
 MOO_BUILD_MODULE=false
 # Check whether --enable-moo-module was given.
@@ -22597,6 +22858,10 @@ Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
 if test -z "${MOO_ENABLE_PYTHON_TRUE}" && test -z "${MOO_ENABLE_PYTHON_FALSE}"; then
   as_fn_error $? "conditional \"MOO_ENABLE_PYTHON\" was never defined.
+Usually this means the macro was only invoked conditionally." "$LINENO" 5
+fi
+if test -z "${MOO_BUILD_TERMINAL_TRUE}" && test -z "${MOO_BUILD_TERMINAL_FALSE}"; then
+  as_fn_error $? "conditional \"MOO_BUILD_TERMINAL\" was never defined.
 Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
 if test -z "${MOO_BUILD_APP_TRUE}" && test -z "${MOO_BUILD_APP_FALSE}"; then

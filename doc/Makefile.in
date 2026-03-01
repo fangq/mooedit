@@ -95,7 +95,7 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/libtool.m4 \
 	$(top_srcdir)/m4/moo-flags.m4 $(top_srcdir)/m4/moo-gtk.m4 \
 	$(top_srcdir)/m4/moo-intltool.m4 $(top_srcdir)/m4/moo-os.m4 \
 	$(top_srcdir)/m4/moo-pygtk.m4 $(top_srcdir)/m4/moo-python.m4 \
-	$(top_srcdir)/configure.ac
+	$(top_srcdir)/m4/moo-vte.m4 $(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 DIST_COMMON = $(srcdir)/Makefile.am $(am__DIST_COMMON)
@@ -314,6 +314,8 @@ STRIP = @STRIP@
 TXT2TAGS = @TXT2TAGS@
 USE_NLS = @USE_NLS@
 VERSION = @VERSION@
+VTE_CFLAGS = @VTE_CFLAGS@
+VTE_LIBS = @VTE_LIBS@
 WINDRES = @WINDRES@
 XGETTEXT = @XGETTEXT@
 XML_CFLAGS = @XML_CFLAGS@
