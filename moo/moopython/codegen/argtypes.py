@@ -194,7 +194,7 @@ class GUniCharArg(ArgType):
                 '    }\n'
                 '#endif\n'
                 '    py_ret = (Py_UNICODE)ret;\n'
-                '    return PyUnicode_FromUnicode(&py_ret, 1);\n')
+                '    return PyUnicode_FromWideChar(&py_ret, 1);\n')
     def write_param(self, ptype, pname, pdflt, pnull, info):
         if pdflt:
             info.varlist.add('gunichar', pname + " = '" + pdflt + "'")
