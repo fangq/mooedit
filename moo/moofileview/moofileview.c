@@ -1131,7 +1131,7 @@ init_actions (MooFileView *fileview)
     group = moo_action_collection_get_group (fileview->priv->actions, NULL);
 
     moo_action_group_add_action (group, "GoUp",
-                                 "label", "go-up",
+                                 "label", _("Up"),
                                  "tooltip", _("Go to parent folder"),
                                  "icon-name", "go-up",
                                  "default-accel", MOO_FILE_VIEW_ACCEL_GO_UP,
@@ -1141,8 +1141,8 @@ init_actions (MooFileView *fileview)
                                  NULL);
 
     action = moo_action_group_add_action (group, "GoBack",
-                                          "label", "go-previous",
-                                          "tooltip", "go-previous",
+                                          "label", _("Back"),
+                                          "tooltip", _("Go back"),
                                           "icon-name", "go-previous",
                                           "default-accel", MOO_FILE_VIEW_ACCEL_GO_BACK,
                                           "force-accel-label", TRUE,
@@ -1152,8 +1152,8 @@ init_actions (MooFileView *fileview)
     moo_bind_bool_property (action, "sensitive", fileview, "can-go-back", FALSE);
 
     action = moo_action_group_add_action (group, "GoForward",
-                                          "label", "go-next",
-                                          "tooltip", "go-next",
+                                          "label", _("Next"),
+                                          "tooltip", _("Go forward"),
                                           "icon-name", "go-next",
                                           "default-accel", MOO_FILE_VIEW_ACCEL_GO_FORWARD,
                                           "force-accel-label", TRUE,
@@ -1163,8 +1163,8 @@ init_actions (MooFileView *fileview)
     moo_bind_bool_property (action, "sensitive", fileview, "can-go-forward", FALSE);
 
     moo_action_group_add_action (group, "GoHome",
-                                 "label", "go-home",
-                                 "tooltip", "go-home",
+                                 "label", _("Home"),
+                                 "tooltip", _("Go to home folder"),
                                  "icon-name", "go-home",
                                  "default-accel", MOO_FILE_VIEW_ACCEL_GO_HOME,
                                  "force-accel-label", TRUE,
@@ -1257,8 +1257,8 @@ init_actions (MooFileView *fileview)
                                  NULL);
 
     action = moo_action_group_add_action (group, "Cut",
-                                          "label", "edit-cut",
-                                          "tooltip", "edit-cut",
+                                          "label", _("Cut"),
+                                          "tooltip", _("Cut"),
                                           "icon-name", "edit-cut",
                                           "default-accel", MOO_FILE_VIEW_ACCEL_CUT,
                                           "force-accel-label", TRUE,
@@ -1268,8 +1268,8 @@ init_actions (MooFileView *fileview)
     moo_bind_bool_property (action, "sensitive", fileview, "has-selection", FALSE);
 
     action = moo_action_group_add_action (group, "Copy",
-                                          "label", "edit-copy",
-                                          "tooltip", "edit-copy",
+                                          "label", _("Copy"),
+                                          "tooltip", _("Copy"),
                                           "icon-name", "edit-copy",
                                           "force-accel-label", TRUE,
                                           "default-accel", MOO_FILE_VIEW_ACCEL_COPY,
@@ -1279,8 +1279,8 @@ init_actions (MooFileView *fileview)
     moo_bind_bool_property (action, "sensitive", fileview, "has-selection", FALSE);
 
     action = moo_action_group_add_action (group, "Paste",
-                                          "label", "edit-paste",
-                                          "tooltip", "edit-paste",
+                                          "label", _("Paste"),
+                                          "tooltip", _("Paste"),
                                           "icon-name", "edit-paste",
                                           "default-accel", MOO_FILE_VIEW_ACCEL_PASTE,
                                           "force-accel-label", TRUE,

@@ -486,9 +486,39 @@ static void moo_notebook_class_init (MooNotebookClass *klass)
 }
 
 
+
+static void
+moo_notebook_install_tab_css (void)
+{
+    static gboolean done = FALSE;
+    GtkCssProvider *provider;
+
+    if (done)
+        return;
+    done = TRUE;
+
+    provider = gtk_css_provider_new ();
+    gtk_css_provider_load_from_data (provider,
+        /* Active/current tab label gets a subtle highlight */
+        ".moo-notebook-active-tab {"
+        "  background-color: alpha(@theme_selected_bg_color, 0.3);"
+        "  border-radius: 4px 4px 0 0;"
+        "  padding: 2px 4px;"
+        "}"
+        ".moo-notebook-tab {"
+        "  padding: 2px 4px;"
+        "}", -1, NULL);
+    gtk_style_context_add_provider_for_screen (
+        gdk_screen_get_default (),
+        GTK_STYLE_PROVIDER (provider),
+        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref (provider);
+}
+
 static void
 moo_notebook_init (MooNotebook *notebook)
 {
+    moo_notebook_install_tab_css ();
     gtk_widget_set_can_focus (GTK_WIDGET(notebook), TRUE);
     gtk_widget_set_has_window (GTK_WIDGET(notebook), FALSE);
 
@@ -1854,7 +1884,15 @@ moo_notebook_set_current_page (MooNotebook *notebook,
         page_num = num_pages - 1;
 
     if (page_num == moo_notebook_get_current_page (notebook))
+    {
+        /* Even if already on this page, ensure the tab label
+         * is scrolled into view (e.g. when re-opening a file
+         * that is already open but its tab is off-screen). */
+        notebook->priv->label_move_onscreen = TRUE; /* label_move_onscreen_even_if_current */
+        labels_invalidate (notebook);
+        gtk_widget_queue_resize (GTK_WIDGET (notebook));
         return;
+    }
 
     g_signal_emit (notebook, signals[SWITCH_PAGE], 0, (guint) page_num);
 }
@@ -2215,6 +2253,19 @@ moo_notebook_draw_label (MooNotebook    *nb,
                          height,
                          GTK_POS_BOTTOM);
 
+    /* Draw active tab highlight bar */
+    if (page == nb->priv->current_page)
+    {
+        GdkRGBA highlight = {0.3, 0.6, 1.0, 0.8};
+        int bar_height = 3;
+
+        cairo_save (cr);
+        gdk_cairo_set_source_rgba (cr, &highlight);
+        cairo_rectangle (cr, x, y, page->label->width, bar_height);
+        cairo_fill (cr);
+        cairo_restore (cr);
+    }
+
     if (gtk_widget_has_focus (GTK_WIDGET(GTK_WIDGET (nb))) &&
         page == nb->priv->focus_page)
     {
@@ -2264,60 +2315,53 @@ moo_notebook_draw_dragged_label (MooNotebook    *nb,
     width = nb->priv->drag_page->label->width;
     height = nb->priv->tabs_height;
 
+    /* GTK3 fix: render snapshot via cairo surface */
     if (nb->priv->want_snapshot)
     {
-        GdkPixbuf *pixbuf;
-        guchar *pixels;
-        int rowstride, row, i;
+        cairo_surface_t *surface;
+        cairo_t *snap_cr;
 
         g_return_if_fail (nb->priv->snapshot_pixmap == NULL &&
-                nb->priv->snapshot_pixbuf == NULL);
+                          nb->priv->snapshot_pixbuf == NULL);
 
-        /* TODO: this event may not cover whole label area */
-        moo_notebook_draw_label (nb, nb->priv->drag_page, cr);
+        surface = cairo_image_surface_create (CAIRO_FORMAT_ARGB32, width, height);
+        snap_cr = cairo_create (surface);
+
+        /* Draw the tab background and label onto the surface */
+        moo_notebook_draw_label (nb, nb->priv->drag_page, snap_cr);
         gtk_container_propagate_draw (GTK_CONTAINER (nb),
-                                        nb->priv->drag_page->label->widget,
-                                        cr);
+                                      nb->priv->drag_page->label->widget,
+                                      snap_cr);
+        cairo_destroy (snap_cr);
 
-        nb->priv->want_snapshot = FALSE;
-
-        pixbuf = gdk_pixbuf_new (GDK_COLORSPACE_RGB, TRUE,
-                                 8, width, height);
-
-        /* GTK3 TODO: gdk_pixbuf_get_from_surface has different args */
-        if (0 /* GTK3: snapshot disabled */)
+        /* Apply alpha transparency */
         {
-nb->priv->snapshot_pixbuf = pixbuf;
+            guchar *data = cairo_image_surface_get_data (surface);
+            int stride = cairo_image_surface_get_stride (surface);
+            int row, col;
 
-            pixels = gdk_pixbuf_get_pixels (pixbuf);
-            rowstride = gdk_pixbuf_get_rowstride (pixbuf);
-
-            for (row = 0; row < height; ++row)
-                for (i = 0; i < width; ++i)
-                    pixels[row*rowstride + 4*i + 3] = LABEL_ALPHA;
+            cairo_surface_flush (surface);
+            for (row = 0; row < height; row++)
+                for (col = 3; col < width * 4; col += 4)
+                    data[row * stride + col] =
+                        (guchar)((int)data[row * stride + col] * LABEL_ALPHA / 255);
+            cairo_surface_mark_dirty (surface);
         }
+
+        nb->priv->snapshot_pixmap = surface;
+        nb->priv->want_snapshot = FALSE;
     }
-    else
+
+    if (nb->priv->snapshot_pixmap)
     {
-        GdkRectangle area;
+        int dx = nb->priv->drag_tab_x - nb->priv->labels_offset;
 
-        area.x = nb->priv->drag_tab_x - nb->priv->labels_offset;
-        area.y = 0;
-        area.width = width;
-        area.height = height;
-
-        if (!gdk_rectangle_intersect (&area, &area, &area))
-            return;
-
-        g_return_if_fail (nb->priv->snapshot_pixmap != NULL || nb->priv->snapshot_pixbuf != NULL);
-
-        if (nb->priv->snapshot_pixbuf)
-            /* GTK3: gdk_draw_pixbuf removed — use gdk_cairo_set_source_pixbuf + cairo_paint */;
-        else
-            /* GTK3: gdk_draw_drawable removed — use cairo_set_source_surface + cairo_paint */ {}
+        cairo_save (cr);
+        cairo_set_source_surface (cr, nb->priv->snapshot_pixmap, dx, 0);
+        cairo_paint (cr);
+        cairo_restore (cr);
     }
 }
-
 
 static void
 moo_notebook_check_arrows (MooNotebook *nb)
@@ -2685,7 +2729,7 @@ tab_drag_end (MooNotebook *nb,
     if (nb->priv->snapshot_pixbuf)
         g_object_unref (nb->priv->snapshot_pixbuf);
     if (nb->priv->snapshot_pixmap)
-        g_object_unref (nb->priv->snapshot_pixmap);
+        cairo_surface_destroy (nb->priv->snapshot_pixmap);
     nb->priv->snapshot_pixbuf = NULL;
     nb->priv->snapshot_pixmap = NULL;
     nb->priv->want_snapshot = FALSE;

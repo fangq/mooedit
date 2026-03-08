@@ -2038,6 +2038,37 @@ paste_text (GtkTextView *text_view,
 }
 
 
+static gboolean
+paste_refresh_idle (gpointer data)
+{
+    GtkTextView *text_view = GTK_TEXT_VIEW (data);
+
+    if (GTK_IS_TEXT_VIEW (text_view) && gtk_widget_get_realized (GTK_WIDGET (text_view)))
+    {
+        GtkTextBuffer *buffer = gtk_text_view_get_buffer (text_view);
+        GtkTextMark *insert = gtk_text_buffer_get_insert (buffer);
+        GdkRectangle visible, cursor_loc;
+        GtkTextIter iter;
+
+        gtk_text_view_get_visible_rect (text_view, &visible);
+        gtk_text_buffer_get_iter_at_mark (buffer, &iter, insert);
+        gtk_text_view_get_iter_location (text_view, &iter, &cursor_loc);
+
+        /* Only scroll if the cursor is outside the visible area */
+        if (cursor_loc.y < visible.y ||
+            cursor_loc.y + cursor_loc.height > visible.y + visible.height)
+        {
+            gtk_text_view_scroll_to_mark (text_view, insert,
+                                          0.05, FALSE, 0.0, 0.0);
+        }
+
+        gtk_widget_queue_draw (GTK_WIDGET (text_view));
+    }
+
+    g_object_unref (text_view);
+    return G_SOURCE_REMOVE;
+}
+
 static void
 moo_text_view_paste_clipboard (GtkTextView *text_view)
 {
@@ -2057,7 +2088,30 @@ moo_text_view_paste_clipboard (GtkTextView *text_view)
     }
 
     gtk_text_buffer_end_user_action (buffer);
-    gtk_text_view_scroll_mark_onscreen (text_view, gtk_text_buffer_get_insert (buffer));
+
+    /* Cursor is now at the end of the inserted text.
+     * Only scroll if it's not already visible. */
+    {
+        GdkRectangle visible, cursor_loc;
+        GtkTextIter iter;
+        GtkTextMark *insert = gtk_text_buffer_get_insert (buffer);
+
+        gtk_text_view_get_visible_rect (text_view, &visible);
+        gtk_text_buffer_get_iter_at_mark (buffer, &iter, insert);
+        gtk_text_view_get_iter_location (text_view, &iter, &cursor_loc);
+
+        if (cursor_loc.y < visible.y ||
+            cursor_loc.y + cursor_loc.height > visible.y + visible.height)
+        {
+            gtk_text_view_scroll_mark_onscreen (text_view, insert);
+        }
+    }
+
+    /* Deferred redraw: GTK may not have finished layout yet after a
+     * large paste.  The idle callback also re-checks visibility and
+     * scrolls if needed, then forces a repaint. */
+    g_object_ref (text_view);
+    g_idle_add (paste_refresh_idle, text_view);
 }
 
 

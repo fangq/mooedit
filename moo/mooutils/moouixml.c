@@ -469,12 +469,23 @@ item_new_from_node (MooMarkupNode *node,
     action = moo_markup_get_prop (node, "action");
     stock_id = moo_markup_get_prop (node, "icon-name");
     stock_label = moo_markup_get_prop (node, "stock-label");
-    icon_stock_id = moo_markup_get_prop (node, "icon-stock-id"),
+    icon_stock_id = moo_markup_get_prop (node, "icon-stock-id");
+
+    /* Also check for "icon-name" attribute as a fallback for
+     * freedesktop icon names (GTK3 stock icons are deprecated) */
+    if (!icon_stock_id || !icon_stock_id[0])
+        icon_stock_id = moo_markup_get_prop (node, "icon-name");
 
     item = item_new (name, action);
 
     item->stock_id = g_strdup (stock_id);
-    item->icon_stock_id = g_strdup (icon_stock_id);
+    /* GTK3: fall back to "icon-name" XML attribute for freedesktop icons */
+    if (icon_stock_id && icon_stock_id[0])
+        item->icon_stock_id = g_strdup (icon_stock_id);
+    else {
+        const char *_icon_name_attr = moo_markup_get_prop (node, "icon-name");
+        item->icon_stock_id = g_strdup (_icon_name_attr);
+    }
 
     if (stock_label)
     {
@@ -2239,9 +2250,14 @@ create_tool_item (MooUiXml       *xml,
         tool_item = moo_menu_tool_button_new ();
         gtk_widget_show (tool_item);
 
-        if (item->icon_stock_id)
-            gtk_tool_button_set_stock_id (GTK_TOOL_BUTTON (tool_item),
-                                          item->icon_stock_id);
+        if (item->icon_stock_id) {
+            if (g_str_has_prefix (item->icon_stock_id, "gtk-"))
+                gtk_tool_button_set_stock_id (GTK_TOOL_BUTTON (tool_item),
+                                              item->icon_stock_id);
+            else
+                gtk_tool_button_set_icon_name (GTK_TOOL_BUTTON (tool_item),
+                                               item->icon_stock_id);
+        }
         if (item->stock_id)
             gtk_tool_button_set_stock_id (GTK_TOOL_BUTTON (tool_item),
                                           item->stock_id);

@@ -4,6 +4,8 @@
  *   Native VTE terminal plugin for medit — replaces terminal.py
  *   No Python dependency required.
  *
+ *   Supports Terminator-style recursive horizontal/vertical splitting.
+ *
  *   Copyright (C) 2004-2010 by Yevgen Muntyan <emuntyan@users.sourceforge.net>
  *   Copyright (C) 2024-2025 — C port
  *
@@ -45,6 +47,29 @@
 #define SCROLLBACK_KEY          "Plugins/Terminal/scrollback_lines"
 
 /* ================================================================ */
+/* Forward declarations                                             */
+/* ================================================================ */
+
+static GtkWidget *create_terminal_box (void);
+
+static void on_cd_activate       (GtkMenuItem *item, VteTerminal *term);
+static void on_pushd_activate    (GtkMenuItem *item, VteTerminal *term);
+static void on_copy_activate     (GtkMenuItem *item, VteTerminal *term);
+static void on_paste_activate    (GtkMenuItem *item, VteTerminal *term);
+static void on_font_activate     (GtkMenuItem *item, VteTerminal *term);
+static void on_scheme_activate   (GtkMenuItem *item, VteTerminal *term);
+static void on_split_h_activate  (GtkMenuItem *item, VteTerminal *term);
+static void on_split_v_activate  (GtkMenuItem *item, VteTerminal *term);
+static void on_close_activate    (GtkMenuItem *item, VteTerminal *term);
+
+static gboolean on_button_press  (VteTerminal *term, GdkEventButton *event,
+                                   gpointer data);
+static gboolean on_scroll_event  (GtkWidget *widget, GdkEventScroll *event,
+                                   gpointer data);
+static char    *get_user_shell   (void);
+static gboolean shell_supports_pushd (const char *shell);
+
+/* ================================================================ */
 /* Color schemes — ported from terminal.py (stolen from Konsole)    */
 /* ================================================================ */
 
@@ -57,7 +82,13 @@ typedef struct {
 } TermColorScheme;
 
 static const TermColorScheme color_schemes[] = {
-    { "Default", NULL, NULL, {NULL}, FALSE },
+    { "Default",
+      "#ececec", "#000000",
+      { "#171421", "#c01c28", "#18b218", "#a2734c",
+        "#12488b", "#b218b2", "#2aa1b3", "#d0cfcc",
+        "#5e5c64", "#f66151", "#33d17a", "#e9ad0c",
+        "#2a7bde", "#c061cb", "#33c7de", "#ffffff" },
+      TRUE },
     { "Black on White",
       "#000000", "#ffffff",
       { "#000000", "#b21818", "#18b218", "#b26818",
@@ -199,7 +230,7 @@ shell_supports_pushd (const char *shell)
 }
 
 /* ================================================================ */
-/* Terminal widget                                                  */
+/* Terminal widget creation                                         */
 /* ================================================================ */
 
 static void
@@ -268,7 +299,9 @@ create_terminal (void)
         scrollback = 1000000;
     vte_terminal_set_scrollback_lines (term, scrollback);
 
-    /* Size */
+    /* Size — use a minimal size request so that VTE does not fight
+     * the GtkPaned layout during window resizes, which would cause
+     * rapid SIGWINCH signals and repeated PS1 prompt reprints. */
     vte_terminal_set_size (term, vte_terminal_get_column_count (term), 10);
     gtk_widget_set_size_request (GTK_WIDGET (term), 10, 10);
 
@@ -276,7 +309,214 @@ create_terminal (void)
 }
 
 /* ================================================================ */
-/* Context menu                                                     */
+/* Suppress harmless GTK layout warnings during split               */
+/* ================================================================ */
+
+/*
+ * During a terminal split, VTE's internal GtkScrolledWindow may
+ * briefly receive a 1-pixel allocation before the GtkPaned divider
+ * position is applied.  This causes GTK to emit "Negative content
+ * width" warnings and "gtk_box_gadget_distribute: assertion
+ * 'size >= 0' failed" criticals.  These are cosmetic and harmless,
+ * so we filter them out to keep the console clean.
+ *
+ * The original GTK log handler is saved and called for all other
+ * messages.
+ */
+
+static GLogWriterOutput
+filtered_gtk_log_writer (GLogLevelFlags   log_level,
+                         const GLogField *fields,
+                         gsize            n_fields,
+                         gpointer         user_data)
+{
+    gsize i;
+    (void)user_data;
+
+    for (i = 0; i < n_fields; i++) {
+        if (g_strcmp0 (fields[i].key, "MESSAGE") == 0 &&
+            fields[i].value != NULL) {
+            const char *msg = (const char *)fields[i].value;
+            if (strstr (msg, "Negative content width") != NULL)
+                return G_LOG_WRITER_HANDLED;
+            if (strstr (msg, "Negative content height") != NULL)
+                return G_LOG_WRITER_HANDLED;
+            if (strstr (msg, "gtk_box_gadget_distribute") != NULL)
+                return G_LOG_WRITER_HANDLED;
+        }
+    }
+
+    return g_log_writer_default (log_level, fields, n_fields, user_data);
+}
+
+static void
+install_gtk_log_filter (void)
+{
+    static gboolean done = FALSE;
+
+    if (done)
+        return;
+    done = TRUE;
+
+    g_log_set_writer_func (filtered_gtk_log_writer, NULL, NULL);
+}
+
+/* ================================================================ */
+/* Paned handle styling                                             */
+/* ================================================================ */
+
+/*
+ * Apply a CSS tweak so the GtkPaned divider handles used for terminal
+ * splits are wide enough to grab comfortably.  Called once at plugin
+ * init time.  The min-width / min-height of 5px ensures visibility
+ * even in themes where the default handle is 1-2 pixels.
+ */
+static void
+install_paned_css (void)
+{
+    GtkCssProvider *provider;
+    static gboolean done = FALSE;
+
+    if (done)
+        return;
+    done = TRUE;
+
+    provider = gtk_css_provider_new ();
+    gtk_css_provider_load_from_data (provider,
+        "paned > separator {"
+        "  min-width: 5px;"
+        "  min-height: 5px;"
+        "}", -1, NULL);
+    gtk_style_context_add_provider_for_screen (
+        gdk_screen_get_default (),
+        GTK_STYLE_PROVIDER (provider),
+        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref (provider);
+}
+
+/* ================================================================ */
+/* "cd to document directory" support                               */
+/* ================================================================ */
+
+static void
+terminal_chdir (VteTerminal *term, const char *path, gboolean use_pushd)
+{
+    char *command;
+    const char *cmd = use_pushd ? "pushd" : "cd";
+
+    if (!path || !path[0])
+        return;
+
+    command = g_strdup_printf ("%s '%s'\n", cmd, path);
+    vte_terminal_feed_child (term, command, -1);
+    g_free (command);
+}
+
+static void
+terminal_goto_file_dir (VteTerminal *term, gboolean use_pushd)
+{
+    MooEditor *editor;
+    MooEdit   *doc;
+    char      *filename, *dir;
+
+    editor = moo_editor_instance ();
+    if (!editor)
+        return;
+
+    doc = moo_editor_get_active_doc (editor);
+    if (!doc)
+        return;
+
+    filename = moo_edit_get_filename (doc);
+    if (!filename || !filename[0]) {
+        g_free (filename);
+        return;
+    }
+
+    dir = g_path_get_dirname (filename);
+    terminal_chdir (term, dir, use_pushd);
+
+    g_free (dir);
+    g_free (filename);
+}
+
+static void
+on_cd_activate (GtkMenuItem *item, VteTerminal *term)
+{
+    (void)item;
+    terminal_goto_file_dir (term, FALSE);
+}
+
+static void
+on_pushd_activate (GtkMenuItem *item, VteTerminal *term)
+{
+    (void)item;
+    terminal_goto_file_dir (term, TRUE);
+}
+
+/* ================================================================ */
+/* Ctrl+Scroll zoom                                                 */
+/* ================================================================ */
+
+static void
+terminal_change_font_size (VteTerminal *term, gint delta)
+{
+    const PangoFontDescription *current;
+    PangoFontDescription *fd;
+    gint size;
+
+    current = vte_terminal_get_font (term);
+    if (!current)
+        return;
+
+    fd = pango_font_description_copy (current);
+    size = pango_font_description_get_size (fd);
+
+    size += delta * PANGO_SCALE;
+
+    /* Clamp to a reasonable minimum (4pt) */
+    if (size < 4 * PANGO_SCALE)
+        size = 4 * PANGO_SCALE;
+
+    pango_font_description_set_size (fd, size);
+    vte_terminal_set_font (term, fd);
+    pango_font_description_free (fd);
+}
+
+static gboolean
+on_scroll_event (GtkWidget *widget, GdkEventScroll *event, gpointer data)
+{
+    VteTerminal *term = VTE_TERMINAL (widget);
+    (void)data;
+
+    /* Only handle Ctrl+scroll */
+    if ((event->state & GDK_CONTROL_MASK) == 0)
+        return FALSE;
+
+    if (event->direction == GDK_SCROLL_UP) {
+        terminal_change_font_size (term, 1);
+        return TRUE;
+    } else if (event->direction == GDK_SCROLL_DOWN) {
+        terminal_change_font_size (term, -1);
+        return TRUE;
+    }
+
+    /* Handle smooth scrolling (trackpads) */
+    if (event->direction == GDK_SCROLL_SMOOTH) {
+        gdouble dx, dy;
+        gdk_event_get_scroll_deltas ((GdkEvent *)event, &dx, &dy);
+        if (dy < -0.5)
+            terminal_change_font_size (term, 1);
+        else if (dy > 0.5)
+            terminal_change_font_size (term, -1);
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+/* ================================================================ */
+/* Context-menu callbacks                                           */
 /* ================================================================ */
 
 static void
@@ -335,6 +575,296 @@ on_scheme_activate (GtkMenuItem *item, VteTerminal *term)
     moo_prefs_set_string (COLOR_SCHEME_KEY, name);
 }
 
+/* ================================================================ */
+/* Split / Close logic                                              */
+/* ================================================================ */
+
+/*
+ * Given a VteTerminal, walk up to find its immediate "terminal box"
+ * (the hbox that holds terminal + scrollbar).
+ */
+static GtkWidget *
+find_terminal_box (VteTerminal *term)
+{
+    /* The terminal's direct parent is the hbox */
+    return gtk_widget_get_parent (GTK_WIDGET (term));
+}
+
+/*
+ * Count how many VteTerminal widgets exist under a container
+ * (recursive).  Used to decide whether "Close" is allowed.
+ */
+static gint
+count_terminals (GtkWidget *widget)
+{
+    if (VTE_IS_TERMINAL (widget))
+        return 1;
+
+    if (GTK_IS_CONTAINER (widget)) {
+        GList *children = gtk_container_get_children (GTK_CONTAINER (widget));
+        GList *l;
+        gint n = 0;
+        for (l = children; l; l = l->next)
+            n += count_terminals (GTK_WIDGET (l->data));
+        g_list_free (children);
+        return n;
+    }
+
+    return 0;
+}
+
+/*
+ * Find the top-level frame widget that holds the entire terminal
+ * tree.  We walk up until we find a GtkFrame (the one registered
+ * with the pane).
+ */
+static GtkWidget *
+find_root_frame (GtkWidget *w)
+{
+    while (w) {
+        if (GTK_IS_FRAME (w))
+            return w;
+        w = gtk_widget_get_parent (w);
+    }
+    return NULL;
+}
+
+/*
+ * split_position_after_realize:
+ *
+ * Callback connected to the "realize" signal of a newly created GtkPaned.
+ * At realize time the paned has received its final allocation from the
+ * parent, so we can read back the actual pixel size and place the
+ * divider exactly at the midpoint.  This guarantees a perfect 50/50
+ * split regardless of how deeply nested the paned tree is.
+ */
+static void
+split_position_after_realize (GtkWidget *paned, gpointer user_data)
+{
+    GtkAllocation alloc;
+    GtkOrientation orientation;
+
+    (void)user_data;
+
+    gtk_widget_get_allocation (paned, &alloc);
+    orientation = gtk_orientable_get_orientation (GTK_ORIENTABLE (paned));
+
+    if (orientation == GTK_ORIENTATION_VERTICAL)
+        gtk_paned_set_position (GTK_PANED (paned), alloc.height / 2);
+    else
+        gtk_paned_set_position (GTK_PANED (paned), alloc.width / 2);
+
+    /* One-shot: disconnect after first realization */
+    g_signal_handlers_disconnect_by_func (paned,
+        G_CALLBACK (split_position_after_realize), NULL);
+}
+
+/*
+ * do_split:
+ *   orientation: GTK_ORIENTATION_VERTICAL   => split horizontally
+ *                 (top/bottom — the *divider* is horizontal)
+ *                GTK_ORIENTATION_HORIZONTAL => split vertically
+ *                 (left/right — the *divider* is vertical)
+ *
+ * NOTE on naming convention matching Terminator:
+ *   "Split Horizontally" = new terminal appears below  => vertical paned
+ *   "Split Vertically"   = new terminal appears right  => horizontal paned
+ */
+static void
+do_split (VteTerminal *term, GtkOrientation orientation)
+{
+    GtkWidget *term_box, *parent, *paned, *new_box;
+    GtkAllocation alloc;
+
+    term_box = find_terminal_box (term);
+    g_return_if_fail (term_box != NULL);
+
+    parent = gtk_widget_get_parent (term_box);
+    g_return_if_fail (parent != NULL);
+
+    /* Snapshot the current size of the area we are about to split.
+     * This is used for the initial divider hint; the realize callback
+     * will correct it to an exact 50/50 once layout is final. */
+    gtk_widget_get_allocation (term_box, &alloc);
+
+    /* Create the paned container */
+    paned = gtk_paned_new (orientation);
+
+    /* Reparent: remove term_box from parent, insert paned, then
+     * put term_box into paned's child1 */
+    g_object_ref (term_box);
+
+    if (GTK_IS_PANED (parent)) {
+        /* Determine if term_box is child1 or child2 */
+        if (gtk_paned_get_child1 (GTK_PANED (parent)) == term_box) {
+            gtk_container_remove (GTK_CONTAINER (parent), term_box);
+            gtk_paned_pack1 (GTK_PANED (parent), paned, TRUE, TRUE);
+        } else {
+            gtk_container_remove (GTK_CONTAINER (parent), term_box);
+            gtk_paned_pack2 (GTK_PANED (parent), paned, TRUE, TRUE);
+        }
+    } else {
+        /* Parent is the frame's direct child (the initial hbox case)
+         * or a box/frame.  For any generic GtkContainer: */
+        gtk_container_remove (GTK_CONTAINER (parent), term_box);
+        gtk_container_add (GTK_CONTAINER (parent), paned);
+    }
+
+    gtk_paned_pack1 (GTK_PANED (paned), term_box, TRUE, TRUE);
+    g_object_unref (term_box);
+
+    /* Create a new terminal box and put it in paned's child2 */
+    new_box = create_terminal_box ();
+    gtk_paned_pack2 (GTK_PANED (paned), new_box, TRUE, TRUE);
+
+    /* Set an initial divider hint *before* show_all so GTK has a
+     * reasonable target during the first allocation pass.  This avoids
+     * the "Negative content width" warnings that occur when a child
+     * is allocated a size of 1 pixel before layout is complete. */
+    if (orientation == GTK_ORIENTATION_VERTICAL)
+        gtk_paned_set_position (GTK_PANED (paned), alloc.height / 2);
+    else
+        gtk_paned_set_position (GTK_PANED (paned), alloc.width / 2);
+
+    /* After the paned is realized and receives its true allocation,
+     * re-set the position to an exact 50/50 split. */
+    g_signal_connect (paned, "realize",
+                      G_CALLBACK (split_position_after_realize), NULL);
+
+    gtk_widget_show_all (paned);
+}
+
+static void
+on_split_h_activate (GtkMenuItem *item, VteTerminal *term)
+{
+    (void)item;
+    /* "Split Horizontally" => new terminal to the right => horizontal paned */
+    do_split (term, GTK_ORIENTATION_HORIZONTAL);
+}
+
+static void
+on_split_v_activate (GtkMenuItem *item, VteTerminal *term)
+{
+    (void)item;
+    /* "Split Vertically" => new terminal below => vertical paned */
+    do_split (term, GTK_ORIENTATION_VERTICAL);
+}
+
+static void
+on_close_activate (GtkMenuItem *item, VteTerminal *term)
+{
+    GtkWidget *term_box, *parent, *root_frame, *sibling;
+
+    (void)item;
+
+    term_box = find_terminal_box (term);
+    g_return_if_fail (term_box != NULL);
+
+    root_frame = find_root_frame (term_box);
+
+    /* Don't allow closing the very last terminal */
+    if (root_frame && count_terminals (root_frame) <= 1)
+        return;
+
+    parent = gtk_widget_get_parent (term_box);
+    g_return_if_fail (GTK_IS_PANED (parent));
+
+    /* Find the sibling in the paned */
+    if (gtk_paned_get_child1 (GTK_PANED (parent)) == term_box)
+        sibling = gtk_paned_get_child2 (GTK_PANED (parent));
+    else
+        sibling = gtk_paned_get_child1 (GTK_PANED (parent));
+
+    g_return_if_fail (sibling != NULL);
+
+    /* Remove both children from the paned */
+    g_object_ref (sibling);
+    gtk_container_remove (GTK_CONTAINER (parent), term_box);
+    gtk_container_remove (GTK_CONTAINER (parent), sibling);
+
+    /* Now replace the paned with the sibling in the paned's parent */
+    GtkWidget *grandparent = gtk_widget_get_parent (parent);
+    g_return_if_fail (grandparent != NULL);
+
+    if (GTK_IS_PANED (grandparent)) {
+        if (gtk_paned_get_child1 (GTK_PANED (grandparent)) == parent) {
+            gtk_container_remove (GTK_CONTAINER (grandparent), parent);
+            gtk_paned_pack1 (GTK_PANED (grandparent), sibling, TRUE, TRUE);
+        } else {
+            gtk_container_remove (GTK_CONTAINER (grandparent), parent);
+            gtk_paned_pack2 (GTK_PANED (grandparent), sibling, TRUE, TRUE);
+        }
+    } else {
+        /* grandparent is the frame or some other simple container */
+        gtk_container_remove (GTK_CONTAINER (grandparent), parent);
+        gtk_container_add (GTK_CONTAINER (grandparent), sibling);
+    }
+
+    g_object_unref (sibling);
+    gtk_widget_show_all (grandparent);
+
+    /* term_box (and the VteTerminal inside it) are destroyed
+     * automatically when removed from the container tree, since we
+     * didn't take an extra ref on them. */
+}
+
+/* ================================================================ */
+/* Active terminal highlight                                        */
+/* ================================================================ */
+
+/*
+ * Draw a colored bar at the top of the focused terminal to indicate
+ * which panel is active, similar to the active tab highlight.
+ */
+static gboolean
+on_terminal_draw (GtkWidget *widget, cairo_t *cr, gpointer data)
+{
+    (void)data;
+
+    if (gtk_widget_has_focus (widget) || gtk_widget_is_focus (widget))
+    {
+        GdkRGBA highlight = {0.3, 0.6, 1.0, 0.8};
+        int bar_height = 3;
+        int width = gtk_widget_get_allocated_width (widget);
+
+        cairo_save (cr);
+        gdk_cairo_set_source_rgba (cr, &highlight);
+        cairo_rectangle (cr, 0, 0, width, bar_height);
+        cairo_fill (cr);
+        cairo_restore (cr);
+    }
+
+    return FALSE;  /* propagate to let VTE draw its content */
+}
+
+/* ================================================================ */
+/* Context menu                                                     */
+/* ================================================================ */
+
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+
+/*
+ * Helper: create a menu item with an icon from the icon theme.
+ * Uses deprecated GtkImageMenuItem but it still works in GTK3
+ * and is the simplest way to get icons in popup menus.
+ */
+static GtkWidget *
+menu_item_new_with_icon (const char *icon_name, const char *label)
+{
+    GtkWidget *item, *image;
+
+    item = gtk_image_menu_item_new_with_label (label);
+
+    if (icon_name) {
+        image = gtk_image_new_from_icon_name (icon_name, GTK_ICON_SIZE_MENU);
+        gtk_image_menu_item_set_image (GTK_IMAGE_MENU_ITEM (item), image);
+    }
+
+    return item;
+}
+
+G_GNUC_END_IGNORE_DEPRECATIONS
+
 static gboolean
 on_button_press (VteTerminal *term, GdkEventButton *event, gpointer data)
 {
@@ -348,25 +878,67 @@ on_button_press (VteTerminal *term, GdkEventButton *event, gpointer data)
     menu = gtk_menu_new ();
 
     /* Copy */
-    item = gtk_menu_item_new_with_label ("Copy");
+    item = menu_item_new_with_icon ("edit-copy", "Copy");
     g_signal_connect (item, "activate", G_CALLBACK (on_copy_activate), term);
     gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
 
     /* Paste */
-    item = gtk_menu_item_new_with_label ("Paste");
+    item = menu_item_new_with_icon ("edit-paste", "Paste");
     g_signal_connect (item, "activate", G_CALLBACK (on_paste_activate), term);
     gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
 
     gtk_menu_shell_append (GTK_MENU_SHELL (menu),
                            gtk_separator_menu_item_new ());
 
+    /* cd / pushd to current file directory */
+    item = menu_item_new_with_icon ("folder-open", "Go to file directory");
+    g_signal_connect (item, "activate", G_CALLBACK (on_cd_activate), term);
+    gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
+
+    {
+        char *user_shell = get_user_shell ();
+        if (shell_supports_pushd (user_shell)) {
+            item = menu_item_new_with_icon ("media-floppy", "Save current directory");
+            g_signal_connect (item, "activate",
+                              G_CALLBACK (on_pushd_activate), term);
+            gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
+        }
+        g_free (user_shell);
+    }
+
+    gtk_menu_shell_append (GTK_MENU_SHELL (menu),
+                           gtk_separator_menu_item_new ());
+
+    /* ---- Split / Close ---- */
+    item = menu_item_new_with_icon ("object-flip-horizontal", "Split Horizontally");
+    g_signal_connect (item, "activate", G_CALLBACK (on_split_h_activate), term);
+    gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
+
+    item = menu_item_new_with_icon ("object-flip-vertical", "Split Vertically");
+    g_signal_connect (item, "activate", G_CALLBACK (on_split_v_activate), term);
+    gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
+
+    item = menu_item_new_with_icon ("window-close", "Close");
+    g_signal_connect (item, "activate", G_CALLBACK (on_close_activate), term);
+    gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
+
+    /* Grey out Close if this is the last terminal */
+    {
+        GtkWidget *root = find_root_frame (GTK_WIDGET (term));
+        if (root && count_terminals (root) <= 1)
+            gtk_widget_set_sensitive (item, FALSE);
+    }
+
+    gtk_menu_shell_append (GTK_MENU_SHELL (menu),
+                           gtk_separator_menu_item_new ());
+
     /* Font */
-    item = gtk_menu_item_new_with_label ("Select Font...");
+    item = menu_item_new_with_icon ("preferences-desktop-font", "Select Font...");
     g_signal_connect (item, "activate", G_CALLBACK (on_font_activate), term);
     gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
 
     /* Color Scheme submenu */
-    item = gtk_menu_item_new_with_label ("Color Scheme");
+    item = menu_item_new_with_icon ("preferences-desktop-theme", "Color Scheme");
     submenu = gtk_menu_new ();
     gtk_menu_item_set_submenu (GTK_MENU_ITEM (item), submenu);
 
@@ -388,21 +960,41 @@ on_button_press (VteTerminal *term, GdkEventButton *event, gpointer data)
 }
 
 /* ================================================================ */
-/* "cd to document directory" support                               */
+/* Terminal box: hbox holding VteTerminal + scrollbar                */
 /* ================================================================ */
 
-static void
-terminal_chdir (VteTerminal *term, const char *path, gboolean use_pushd)
+/*
+ * Creates a self-contained terminal box: an hbox with a new
+ * VteTerminal and its scrollbar, with shell spawned and
+ * signals connected.
+ */
+static GtkWidget *
+create_terminal_box (void)
 {
-    char *command;
-    const char *cmd = use_pushd ? "pushd" : "cd";
+    GtkWidget *hbox, *scrollbar;
+    VteTerminal *term;
 
-    if (!path || !path[0])
-        return;
+    term = create_terminal ();
 
-    command = g_strdup_printf ("%s '%s'\n", cmd, path);
-    vte_terminal_feed_child (term, command, -1);
-    g_free (command);
+    g_signal_connect (term, "child-exited",
+                      G_CALLBACK (on_child_exited), NULL);
+    g_signal_connect (term, "button-press-event",
+                      G_CALLBACK (on_button_press), NULL);
+    g_signal_connect (term, "scroll-event",
+                      G_CALLBACK (on_scroll_event), NULL);
+    g_signal_connect_after (term, "draw",
+                            G_CALLBACK (on_terminal_draw), NULL);
+
+    terminal_spawn (term);
+
+    hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_box_pack_start (GTK_BOX (hbox), GTK_WIDGET (term), TRUE, TRUE, 0);
+
+    scrollbar = gtk_scrollbar_new (GTK_ORIENTATION_VERTICAL,
+                    gtk_scrollable_get_vadjustment (GTK_SCROLLABLE (term)));
+    gtk_box_pack_start (GTK_BOX (hbox), scrollbar, FALSE, FALSE, 0);
+
+    return hbox;
 }
 
 /* ================================================================ */
@@ -411,11 +1003,9 @@ terminal_chdir (VteTerminal *term, const char *path, gboolean use_pushd)
 
 typedef struct {
     MooWinPlugin parent;
-    VteTerminal *terminal;
+    VteTerminal *terminal;     /* the initial terminal (for icon-title) */
     MooPane     *pane;
-    gulong       child_exited_id;
     gulong       icon_title_id;
-    gboolean     support_pushd;
 } TerminalWindowPlugin;
 
 static void
@@ -434,7 +1024,7 @@ terminal_window_plugin_create (TerminalWindowPlugin *plugin)
 {
     MooEditWindow *window;
     MooPaneLabel *label;
-    GtkWidget *frame, *hbox, *scrollbar;
+    GtkWidget *frame, *hbox;
 
     window = MOO_WIN_PLUGIN (plugin)->window;
 
@@ -442,26 +1032,21 @@ terminal_window_plugin_create (TerminalWindowPlugin *plugin)
                                 _("Terminal"),
                                 _("Terminal"));
 
-    plugin->terminal = create_terminal ();
+    /* Create the initial terminal box */
+    hbox = create_terminal_box ();
 
-    plugin->child_exited_id = g_signal_connect (plugin->terminal,
-        "child-exited", G_CALLBACK (on_child_exited), plugin);
+    /* Remember the first terminal for icon-title and chdir */
+    {
+        GList *children = gtk_container_get_children (GTK_CONTAINER (hbox));
+        plugin->terminal = VTE_TERMINAL (children->data);
+        g_list_free (children);
+    }
 
-    g_signal_connect (plugin->terminal, "button-press-event",
-                      G_CALLBACK (on_button_press), plugin);
-
-    terminal_spawn (plugin->terminal);
-
-    /* Build the container */
+    /* Build the top-level frame container (shadow none to avoid
+     * a visible dashed border around the terminal area) */
     frame = gtk_frame_new (NULL);
-    hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_frame_set_shadow_type (GTK_FRAME (frame), GTK_SHADOW_NONE);
     gtk_container_add (GTK_CONTAINER (frame), hbox);
-    gtk_box_pack_start (GTK_BOX (hbox), GTK_WIDGET (plugin->terminal),
-                        TRUE, TRUE, 0);
-
-    scrollbar = gtk_scrollbar_new (GTK_ORIENTATION_VERTICAL,
-                    gtk_scrollable_get_vadjustment (GTK_SCROLLABLE (plugin->terminal)));
-    gtk_box_pack_start (GTK_BOX (hbox), scrollbar, FALSE, FALSE, 0);
     gtk_widget_show_all (frame);
 
     plugin->pane = moo_edit_window_add_pane (window,
@@ -483,7 +1068,6 @@ terminal_window_plugin_destroy (TerminalWindowPlugin *plugin)
     MooEditWindow *window = MOO_WIN_PLUGIN (plugin)->window;
 
     if (plugin->terminal) {
-        g_signal_handler_disconnect (plugin->terminal, plugin->child_exited_id);
         g_signal_handler_disconnect (plugin->terminal, plugin->icon_title_id);
     }
 
@@ -508,6 +1092,13 @@ terminal_plugin_init (G_GNUC_UNUSED TerminalPlugin *plugin)
     moo_prefs_new_key_string (SHELL_KEY, NULL);
     moo_prefs_new_key_string (FONT_KEY, NULL);
     moo_prefs_new_key_int (SCROLLBACK_KEY, 1000000);
+
+    /* Filter out harmless GTK layout warnings from split resizes */
+    install_gtk_log_filter ();
+
+    /* Make paned divider handles easy to grab */
+    install_paned_css ();
+
     return TRUE;
 }
 
