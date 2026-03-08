@@ -1749,15 +1749,17 @@ draw_arrow (GtkWidget      *widget,
     x = width / 6;
     y = height / 6;
 
-    gtk_paint_arrow (gtk_widget_get_style (widget),
-                     (cairo_t*) gtk_widget_get_window (widget), /* GTK3 compat */
-                     gtk_widget_get_state (GTK_WIDGET (widget)),
-                     GTK_SHADOW_IN,
-                     widget,
-                     NULL,
-                     arrow_type,
-                     TRUE,
-                     x, y, width, height);
+    /* draw_arrow_cairo_fix: pass cr instead of GdkWindow */
+    if (width > 0 && height > 0)
+        gtk_paint_arrow (gtk_widget_get_style (widget),
+                         cr,
+                         gtk_widget_get_state (GTK_WIDGET (widget)),
+                         GTK_SHADOW_IN,
+                         widget,
+                         NULL,
+                         arrow_type,
+                         TRUE,
+                         x, y, width, height);
 }
 
 static gboolean

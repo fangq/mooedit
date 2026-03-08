@@ -94,6 +94,142 @@ static void     moo_text_view_size_allocate (GtkWidget          *widget,
 static void     moo_text_view_remove        (GtkContainer       *container,
                                              GtkWidget          *child);
 
+/* ---- Long-line: click to reveal, wrap-mode tracking ---- */
+#define MOO_LL_TAG "moo-ll-hidden"
+#define MOO_LL_MARKER "moo-ll-marker"
+
+extern void moo_ll_apply (GtkTextBuffer *buffer);
+extern void moo_ll_remove_all (GtkTextBuffer *buffer);
+extern void moo_ll_reveal_line (GtkTextBuffer *buffer, int line);
+
+static gboolean
+moo_ll_click_handler (GtkWidget *widget, GdkEventButton *event, gpointer data)
+{
+    GtkTextView *tv = GTK_TEXT_VIEW (widget);
+    GtkTextBuffer *buf;
+    GtkTextTagTable *table;
+    GtkTextTag *htag, *mtag;
+    GtkTextIter iter;
+    int x, y, line;
+    (void)data;
+
+    if (event->button != 1 || event->type != GDK_BUTTON_PRESS)
+        return FALSE;
+
+    buf = gtk_text_view_get_buffer (tv);
+    table = gtk_text_buffer_get_tag_table (buf);
+    htag = gtk_text_tag_table_lookup (table, MOO_LL_TAG);
+    mtag = gtk_text_tag_table_lookup (table, MOO_LL_MARKER);
+    if (!htag && !mtag) return FALSE;
+
+    gtk_text_view_window_to_buffer_coords (tv, GTK_TEXT_WINDOW_TEXT,
+        (int)event->x, (int)event->y, &x, &y);
+    gtk_text_view_get_iter_at_location (tv, &iter, x, y);
+
+    /* Click on hidden text or marker text? */
+    if ((htag && gtk_text_iter_has_tag (&iter, htag)) ||
+        (mtag && gtk_text_iter_has_tag (&iter, mtag)))
+    {
+        line = gtk_text_iter_get_line (&iter);
+
+        /* Reveal next 4K chunk, re-truncate at new position */
+        {
+            GtkTextIter ls, le, ms, me, tp;
+            GtkTextTag *hidden, *marker;
+            int old_trunc, line_len, new_trunc;
+
+            hidden = htag;
+            marker = mtag;
+
+            gtk_text_buffer_get_iter_at_line (buf, &ls, line);
+            le = ls;
+            if (!gtk_text_iter_ends_line (&le))
+                gtk_text_iter_forward_to_line_end (&le);
+
+            /* Find current truncation point (where hidden tag starts) */
+            old_trunc = gtk_text_iter_get_line_offset (&le);
+            {
+                GtkTextIter s = ls;
+                while (gtk_text_iter_compare (&s, &le) < 0) {
+                    if (hidden && gtk_text_iter_has_tag (&s, hidden)) {
+                        old_trunc = gtk_text_iter_get_line_offset (&s);
+                        break;
+                    }
+                    if (!gtk_text_iter_forward_char (&s)) break;
+                }
+            }
+
+            /* Remove all tags and marker text on this line */
+            moo_ll_reveal_line (buf, line);
+
+            /* Re-fetch line after marker deletion shifted things */
+            gtk_text_buffer_get_iter_at_line (buf, &ls, line);
+            le = ls;
+            if (!gtk_text_iter_ends_line (&le))
+                gtk_text_iter_forward_to_line_end (&le);
+            line_len = gtk_text_iter_get_line_offset (&le);
+
+            /* New truncation point: advance by 4090 */
+            new_trunc = old_trunc + 4096;
+            if (new_trunc < line_len)
+            {
+                /* Re-apply truncation at new position */
+                tp = ls;
+                gtk_text_iter_set_line_offset (&tp, new_trunc);
+
+                /* Insert marker */
+                if (marker)
+                    gtk_text_buffer_insert_with_tags (buf, &tp,
+                        " ...", -1, marker, NULL);
+
+                /* Re-fetch line end after insert */
+                gtk_text_buffer_get_iter_at_line (buf, &le, line);
+                if (!gtk_text_iter_ends_line (&le))
+                    gtk_text_iter_forward_to_line_end (&le);
+
+                /* Hide rest */
+                if (hidden)
+                    gtk_text_buffer_apply_tag (buf, hidden, &tp, &le);
+            }
+
+            /* Scroll to the new boundary or end of line */
+            {
+                GtkTextIter scroll_to;
+                gtk_text_buffer_get_iter_at_line (buf, &scroll_to, line);
+                if (new_trunc < line_len)
+                    gtk_text_iter_set_line_offset (&scroll_to, new_trunc - 1);
+                else {
+                    if (!gtk_text_iter_ends_line (&scroll_to))
+                        gtk_text_iter_forward_to_line_end (&scroll_to);
+                }
+                gtk_text_buffer_place_cursor (buf, &scroll_to);
+                gtk_text_view_scroll_to_iter (tv, &scroll_to, 0.05, FALSE, 1.0, 0.0);
+            }
+        }
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static void
+moo_ll_wrap_changed (GObject *obj, GParamSpec *ps, gpointer data)
+{
+    GtkTextView *tv = GTK_TEXT_VIEW (obj);
+    GtkTextBuffer *buf = gtk_text_view_get_buffer (tv);
+    GtkWrapMode wm = gtk_text_view_get_wrap_mode (tv);
+    (void)ps; (void)data;
+
+    g_object_set_data (G_OBJECT (buf), "moo-nowrap-mode",
+                       GINT_TO_POINTER (wm == GTK_WRAP_NONE ? 1 : 0));
+
+    if (wm == GTK_WRAP_NONE)
+        moo_ll_apply (buf);
+    else
+        moo_ll_remove_all (buf);
+}
+
+
+
 static void     moo_text_view_copy_clipboard (GtkTextView       *text_view);
 static void     moo_text_view_cut_clipboard (GtkTextView        *text_view);
 static void     moo_text_view_paste_clipboard (GtkTextView      *text_view);
@@ -741,6 +877,18 @@ connect_buffer (MooTextView *view)
     g_signal_connect_data (buffer, "insert-text",
                            G_CALLBACK (insert_text_cb), view,
                            NULL, G_CONNECT_AFTER | G_CONNECT_SWAPPED);
+
+    /* Long-line click-to-reveal and wrap-mode tracking */
+    g_signal_connect (view, "button-press-event",
+                      G_CALLBACK (moo_ll_click_handler), NULL);
+    g_signal_connect (view, "notify::wrap-mode",
+                      G_CALLBACK (moo_ll_wrap_changed), NULL);
+    {
+        GtkWrapMode _wm = gtk_text_view_get_wrap_mode (GTK_TEXT_VIEW (view));
+        g_object_set_data (G_OBJECT (buffer), "moo-nowrap-mode",
+                           GINT_TO_POINTER (_wm == GTK_WRAP_NONE ? 1 : 0));
+    }
+
 
     g_signal_connect_swapped (buffer, "line-mark-added",
                               G_CALLBACK (line_mark_added), view);

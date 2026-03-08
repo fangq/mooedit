@@ -2223,6 +2223,9 @@ moo_notebook_draw_label (MooNotebook    *nb,
                          Page           *page,
                          cairo_t *cr)
 {
+
+    if (!page || !page->label || page->label->width <= 0)
+        return;
     GtkWidget *widget = GTK_WIDGET (nb);
     /* GTK3: use cr parameter instead of window */
     int x, y, height;
@@ -2253,8 +2256,9 @@ moo_notebook_draw_label (MooNotebook    *nb,
                          height,
                          GTK_POS_BOTTOM);
 
-    /* Draw active tab highlight bar */
-    if (page == nb->priv->current_page)
+    /* Draw active tab highlight bar — cairo_guard_draw_label */
+    if (page == nb->priv->current_page &&
+        page->label->width > 0 && height > 0)
     {
         GdkRGBA highlight = {0.3, 0.6, 1.0, 0.8};
         int bar_height = 3;
@@ -2324,7 +2328,8 @@ moo_notebook_draw_dragged_label (MooNotebook    *nb,
         g_return_if_fail (nb->priv->snapshot_pixmap == NULL &&
                           nb->priv->snapshot_pixbuf == NULL);
 
-        surface = cairo_image_surface_create (CAIRO_FORMAT_ARGB32, width, height);
+        surface = cairo_image_surface_create (CAIRO_FORMAT_ARGB32,
+                                        MAX(width, 1), MAX(height, 1));
         snap_cr = cairo_create (surface);
 
         /* Draw the tab background and label onto the surface */
