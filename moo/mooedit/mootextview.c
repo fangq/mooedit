@@ -81,6 +81,7 @@ static void     moo_text_view_get_property  (GObject            *object,
                                              GParamSpec         *pspec);
 
 static void     moo_text_view_realize       (GtkWidget          *widget);
+static gboolean moo_text_view_scroll_event (GtkWidget *widget, GdkEventScroll *event);
 static void     moo_text_view_unrealize     (GtkWidget          *widget);
 static gboolean moo_text_view_expose        (GtkWidget          *widget,
                                              cairo_t            *cr);
@@ -491,6 +492,7 @@ static void moo_text_view_class_init (MooTextViewClass *klass)
 
     widget_class->key_press_event = _moo_text_view_key_press_event;
     widget_class->realize = moo_text_view_realize;
+    widget_class->scroll_event = moo_text_view_scroll_event;
     widget_class->unrealize = moo_text_view_unrealize;
     widget_class->draw = moo_text_view_expose;
     widget_class->style_set = moo_text_view_style_set;
@@ -2735,6 +2737,105 @@ lower_border_window (GtkTextView   *view,
 
     if (window)
         gdk_window_lower (window);
+}
+
+
+/* ------------------------------------------------------------------ */
+/* Ctrl+Scroll font zoom (per-view, temporary)                        */
+/* ------------------------------------------------------------------ */
+
+#define MOO_FONT_ZOOM_MIN 4
+#define MOO_FONT_ZOOM_MAX 72
+#define MOO_FONT_ZOOM_STEP 1
+
+static void
+moo_text_view_change_font_size (MooTextView *view, int delta)
+{
+    PangoContext *ctx;
+    const PangoFontDescription *current;
+    PangoFontDescription *fd;
+    int size;
+
+    ctx = gtk_widget_get_pango_context (GTK_WIDGET (view));
+    if (!ctx) return;
+
+    current = pango_context_get_font_description (ctx);
+    if (!current) return;
+
+    fd = pango_font_description_copy (current);
+    size = pango_font_description_get_size (fd);
+
+    /* Handle both scaled (size in points * PANGO_SCALE) and absolute sizes */
+    if (pango_font_description_get_size_is_absolute (fd))
+    {
+        size += delta * PANGO_SCALE;
+        if (size < MOO_FONT_ZOOM_MIN * PANGO_SCALE)
+            size = MOO_FONT_ZOOM_MIN * PANGO_SCALE;
+        if (size > MOO_FONT_ZOOM_MAX * PANGO_SCALE)
+            size = MOO_FONT_ZOOM_MAX * PANGO_SCALE;
+        pango_font_description_set_absolute_size (fd, size);
+    }
+    else
+    {
+        size += delta * PANGO_SCALE;
+        if (size < MOO_FONT_ZOOM_MIN * PANGO_SCALE)
+            size = MOO_FONT_ZOOM_MIN * PANGO_SCALE;
+        if (size > MOO_FONT_ZOOM_MAX * PANGO_SCALE)
+            size = MOO_FONT_ZOOM_MAX * PANGO_SCALE;
+        pango_font_description_set_size (fd, size);
+    }
+
+    gtk_widget_override_font (GTK_WIDGET (view), fd);
+    pango_font_description_free (fd);
+
+    /* Update tab width after font change */
+    update_tab_width (view);
+    update_left_margin (view);
+}
+
+static void
+moo_text_view_reset_font_size (MooTextView *view)
+{
+    /* Remove the font override — reverts to the style/prefs font */
+    gtk_widget_override_font (GTK_WIDGET (view), NULL);
+    update_tab_width (view);
+    update_left_margin (view);
+}
+
+static gboolean
+moo_text_view_scroll_event (GtkWidget      *widget,
+                            GdkEventScroll *event)
+{
+    MooTextView *view = MOO_TEXT_VIEW (widget);
+
+    if (event->state & GDK_CONTROL_MASK)
+    {
+        switch (event->direction)
+        {
+            case GDK_SCROLL_UP:
+                moo_text_view_change_font_size (view, MOO_FONT_ZOOM_STEP);
+                return TRUE;
+            case GDK_SCROLL_DOWN:
+                moo_text_view_change_font_size (view, -MOO_FONT_ZOOM_STEP);
+                return TRUE;
+            case GDK_SCROLL_SMOOTH:
+            {
+                /* Handle smooth scrolling (trackpad) */
+                if (event->delta_y < 0)
+                    moo_text_view_change_font_size (view, MOO_FONT_ZOOM_STEP);
+                else if (event->delta_y > 0)
+                    moo_text_view_change_font_size (view, -MOO_FONT_ZOOM_STEP);
+                return TRUE;
+            }
+            default:
+                break;
+        }
+    }
+
+    /* Chain up for normal scrolling */
+    return GTK_WIDGET_CLASS (moo_text_view_parent_class)->scroll_event
+           ? GTK_WIDGET_CLASS (moo_text_view_parent_class)->scroll_event (widget, event)
+           : FALSE;
 }
 
 
