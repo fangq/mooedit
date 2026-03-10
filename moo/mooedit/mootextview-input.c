@@ -419,11 +419,10 @@ box_sel_clear (MooTextView *view)
         view->priv->box_sel.active = FALSE;
         gtk_widget_queue_draw (GTK_WIDGET (view));
     }
-    if (view->priv->box_sel.copied_text)
-    {
-        g_free (view->priv->box_sel.copied_text);
-        view->priv->box_sel.copied_text = NULL;
-    }
+    /* Note: do NOT free copied_text here.
+     * It must persist across box selections so that
+     * select-copy-select-paste works. It is freed
+     * when a new box copy replaces it, or on destroy. */
 }
 
 static void

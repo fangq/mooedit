@@ -2248,12 +2248,15 @@ moo_text_view_copy_clipboard (GtkTextView *text_view)
     }
 
     moo_text_view_cut_or_copy (text_view, FALSE, GDK_SELECTION_CLIPBOARD);
+    MOO_TEXT_VIEW (text_view)->priv->box_sel.box_copied = FALSE;
 }
 
 
 static void
 moo_text_view_cut_clipboard (GtkTextView *text_view)
 {
+    MOO_TEXT_VIEW (text_view)->priv->box_sel.box_copied = FALSE;
+
     moo_text_view_cut_or_copy (text_view, TRUE, GDK_SELECTION_CLIPBOARD);
 }
 
@@ -2327,6 +2330,7 @@ moo_text_view_box_copy (MooTextView *view)
         clipboard = gtk_widget_get_clipboard (GTK_WIDGET (view),
                                               GDK_SELECTION_CLIPBOARD);
         gtk_clipboard_set_text (clipboard, text, -1);
+        view->priv->box_sel.box_copied = TRUE;
     }
 
     g_free (view->priv->box_sel.copied_text);
@@ -2334,9 +2338,326 @@ moo_text_view_box_copy (MooTextView *view)
 }
 
 
+/* ------------------------------------------------------------------ */
+/* Box (column) paste                                                  */
+/* ------------------------------------------------------------------ */
+
+static void
+moo_text_view_box_paste_at_cursor (GtkTextView *text_view,
+                                   const char  *box_text)
+{
+    GtkTextBuffer *buffer;
+    GtkTextIter cursor;
+    int cursor_line, cursor_col;
+    int line_count;
+    char **lines;
+    int n_lines, i;
+
+    if (!box_text || !box_text[0])
+        return;
+
+    buffer = gtk_text_view_get_buffer (text_view);
+    gtk_text_buffer_get_iter_at_mark (buffer, &cursor,
+        gtk_text_buffer_get_insert (buffer));
+    cursor_line = gtk_text_iter_get_line (&cursor);
+    cursor_col = gtk_text_iter_get_line_offset (&cursor);
+    line_count = gtk_text_buffer_get_line_count (buffer);
+
+    lines = g_strsplit (box_text, "\n", -1);
+    n_lines = (int) g_strv_length (lines);
+
+    gtk_text_buffer_begin_user_action (buffer);
+
+    for (i = 0; i < n_lines; i++)
+    {
+        int target_line = cursor_line + i;
+        GtkTextIter ls, insert_pos;
+        int current_line_len;
+        const char *paste_line = lines[i];
+        int paste_len = (int) g_utf8_strlen (paste_line, -1);
+
+        /* Append new lines if needed */
+        if (target_line >= gtk_text_buffer_get_line_count (buffer))
+        {
+            GtkTextIter end_iter;
+            gtk_text_buffer_get_end_iter (buffer, &end_iter);
+            gtk_text_buffer_insert (buffer, &end_iter, "\n", -1);
+        }
+
+        gtk_text_buffer_get_iter_at_line (buffer, &ls, target_line);
+        insert_pos = ls;
+        if (!gtk_text_iter_ends_line (&insert_pos))
+            gtk_text_iter_forward_to_line_end (&insert_pos);
+        current_line_len = gtk_text_iter_get_line_offset (&insert_pos);
+
+        /* Pad with spaces if line is shorter than cursor column */
+        if (current_line_len < cursor_col)
+        {
+            int pad = cursor_col - current_line_len;
+            char *spaces = g_strnfill (pad, ' ');
+            gtk_text_buffer_insert (buffer, &insert_pos, spaces, -1);
+            g_free (spaces);
+        }
+
+        /* Position at cursor column for insertion */
+        gtk_text_buffer_get_iter_at_line (buffer, &ls, target_line);
+        insert_pos = ls;
+        gtk_text_iter_set_line_offset (&insert_pos, cursor_col);
+
+        /* Insert the paste line text */
+        gtk_text_buffer_insert (buffer, &insert_pos, paste_line, -1);
+    }
+
+    gtk_text_buffer_end_user_action (buffer);
+
+    /* Place cursor after the pasted block */
+    {
+        GtkTextIter new_cursor;
+        int last_paste_line = cursor_line + n_lines - 1;
+        if (last_paste_line >= gtk_text_buffer_get_line_count (buffer))
+            last_paste_line = gtk_text_buffer_get_line_count (buffer) - 1;
+        gtk_text_buffer_get_iter_at_line (buffer, &new_cursor, last_paste_line);
+        if (n_lines > 0)
+        {
+            int target_col = cursor_col +
+                (int) g_utf8_strlen (lines[n_lines - 1], -1);
+            GtkTextIter le = new_cursor;
+            if (!gtk_text_iter_ends_line (&le))
+                gtk_text_iter_forward_to_line_end (&le);
+            if (target_col <= gtk_text_iter_get_line_offset (&le))
+                gtk_text_iter_set_line_offset (&new_cursor, target_col);
+            else
+                new_cursor = le;
+        }
+        gtk_text_buffer_place_cursor (buffer, &new_cursor);
+    }
+
+    g_strfreev (lines);
+}
+
+static void
+moo_text_view_box_paste_into_selection (MooTextView *view,
+                                        const char  *box_text)
+{
+    GtkTextView *text_view = GTK_TEXT_VIEW (view);
+    GtkTextBuffer *buffer;
+    int ax, ay, bx, by;
+    int first_line, last_line, sel_lines;
+    int left_bx, right_bx;
+    int *col_lefts, *col_rights;
+    char **lines;
+    int n_lines, i;
+
+    if (!box_text || !box_text[0])
+        return;
+
+    ax = view->priv->box_sel.anchor_x;
+    ay = view->priv->box_sel.anchor_y;
+    bx = view->priv->box_sel.current_x;
+    by = view->priv->box_sel.current_y;
+
+    buffer = gtk_text_view_get_buffer (text_view);
+
+    {
+        GtkTextIter ia, ib;
+        gtk_text_view_get_iter_at_location (text_view, &ia, ax, ay);
+        gtk_text_view_get_iter_at_location (text_view, &ib, bx, by);
+        first_line = gtk_text_iter_get_line (&ia);
+        last_line = gtk_text_iter_get_line (&ib);
+        if (first_line > last_line)
+        {
+            int t = first_line; first_line = last_line; last_line = t;
+        }
+    }
+
+    left_bx = (ax < bx) ? ax : bx;
+    right_bx = (ax > bx) ? ax : bx;
+    sel_lines = last_line - first_line + 1;
+
+    lines = g_strsplit (box_text, "\n", -1);
+    n_lines = (int) g_strv_length (lines);
+
+    /* Pre-compute column offsets for all selected lines BEFORE any
+     * buffer modifications, since pixel->column mapping changes
+     * after inserts/deletes. */
+    col_lefts = g_new0 (int, sel_lines);
+    col_rights = g_new0 (int, sel_lines);
+    for (i = 0; i < sel_lines; i++)
+    {
+        col_lefts[i] = box_sel_visual_col_at_x (text_view, first_line + i, left_bx);
+        col_rights[i] = box_sel_visual_col_at_x (text_view, first_line + i, right_bx);
+    }
+
+    gtk_text_buffer_begin_user_action (buffer);
+
+    /* Process line by line from BOTTOM to TOP to avoid line number shifts.
+     * But we need to handle three cases:
+     *   - Lines within both source and target range: delete target, insert source
+     *   - Extra source lines (n_lines > sel_lines): insert new lines
+     *   - Extra target lines (sel_lines > n_lines): just delete target columns
+     *
+     * Process in two passes:
+     *   Pass 1: Handle existing target lines (bottom to top)
+     *   Pass 2: Insert extra source lines (if any) below the target range
+     */
+
+    /* Pass 1: Process existing target lines (bottom to top) */
+    for (i = sel_lines - 1; i >= 0; i--)
+    {
+        int target_line = first_line + i;
+        int cl = col_lefts[i];
+        int cr = col_rights[i];
+        GtkTextIter ls, le, del_start, del_end;
+        int line_len;
+
+        gtk_text_buffer_get_iter_at_line (buffer, &ls, target_line);
+        le = ls;
+        if (!gtk_text_iter_ends_line (&le))
+            gtk_text_iter_forward_to_line_end (&le);
+        line_len = gtk_text_iter_get_line_offset (&le);
+
+        /* Delete the selected column range on this line */
+        if (cl < line_len)
+        {
+            del_start = ls;
+            gtk_text_iter_set_line_offset (&del_start, cl);
+            if (cr <= line_len)
+            {
+                del_end = ls;
+                gtk_text_iter_set_line_offset (&del_end, cr);
+            }
+            else
+            {
+                del_end = le;
+            }
+            if (gtk_text_iter_compare (&del_start, &del_end) < 0)
+                gtk_text_buffer_delete (buffer, &del_start, &del_end);
+        }
+
+        /* Insert source line text (if this line has a corresponding source line) */
+        if (i < n_lines)
+        {
+            const char *paste_line = lines[i];
+
+            /* Refresh iterators after delete */
+            gtk_text_buffer_get_iter_at_line (buffer, &ls, target_line);
+            le = ls;
+            if (!gtk_text_iter_ends_line (&le))
+                gtk_text_iter_forward_to_line_end (&le);
+            line_len = gtk_text_iter_get_line_offset (&le);
+
+            /* Pad with spaces if line is too short to reach col_left */
+            if (line_len < cl)
+            {
+                int pad = cl - line_len;
+                char *spaces = g_strnfill (pad, ' ');
+                gtk_text_buffer_insert (buffer, &le, spaces, -1);
+                g_free (spaces);
+                /* Refresh */
+                gtk_text_buffer_get_iter_at_line (buffer, &ls, target_line);
+                le = ls;
+                if (!gtk_text_iter_ends_line (&le))
+                    gtk_text_iter_forward_to_line_end (&le);
+            }
+
+            /* Insert at col_left */
+            {
+                GtkTextIter ins = ls;
+                int cur_len;
+                le = ls;
+                if (!gtk_text_iter_ends_line (&le))
+                    gtk_text_iter_forward_to_line_end (&le);
+                cur_len = gtk_text_iter_get_line_offset (&le);
+
+                if (cl <= cur_len)
+                    gtk_text_iter_set_line_offset (&ins, cl);
+                else
+                    ins = le;
+
+                gtk_text_buffer_insert (buffer, &ins, paste_line, -1);
+            }
+        }
+        /* else: target line beyond source lines — columns already deleted, done */
+    }
+
+    /* Pass 2: Insert extra source lines if source has more lines than target */
+    if (n_lines > sel_lines)
+    {
+        /* Insert after the last target line */
+        int insert_after = last_line;
+        int cl_first = col_lefts[0];  /* Use first line's column offset */
+
+        for (i = sel_lines; i < n_lines; i++)
+        {
+            GtkTextIter insert_line_iter;
+            int ins_line = insert_after + 1 + (i - sel_lines);
+            const char *paste_line = lines[i];
+            char *padded;
+
+            /* Insert a new line at the end of insert_after + offset */
+            if (ins_line >= gtk_text_buffer_get_line_count (buffer))
+            {
+                GtkTextIter end_iter;
+                gtk_text_buffer_get_end_iter (buffer, &end_iter);
+                gtk_text_buffer_insert (buffer, &end_iter, "\n", -1);
+            }
+            else
+            {
+                /* Insert a blank line before ins_line */
+                gtk_text_buffer_get_iter_at_line (buffer, &insert_line_iter, ins_line);
+                gtk_text_buffer_insert (buffer, &insert_line_iter, "\n", -1);
+            }
+
+            /* Now fill the new line: pad to col_left, then paste text */
+            gtk_text_buffer_get_iter_at_line (buffer, &insert_line_iter, ins_line);
+            if (cl_first > 0)
+            {
+                char *spaces = g_strnfill (cl_first, ' ');
+                padded = g_strconcat (spaces, paste_line, NULL);
+                g_free (spaces);
+            }
+            else
+            {
+                padded = g_strdup (paste_line);
+            }
+
+            gtk_text_buffer_insert (buffer, &insert_line_iter, padded, -1);
+            g_free (padded);
+        }
+    }
+
+    gtk_text_buffer_end_user_action (buffer);
+
+    /* Clear box selection */
+    box_sel_clear (view);
+
+    g_free (col_lefts);
+    g_free (col_rights);
+    g_strfreev (lines);
+}
+
+
 static void
 moo_text_view_paste_clipboard (GtkTextView *text_view)
 {
+    /* Check if the last copy was a box selection — do box paste */
+    {
+        MooTextView *mview = MOO_TEXT_VIEW (text_view);
+        if (mview->priv->box_sel.box_copied && mview->priv->box_sel.copied_text)
+        {
+            if (mview->priv->box_sel.active)
+                moo_text_view_box_paste_into_selection (mview,
+                    mview->priv->box_sel.copied_text);
+            else
+                moo_text_view_box_paste_at_cursor (text_view,
+                    mview->priv->box_sel.copied_text);
+            gtk_text_view_scroll_mark_onscreen (text_view,
+                gtk_text_buffer_get_insert (
+                    gtk_text_view_get_buffer (text_view)));
+            return;
+        }
+    }
+
     char *text;
     GtkTextBuffer *buffer;
     GtkClipboard *clipboard;

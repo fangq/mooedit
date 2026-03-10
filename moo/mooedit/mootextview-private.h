@@ -190,6 +190,7 @@ struct MooTextViewPrivate {
         int             current_x;  /* buffer coords of current drag pos */
         int             current_y;
         char           *copied_text; /* text from last box-copy */
+        gboolean        box_copied;  /* TRUE if last copy was box selection */
     } box_sel;
 
     /***********************************************************************/
