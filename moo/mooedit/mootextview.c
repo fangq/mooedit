@@ -2349,7 +2349,6 @@ moo_text_view_box_paste_at_cursor (GtkTextView *text_view,
     GtkTextBuffer *buffer;
     GtkTextIter cursor;
     int cursor_line, cursor_col;
-    int line_count;
     char **lines;
     int n_lines, i;
 
@@ -2361,7 +2360,6 @@ moo_text_view_box_paste_at_cursor (GtkTextView *text_view,
         gtk_text_buffer_get_insert (buffer));
     cursor_line = gtk_text_iter_get_line (&cursor);
     cursor_col = gtk_text_iter_get_line_offset (&cursor);
-    line_count = gtk_text_buffer_get_line_count (buffer);
 
     lines = g_strsplit (box_text, "\n", -1);
     n_lines = (int) g_strv_length (lines);
@@ -2374,7 +2372,6 @@ moo_text_view_box_paste_at_cursor (GtkTextView *text_view,
         GtkTextIter ls, insert_pos;
         int current_line_len;
         const char *paste_line = lines[i];
-        int paste_len = (int) g_utf8_strlen (paste_line, -1);
 
         /* Append new lines if needed */
         if (target_line >= gtk_text_buffer_get_line_count (buffer))
