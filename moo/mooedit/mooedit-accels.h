@@ -82,4 +82,7 @@
 
 #define MOO_EDIT_ACCEL_COMPLETE "<Ctrl>Space"
 
+#define MOO_EDIT_ACCEL_GOTO_BRACKET "<Ctrl>bracketright"
+#define MOO_EDIT_ACCEL_SELECT_TO_BRACKET "<Ctrl><Shift>bracketright"
+
 #endif /* MOO_EDIT_ACCELS_H */

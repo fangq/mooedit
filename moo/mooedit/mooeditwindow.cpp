@@ -25,6 +25,7 @@
 #include "mooedit/mooeditdialogs.h"
 #include "mooedit/mooeditwindow-impl.h"
 #include "mooedit/mooedit-accels.h"
+#include "mooedit/mootextiter.h"
 #include "mooedit/mooeditor-impl.h"
 #include "mooedit/mooeditview-impl.h"
 #include "mooedit/mooedittab-impl.h"
@@ -285,6 +286,8 @@ static GtkAction *create_goto_bookmark_action   (MooWindow          *window,
 static void action_find_now_f                   (MooEditWindow      *window);
 static void action_find_now_b                   (MooEditWindow      *window);
 static void action_focus_doc                    (MooEditWindow      *window);
+static void action_goto_matching_bracket        (MooEditWindow      *window);
+static void action_select_to_matching_bracket   (MooEditWindow      *window);
 static void action_focus_other_split_notebook   (MooEditWindow      *window);
 static void action_move_to_split_notebook       (MooEditWindow      *window);
 static void action_abort_jobs                   (MooEditWindow      *window);
@@ -617,6 +620,27 @@ moo_edit_window_class_init (MooEditWindowClass *klass)
                                  "closure-proxy-func", moo_edit_window_get_active_view,
                                  "condition::sensitive", "has-open-document",
                                  nullptr);
+
+    moo_window_class_new_action (window_class, "GotoMatchingBracket", nullptr,
+                                 "display-name", _("Go to Matching Bracket"),
+                                 "label", _("Go to Matching _Bracket"),
+                                 "tooltip", _("Jump to the matching bracket"),
+                                 "default-accel", MOO_EDIT_ACCEL_GOTO_BRACKET,
+                                 "connect-accel", TRUE,
+                                 "closure-callback", action_goto_matching_bracket,
+                                 "condition::sensitive", "has-open-document",
+                                 nullptr);
+
+    moo_window_class_new_action (window_class, "SelectToMatchingBracket", nullptr,
+                                 "display-name", _("Select to Matching Bracket"),
+                                 "label", _("Select to Matching Brac_ket"),
+                                 "tooltip", _("Select text to the matching bracket"),
+                                 "default-accel", MOO_EDIT_ACCEL_SELECT_TO_BRACKET,
+                                 "connect-accel", TRUE,
+                                 "closure-callback", action_select_to_matching_bracket,
+                                 "condition::sensitive", "has-open-document",
+                                 nullptr);
+
 
     moo_window_class_new_action (window_class, "WrapText", nullptr,
                                  "action-type::", MOO_TYPE_TOGGLE_ACTION,
@@ -1663,6 +1687,79 @@ action_find_now_b (MooEditWindow *window)
     moo_edit_window_find_now (window, FALSE);
 }
 
+
+
+static void
+action_goto_matching_bracket (MooEditWindow *window)
+{
+    MooEditView *view = moo_edit_window_get_active_view (window);
+    GtkTextBuffer *buffer;
+    GtkTextIter iter;
+
+    if (!view) return;
+
+    buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
+    gtk_text_buffer_get_iter_at_mark (buffer, &iter,
+                                      gtk_text_buffer_get_insert (buffer));
+
+    /* Try at cursor or adjacent positions */
+    if (moo_text_iter_at_bracket (&iter))
+    {
+        GtkTextIter match = iter;
+        if (moo_text_iter_find_matching_bracket (&match, 10000) ==
+            MOO_BRACKET_MATCH_CORRECT)
+        {
+            /* Move past the bracket so cursor lands after it */
+            gtk_text_iter_forward_char (&match);
+            gtk_text_buffer_place_cursor (buffer, &match);
+            gtk_text_view_scroll_to_mark (GTK_TEXT_VIEW (view),
+                gtk_text_buffer_get_insert (buffer),
+                0.1, FALSE, 0.0, 0.0);
+        }
+    }
+}
+
+static void
+action_select_to_matching_bracket (MooEditWindow *window)
+{
+    MooEditView *view = moo_edit_window_get_active_view (window);
+    GtkTextBuffer *buffer;
+    GtkTextIter iter, start_iter;
+
+    if (!view) return;
+
+    buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
+    gtk_text_buffer_get_iter_at_mark (buffer, &iter,
+                                      gtk_text_buffer_get_insert (buffer));
+    start_iter = iter;
+
+    if (moo_text_iter_at_bracket (&iter))
+    {
+        GtkTextIter match = iter;
+        if (moo_text_iter_find_matching_bracket (&match, 10000) ==
+            MOO_BRACKET_MATCH_CORRECT)
+        {
+            /* Select from cursor to matching bracket (inclusive) */
+            GtkTextIter sel_start, sel_end;
+            if (gtk_text_iter_compare (&iter, &match) < 0)
+            {
+                sel_start = iter;
+                sel_end = match;
+                gtk_text_iter_forward_char (&sel_end);
+            }
+            else
+            {
+                sel_start = match;
+                sel_end = iter;
+                gtk_text_iter_forward_char (&sel_end);
+            }
+            gtk_text_buffer_select_range (buffer, &sel_end, &sel_start);
+            gtk_text_view_scroll_to_mark (GTK_TEXT_VIEW (view),
+                gtk_text_buffer_get_insert (buffer),
+                0.1, FALSE, 0.0, 0.0);
+        }
+    }
+}
 
 static void
 action_focus_doc (MooEditWindow *window)

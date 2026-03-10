@@ -72,6 +72,8 @@
       <item action="FindCurrentBack"/>
       <separator/>
       <item action="GoToLine"/>
+      <item action="GotoMatchingBracket"/>
+      <item action="SelectToMatchingBracket"/>
       <separator/>
       <item action="NextPlaceholder"/>
       <item action="PrevPlaceholder"/>
