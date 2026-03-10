@@ -407,6 +407,173 @@ clear_drag_stuff (MooTextView *view)
     view->priv->dnd.button = GDK_BUTTON_RELEASE;
 }
 
+/* ------------------------------------------------------------------ */
+/* Box (column) selection helpers                                      */
+/* ------------------------------------------------------------------ */
+
+void
+box_sel_clear (MooTextView *view)
+{
+    if (view->priv->box_sel.active)
+    {
+        view->priv->box_sel.active = FALSE;
+        gtk_widget_queue_draw (GTK_WIDGET (view));
+    }
+    if (view->priv->box_sel.copied_text)
+    {
+        g_free (view->priv->box_sel.copied_text);
+        view->priv->box_sel.copied_text = NULL;
+    }
+}
+
+static void
+box_sel_start (MooTextView *view, int buf_x, int buf_y)
+{
+    box_sel_clear (view);
+    view->priv->box_sel.active = TRUE;
+    view->priv->box_sel.anchor_x = buf_x;
+    view->priv->box_sel.anchor_y = buf_y;
+    view->priv->box_sel.current_x = buf_x;
+    view->priv->box_sel.current_y = buf_y;
+}
+
+static void
+box_sel_update (MooTextView *view, int buf_x, int buf_y)
+{
+    view->priv->box_sel.current_x = buf_x;
+    view->priv->box_sel.current_y = buf_y;
+    gtk_widget_queue_draw (GTK_WIDGET (view));
+}
+
+/* Get the visual column at a given buffer x coordinate on a line */
+static int
+box_sel_visual_col_at_x (GtkTextView *tv, int line, int buf_x)
+{
+    GtkTextIter iter;
+    GtkTextBuffer *buf = gtk_text_view_get_buffer (tv);
+    GdkRectangle loc;
+    int line_count = gtk_text_buffer_get_line_count (buf);
+
+    if (line < 0) line = 0;
+    if (line >= line_count) line = line_count - 1;
+
+    gtk_text_buffer_get_iter_at_line (buf, &iter, line);
+
+    /* Binary search: find the character whose x position is closest to buf_x */
+    {
+        GtkTextIter line_end = iter;
+        int line_offset_max;
+
+        if (!gtk_text_iter_ends_line (&line_end))
+            gtk_text_iter_forward_to_line_end (&line_end);
+        line_offset_max = gtk_text_iter_get_line_offset (&line_end);
+
+        if (line_offset_max == 0)
+            return 0;
+
+        /* Walk forward char by char (simple, reliable with Unicode + tabs) */
+        {
+            int col = 0;
+            GtkTextIter cur = iter;
+            while (col < line_offset_max)
+            {
+                gtk_text_view_get_iter_location (tv, &cur, &loc);
+                if (loc.x + loc.width / 2 > buf_x)
+                    return col;
+                col++;
+                if (!gtk_text_iter_forward_char (&cur))
+                    break;
+                if (gtk_text_iter_get_line (&cur) != line)
+                    break;
+            }
+            return col;
+        }
+    }
+}
+
+/* Extract rectangular text block as a string (lines joined by \n) */
+char *
+box_sel_get_text (GtkTextView *tv, int ax, int ay, int bx, int by)
+{
+    GtkTextBuffer *buf = gtk_text_view_get_buffer (tv);
+    GtkTextIter iter_a, iter_b;
+    int first_line, last_line, line;
+    int left_x, right_x;
+    GString *result;
+
+    gtk_text_view_get_iter_at_location (tv, &iter_a, ax, ay);
+    gtk_text_view_get_iter_at_location (tv, &iter_b, bx, by);
+    first_line = gtk_text_iter_get_line (&iter_a);
+    last_line = gtk_text_iter_get_line (&iter_b);
+    if (first_line > last_line) { int t = first_line; first_line = last_line; last_line = t; }
+    left_x = (ax < bx) ? ax : bx;
+    right_x = (ax > bx) ? ax : bx;
+
+    result = g_string_new (NULL);
+
+    for (line = first_line; line <= last_line; line++)
+    {
+        int col_left = box_sel_visual_col_at_x (tv, line, left_x);
+        int col_right = box_sel_visual_col_at_x (tv, line, right_x);
+        GtkTextIter ls, le, cs, ce;
+        int line_len;
+        char *slice;
+        int pad;
+
+        gtk_text_buffer_get_iter_at_line (buf, &ls, line);
+        le = ls;
+        if (!gtk_text_iter_ends_line (&le))
+            gtk_text_iter_forward_to_line_end (&le);
+        line_len = gtk_text_iter_get_line_offset (&le);
+
+        if (line > first_line)
+            g_string_append_c (result, '\n');
+
+        if (col_left >= line_len)
+        {
+            /* Line is shorter than the left edge — add spaces */
+            pad = col_right - col_left;
+            if (pad > 0)
+            {
+                int i;
+                for (i = 0; i < pad; i++)
+                    g_string_append_c (result, ' ');
+            }
+            continue;
+        }
+
+        cs = ls;
+        gtk_text_iter_set_line_offset (&cs, col_left);
+
+        if (col_right >= line_len)
+        {
+            ce = le;
+        }
+        else
+        {
+            ce = ls;
+            gtk_text_iter_set_line_offset (&ce, col_right);
+        }
+
+        slice = gtk_text_buffer_get_slice (buf, &cs, &ce, TRUE);
+        g_string_append (result, slice);
+        g_free (slice);
+
+        /* Pad with spaces if line is shorter than right edge */
+        if (col_right > line_len)
+        {
+            pad = col_right - line_len;
+            {
+                int i;
+                for (i = 0; i < pad; i++)
+                    g_string_append_c (result, ' ');
+            }
+        }
+    }
+
+    return g_string_free (result, FALSE);
+}
+
 void
 _moo_text_view_update_text_cursor (MooTextView *view,
                                    int          x,
@@ -761,9 +928,22 @@ _moo_text_view_button_press_event (GtkWidget          *widget,
                 }
             }
 
-            if (!line_numbers)
+            if (!line_numbers && (event->state & GDK_CONTROL_MASK)
+                && !(event->state & GDK_SHIFT_MASK))
+            {
+                /* Ctrl+click: start box/column selection */
+                box_sel_start (view, x, y);
+                view->priv->dnd.button = GDK_BUTTON_PRESS;
+                view->priv->dnd.start_x = x;
+                view->priv->dnd.start_y = y;
+                view->priv->dnd.type = MOO_TEXT_VIEW_DRAG_BOX_SELECT;
+                place_start_mark (view, &iter);
+                return TRUE;
+            }
+            else if (!line_numbers)
             {
                 /* otherwise, clear selection, and position cursor at clicked point */
+                box_sel_clear (view);
                 if (event->state & GDK_SHIFT_MASK)
                 {
                     GtkTextIter start_mark;
@@ -878,6 +1058,20 @@ _moo_text_view_button_release_event (GtkWidget      *widget,
              * everything has been taken care of, so do nothing */
             break;
 
+        case MOO_TEXT_VIEW_DRAG_BOX_SELECT:
+            /* Box selection complete — keep the selection active
+             * so draw handler continues to show it. */
+            if (view->priv->dnd.moved && view->priv->box_sel.active)
+            {
+                /* Clear normal text selection so it doesn't interfere */
+                GtkTextBuffer *buf = gtk_text_view_get_buffer (text_view);
+                GtkTextIter cursor;
+                gtk_text_buffer_get_iter_at_mark (buf, &cursor,
+                    gtk_text_buffer_get_insert (buf));
+                gtk_text_buffer_select_range (buf, &cursor, &cursor);
+            }
+            break;
+
         case MOO_TEXT_VIEW_DRAG_SELECT:
         case MOO_TEXT_VIEW_DRAG_SELECT_LINES:
             /* everything should be done already in button_press and
@@ -941,6 +1135,14 @@ _moo_text_view_motion_event (GtkWidget          *widget,
     }
 
     gtk_text_view_get_iter_at_location (text_view, &iter, x, y);
+
+    if (view->priv->dnd.type == MOO_TEXT_VIEW_DRAG_BOX_SELECT)
+    {
+        /* Update box selection rectangle */
+        box_sel_update (view, x, y);
+        view->priv->dnd.moved = TRUE;
+        return TRUE;
+    }
 
     if (view->priv->dnd.type == MOO_TEXT_VIEW_DRAG_SELECT)
     {
@@ -1308,6 +1510,13 @@ _moo_text_view_key_press_event (GtkWidget          *widget,
 
     if (handled)
         return TRUE;
+
+    /* Escape clears box selection */
+    if (event->keyval == GDK_KEY_Escape && view->priv->box_sel.active)
+    {
+        box_sel_clear (view);
+        return TRUE;
+    }
 
     view->priv->in_key_press = TRUE;
     _moo_text_view_ensure_primary (text_view);

@@ -99,6 +99,9 @@ static void     moo_text_view_remove        (GtkContainer       *container,
 #define MOO_LL_MARKER "moo-ll-marker"
 
 extern void moo_ll_apply (GtkTextBuffer *buffer);
+/* Box selection text extraction (defined in mootextview-input.c) */
+extern char *box_sel_get_text (GtkTextView *tv, int ax, int ay, int bx, int by);
+extern void box_sel_clear (MooTextView *view);
 extern void moo_ll_remove_all (GtkTextBuffer *buffer);
 extern void moo_ll_reveal_line (GtkTextBuffer *buffer, int line);
 extern void moo_ll_apply_range (GtkTextBuffer *buffer, int first_line, int last_line);
@@ -304,6 +307,7 @@ moo_ll_wrap_changed (GObject *obj, GParamSpec *ps, gpointer data)
 
 
 static void     moo_text_view_copy_clipboard (GtkTextView       *text_view);
+static void     moo_text_view_box_copy (MooTextView       *view);
 static void     moo_text_view_cut_clipboard (GtkTextView        *text_view);
 static void     moo_text_view_paste_clipboard (GtkTextView      *text_view);
 static void     moo_text_view_populate_popup(GtkTextView        *text_view,
@@ -2235,6 +2239,13 @@ _moo_text_view_ensure_primary (GtkTextView *text_view)
 static void
 moo_text_view_copy_clipboard (GtkTextView *text_view)
 {
+    /* If box selection is active, copy box text instead */
+    if (MOO_TEXT_VIEW (text_view)->priv->box_sel.active)
+    {
+        moo_text_view_box_copy (MOO_TEXT_VIEW (text_view));
+        return;
+    }
+
     moo_text_view_cut_or_copy (text_view, FALSE, GDK_SELECTION_CLIPBOARD);
 }
 
@@ -2294,6 +2305,33 @@ paste_refresh_idle (gpointer data)
     g_object_unref (text_view);
     return G_SOURCE_REMOVE;
 }
+
+/* Copy box selection to clipboard */
+static void
+moo_text_view_box_copy (MooTextView *view)
+{
+    GtkTextView *tv = GTK_TEXT_VIEW (view);
+    GtkClipboard *clipboard;
+    char *text;
+
+    if (!view->priv->box_sel.active)
+        return;
+
+    text = box_sel_get_text (tv,
+        view->priv->box_sel.anchor_x, view->priv->box_sel.anchor_y,
+        view->priv->box_sel.current_x, view->priv->box_sel.current_y);
+
+    if (text && text[0])
+    {
+        clipboard = gtk_widget_get_clipboard (GTK_WIDGET (view),
+                                              GDK_SELECTION_CLIPBOARD);
+        gtk_clipboard_set_text (clipboard, text, -1);
+    }
+
+    g_free (view->priv->box_sel.copied_text);
+    view->priv->box_sel.copied_text = text;
+}
+
 
 static void
 moo_text_view_paste_clipboard (GtkTextView *text_view)
@@ -2698,6 +2736,110 @@ moo_text_view_draw_whitespace (GtkTextView       *text_view,
 
 
 /* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
+/* Draw box (column) selection overlay                                 */
+/* ------------------------------------------------------------------ */
+static void
+moo_text_view_draw_box_selection (GtkTextView *text_view, cairo_t *cr)
+{
+    MooTextView *view = MOO_TEXT_VIEW (text_view);
+    int ax, ay, bx, by;
+    int x1, x2;  /* window coords */
+    int first_line, last_line, line;
+    GtkTextBuffer *buf;
+    GdkRectangle visible_rect;
+    GtkStyleContext *ctx;
+    GdkRGBA sel_color;
+
+    if (!view->priv->box_sel.active)
+        return;
+
+    ax = view->priv->box_sel.anchor_x;
+    ay = view->priv->box_sel.anchor_y;
+    bx = view->priv->box_sel.current_x;
+    by = view->priv->box_sel.current_y;
+
+    buf = gtk_text_view_get_buffer (text_view);
+    gtk_text_view_get_visible_rect (text_view, &visible_rect);
+
+    /* Get selection color from theme */
+    ctx = gtk_widget_get_style_context (GTK_WIDGET (text_view));
+    gtk_style_context_save (ctx);
+    gtk_style_context_set_state (ctx, GTK_STATE_FLAG_SELECTED);
+    gtk_style_context_get_background_color (ctx,
+        gtk_style_context_get_state (ctx), &sel_color);
+    gtk_style_context_restore (ctx);
+
+    /* Determine line range */
+    {
+        GtkTextIter ia, ib;
+        gtk_text_view_get_iter_at_location (text_view, &ia, ax, ay);
+        gtk_text_view_get_iter_at_location (text_view, &ib, bx, by);
+        first_line = gtk_text_iter_get_line (&ia);
+        last_line = gtk_text_iter_get_line (&ib);
+        if (first_line > last_line) { int t = first_line; first_line = last_line; last_line = t; }
+    }
+
+    /* Convert left/right x to window coords for consistent drawing */
+    {
+        int left_bx = (ax < bx) ? ax : bx;
+        int right_bx = (ax > bx) ? ax : bx;
+        int dummy;
+        gtk_text_view_buffer_to_window_coords (text_view, GTK_TEXT_WINDOW_TEXT,
+            left_bx, 0, &x1, &dummy);
+        gtk_text_view_buffer_to_window_coords (text_view, GTK_TEXT_WINDOW_TEXT,
+            right_bx, 0, &x2, &dummy);
+    }
+
+    cairo_save (cr);
+
+    /* Draw per-line selection rectangles */
+    for (line = first_line; line <= last_line; line++)
+    {
+        GtkTextIter line_iter;
+        int ly, lh;
+        int wy;
+
+        gtk_text_buffer_get_iter_at_line (buf, &line_iter, line);
+        gtk_text_view_get_line_yrange (text_view, &line_iter, &ly, &lh);
+        gtk_text_view_buffer_to_window_coords (text_view, GTK_TEXT_WINDOW_TEXT,
+            0, ly, NULL, &wy);
+
+        /* Semi-transparent selection fill */
+        cairo_set_source_rgba (cr, sel_color.red, sel_color.green,
+                               sel_color.blue, 0.35);
+        cairo_rectangle (cr, x1, wy, x2 - x1, lh);
+        cairo_fill (cr);
+    }
+
+    /* Draw selection border */
+    {
+        int wy_top, wy_bottom;
+        GtkTextIter it_top, it_bottom;
+        int dummy, ly, lh;
+
+        gtk_text_buffer_get_iter_at_line (buf, &it_top, first_line);
+        gtk_text_view_get_line_yrange (text_view, &it_top, &ly, &lh);
+        gtk_text_view_buffer_to_window_coords (text_view, GTK_TEXT_WINDOW_TEXT,
+            0, ly, &dummy, &wy_top);
+
+        gtk_text_buffer_get_iter_at_line (buf, &it_bottom, last_line);
+        gtk_text_view_get_line_yrange (text_view, &it_bottom, &ly, &lh);
+        gtk_text_view_buffer_to_window_coords (text_view, GTK_TEXT_WINDOW_TEXT,
+            0, ly + lh, &dummy, &wy_bottom);
+
+        cairo_set_source_rgba (cr, sel_color.red, sel_color.green,
+                               sel_color.blue, 0.7);
+        cairo_set_line_width (cr, 1.0);
+        cairo_rectangle (cr, x1 + 0.5, wy_top + 0.5,
+                         x2 - x1 - 1, wy_bottom - wy_top - 1);
+        cairo_stroke (cr);
+    }
+
+    cairo_restore (cr);
+}
+
+
 /* Draw "..." indicator at the end of truncated long lines            */
 /* ------------------------------------------------------------------ */
 
@@ -2881,6 +3023,10 @@ moo_text_view_expose (GtkWidget      *widget,
 
     /* Draw "..." on truncated long lines */
     moo_text_view_draw_long_line_markers (text_view, cr);
+
+    /* Draw box/column selection overlay */
+    moo_text_view_draw_box_selection (text_view, cr);
+
         }
     }
 

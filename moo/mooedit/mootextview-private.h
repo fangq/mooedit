@@ -65,7 +65,8 @@ typedef enum {
     MOO_TEXT_VIEW_DRAG_NONE = 0,
     MOO_TEXT_VIEW_DRAG_SELECT,
     MOO_TEXT_VIEW_DRAG_DRAG,
-    MOO_TEXT_VIEW_DRAG_SELECT_LINES
+    MOO_TEXT_VIEW_DRAG_SELECT_LINES,
+    MOO_TEXT_VIEW_DRAG_BOX_SELECT
 } MooTextViewDragType;
 
 typedef enum {
@@ -178,6 +179,18 @@ struct MooTextViewPrivate {
         guint           double_click_selects_brackets   : 1;
         guint           double_click_selects_inside     : 1;
     } dnd;
+
+    /***********************************************************************/
+    /* Box (column/rectangular) selection
+     */
+    struct {
+        gboolean        active;
+        int             anchor_x;   /* buffer coords of drag start */
+        int             anchor_y;
+        int             current_x;  /* buffer coords of current drag pos */
+        int             current_y;
+        char           *copied_text; /* text from last box-copy */
+    } box_sel;
 
     /***********************************************************************/
     /* Children
