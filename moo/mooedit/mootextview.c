@@ -101,6 +101,7 @@ static void     moo_text_view_remove        (GtkContainer       *container,
 extern void moo_ll_apply (GtkTextBuffer *buffer);
 /* Box selection text extraction (defined in mootextview-input.c) */
 extern char *box_sel_get_text (GtkTextView *tv, int ax, int ay, int bx, int by);
+extern int box_sel_visual_col_at_x (GtkTextView *tv, int line, int buf_x);
 extern void box_sel_clear (MooTextView *view);
 extern void moo_ll_remove_all (GtkTextBuffer *buffer);
 extern void moo_ll_reveal_line (GtkTextBuffer *buffer, int line);
@@ -2731,25 +2732,19 @@ moo_text_view_draw_whitespace (GtkTextView       *text_view,
         line += 1;
     }
     while (gtk_text_iter_compare (&iter, end) < 0);
-}
-
-
-
-/* ------------------------------------------------------------------ */
-/* ------------------------------------------------------------------ */
-/* Draw box (column) selection overlay                                 */
+}/* ------------------------------------------------------------------ */
+/* Draw box (column) selection — per-character highlight                */
 /* ------------------------------------------------------------------ */
 static void
 moo_text_view_draw_box_selection (GtkTextView *text_view, cairo_t *cr)
 {
     MooTextView *view = MOO_TEXT_VIEW (text_view);
     int ax, ay, bx, by;
-    int x1, x2;  /* window coords */
     int first_line, last_line, line;
+    int left_bx, right_bx;
     GtkTextBuffer *buf;
-    GdkRectangle visible_rect;
     GtkStyleContext *ctx;
-    GdkRGBA sel_color;
+    GdkRGBA sel_bg;
 
     if (!view->priv->box_sel.active)
         return;
@@ -2760,14 +2755,13 @@ moo_text_view_draw_box_selection (GtkTextView *text_view, cairo_t *cr)
     by = view->priv->box_sel.current_y;
 
     buf = gtk_text_view_get_buffer (text_view);
-    gtk_text_view_get_visible_rect (text_view, &visible_rect);
 
-    /* Get selection color from theme */
+    /* Get theme selection color */
     ctx = gtk_widget_get_style_context (GTK_WIDGET (text_view));
     gtk_style_context_save (ctx);
     gtk_style_context_set_state (ctx, GTK_STATE_FLAG_SELECTED);
     gtk_style_context_get_background_color (ctx,
-        gtk_style_context_get_state (ctx), &sel_color);
+        gtk_style_context_get_state (ctx), &sel_bg);
     gtk_style_context_restore (ctx);
 
     /* Determine line range */
@@ -2777,63 +2771,127 @@ moo_text_view_draw_box_selection (GtkTextView *text_view, cairo_t *cr)
         gtk_text_view_get_iter_at_location (text_view, &ib, bx, by);
         first_line = gtk_text_iter_get_line (&ia);
         last_line = gtk_text_iter_get_line (&ib);
-        if (first_line > last_line) { int t = first_line; first_line = last_line; last_line = t; }
+        if (first_line > last_line)
+        {
+            int t = first_line; first_line = last_line; last_line = t;
+        }
     }
 
-    /* Convert left/right x to window coords for consistent drawing */
-    {
-        int left_bx = (ax < bx) ? ax : bx;
-        int right_bx = (ax > bx) ? ax : bx;
-        int dummy;
-        gtk_text_view_buffer_to_window_coords (text_view, GTK_TEXT_WINDOW_TEXT,
-            left_bx, 0, &x1, &dummy);
-        gtk_text_view_buffer_to_window_coords (text_view, GTK_TEXT_WINDOW_TEXT,
-            right_bx, 0, &x2, &dummy);
-    }
+    left_bx = (ax < bx) ? ax : bx;
+    right_bx = (ax > bx) ? ax : bx;
 
     cairo_save (cr);
 
-    /* Draw per-line selection rectangles */
     for (line = first_line; line <= last_line; line++)
     {
-        GtkTextIter line_iter;
-        int ly, lh;
-        int wy;
+        GtkTextIter ls, le;
+        int line_len;
+        int col_left, col_right;
+        int ly, lh, wy;
 
-        gtk_text_buffer_get_iter_at_line (buf, &line_iter, line);
-        gtk_text_view_get_line_yrange (text_view, &line_iter, &ly, &lh);
+        gtk_text_buffer_get_iter_at_line (buf, &ls, line);
+        le = ls;
+        if (!gtk_text_iter_ends_line (&le))
+            gtk_text_iter_forward_to_line_end (&le);
+        line_len = gtk_text_iter_get_line_offset (&le);
+
+        gtk_text_view_get_line_yrange (text_view, &ls, &ly, &lh);
         gtk_text_view_buffer_to_window_coords (text_view, GTK_TEXT_WINDOW_TEXT,
             0, ly, NULL, &wy);
 
-        /* Semi-transparent selection fill */
-        cairo_set_source_rgba (cr, sel_color.red, sel_color.green,
-                               sel_color.blue, 0.35);
-        cairo_rectangle (cr, x1, wy, x2 - x1, lh);
-        cairo_fill (cr);
-    }
+        col_left = box_sel_visual_col_at_x (text_view, line, left_bx);
+        col_right = box_sel_visual_col_at_x (text_view, line, right_bx);
 
-    /* Draw selection border */
-    {
-        int wy_top, wy_bottom;
-        GtkTextIter it_top, it_bottom;
-        int dummy, ly, lh;
+        if (col_left >= col_right)
+            continue;
 
-        gtk_text_buffer_get_iter_at_line (buf, &it_top, first_line);
-        gtk_text_view_get_line_yrange (text_view, &it_top, &ly, &lh);
-        gtk_text_view_buffer_to_window_coords (text_view, GTK_TEXT_WINDOW_TEXT,
-            0, ly, &dummy, &wy_top);
+        if (col_left < line_len)
+        {
+            GdkRectangle first_rect, last_rect;
+            GtkTextIter first_char, last_char;
+            int wx1, wx2, hx, hw, dummy;
+            int clamp_right = (col_right > line_len) ? line_len : col_right;
 
-        gtk_text_buffer_get_iter_at_line (buf, &it_bottom, last_line);
-        gtk_text_view_get_line_yrange (text_view, &it_bottom, &ly, &lh);
-        gtk_text_view_buffer_to_window_coords (text_view, GTK_TEXT_WINDOW_TEXT,
-            0, ly + lh, &dummy, &wy_bottom);
+            first_char = ls;
+            gtk_text_iter_set_line_offset (&first_char, col_left);
+            gtk_text_view_get_iter_location (text_view, &first_char, &first_rect);
 
-        cairo_set_source_rgba (cr, sel_color.red, sel_color.green,
-                               sel_color.blue, 0.7);
-        cairo_set_line_width (cr, 1.0);
-        cairo_rectangle (cr, x1 + 0.5, wy_top + 0.5,
-                         x2 - x1 - 1, wy_bottom - wy_top - 1);
-        cairo_stroke (cr);
+            last_char = ls;
+            gtk_text_iter_set_line_offset (&last_char,
+                clamp_right > 0 ? clamp_right - 1 : 0);
+            gtk_text_view_get_iter_location (text_view, &last_char, &last_rect);
+
+            gtk_text_view_buffer_to_window_coords (text_view,
+                GTK_TEXT_WINDOW_TEXT,
+                first_rect.x, 0, &wx1, &dummy);
+            gtk_text_view_buffer_to_window_coords (text_view,
+                GTK_TEXT_WINDOW_TEXT,
+                last_rect.x + last_rect.width, 0, &wx2, &dummy);
+            hx = wx1;
+            hw = wx2 - wx1;
+
+            if (hw > 0)
+            {
+                cairo_set_source_rgba (cr, sel_bg.red, sel_bg.green,
+                                       sel_bg.blue, 0.45);
+                cairo_rectangle (cr, hx, wy, hw, lh);
+                cairo_fill (cr);
+            }
+
+            /* Virtual extension past end of line */
+            if (col_right > line_len)
+            {
+                GdkRectangle end_rect;
+                int ext_x, ext_w;
+                PangoLayout *pl;
+                int cw;
+
+                gtk_text_view_get_iter_location (text_view, &le, &end_rect);
+                gtk_text_view_buffer_to_window_coords (text_view,
+                    GTK_TEXT_WINDOW_TEXT,
+                    end_rect.x + end_rect.width, 0, &ext_x, &dummy);
+
+                pl = gtk_widget_create_pango_layout (GTK_WIDGET (text_view), "X");
+                pango_layout_get_pixel_size (pl, &cw, NULL);
+                g_object_unref (pl);
+                ext_w = (col_right - line_len) * cw;
+
+                if (ext_w > 0)
+                {
+                    cairo_set_source_rgba (cr, sel_bg.red, sel_bg.green,
+                                           sel_bg.blue, 0.20);
+                    cairo_rectangle (cr, ext_x, wy, ext_w, lh);
+                    cairo_fill (cr);
+                }
+            }
+        }
+        else
+        {
+            /* Line shorter than left bound — virtual highlight only */
+            GdkRectangle end_rect;
+            PangoLayout *pl;
+            int cw, vx, vw, dummy;
+
+            gtk_text_view_get_iter_location (text_view, &le, &end_rect);
+            gtk_text_view_buffer_to_window_coords (text_view,
+                GTK_TEXT_WINDOW_TEXT,
+                end_rect.x, 0, &vx, &dummy);
+
+            pl = gtk_widget_create_pango_layout (GTK_WIDGET (text_view), "X");
+            pango_layout_get_pixel_size (pl, &cw, NULL);
+            g_object_unref (pl);
+
+            vx += col_left * cw;
+            vw = (col_right - col_left) * cw;
+
+            if (vw > 0)
+            {
+                cairo_set_source_rgba (cr, sel_bg.red, sel_bg.green,
+                                       sel_bg.blue, 0.20);
+                cairo_rectangle (cr, vx, wy, vw, lh);
+                cairo_fill (cr);
+            }
+        }
     }
 
     cairo_restore (cr);

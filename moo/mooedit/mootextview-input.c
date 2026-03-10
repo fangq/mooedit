@@ -446,7 +446,7 @@ box_sel_update (MooTextView *view, int buf_x, int buf_y)
 }
 
 /* Get the visual column at a given buffer x coordinate on a line */
-static int
+int
 box_sel_visual_col_at_x (GtkTextView *tv, int line, int buf_x)
 {
     GtkTextIter iter;
