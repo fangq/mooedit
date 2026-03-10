@@ -385,44 +385,24 @@ moo_edit_set_line_end_type (MooEdit        *edit,
 #define MOO_LONG_LINE_MARKER "moo-ll-marker"
 #define MOO_LONG_LINE_MARKER_TEXT " ..."
 
-static GtkTextTag *
-ll_ensure_tag (GtkTextBuffer *buf, const char *name,
-               const char *prop1, ...)
-{
-    GtkTextTagTable *t = gtk_text_buffer_get_tag_table (buf);
-    GtkTextTag *tag = gtk_text_tag_table_lookup (t, name);
-    return tag;
-}
-
 extern "C" void
 moo_ll_apply (GtkTextBuffer *buffer)
 {
-    GtkTextTag *htag, *mtag;
+    GtkTextTag *htag;
     GtkTextTagTable *table;
     int n, i;
 
-    /* Check non-wrap mode */
     if (!GPOINTER_TO_INT (g_object_get_data (G_OBJECT (buffer), "moo-nowrap-mode")))
         return;
 
     table = gtk_text_buffer_get_tag_table (buffer);
-
     htag = gtk_text_tag_table_lookup (table, MOO_LONG_LINE_TAG);
     if (!htag)
         htag = gtk_text_buffer_create_tag (buffer, MOO_LONG_LINE_TAG,
                    "invisible", TRUE, (char*)NULL);
 
-    mtag = gtk_text_tag_table_lookup (table, MOO_LONG_LINE_MARKER);
-    if (!mtag)
-        mtag = gtk_text_buffer_create_tag (buffer, MOO_LONG_LINE_MARKER,
-                   "foreground", "#ffffff", "background", "#555555",
-                   "weight", PANGO_WEIGHT_BOLD, (char*)NULL);
-
     n = gtk_text_buffer_get_line_count (buffer);
-
-    /* Reverse iteration: inserting " ..." shifts later lines,
-       so process from last line to first. */
-    for (i = n - 1; i >= 0; i--)
+    for (i = 0; i < n; i++)
     {
         GtkTextIter it, le, tp;
         int len;
@@ -432,24 +412,47 @@ moo_ll_apply (GtkTextBuffer *buffer)
         if (!gtk_text_iter_ends_line (&le))
             gtk_text_iter_forward_to_line_end (&le);
         len = gtk_text_iter_get_line_offset (&le);
-
         if (len <= MOO_MAX_LINE_LEN)
             continue;
 
-        /* Position at truncation point */
         tp = it;
         gtk_text_iter_set_line_offset (&tp, MOO_MAX_LINE_LEN);
+        gtk_text_buffer_apply_tag (buffer, htag, &tp, &le);
+    }
+}
 
-        /* Insert " ..." marker text */
-        gtk_text_buffer_insert_with_tags (buffer, &tp,
-            MOO_LONG_LINE_MARKER_TEXT, -1, mtag, NULL);
+extern "C" void
+moo_ll_apply_range (GtkTextBuffer *buffer, int first_line, int last_line)
+{
+    GtkTextTag *htag;
+    GtkTextTagTable *table;
+    int i;
 
-        /* tp now points after inserted text. Re-fetch line end. */
-        gtk_text_buffer_get_iter_at_line (buffer, &le, i);
+    /* Note: no moo-nowrap-mode check here — callers are responsible
+     * for checking, or this is called from after-insert where the
+     * flag may not be set yet for new documents. */
+
+    table = gtk_text_buffer_get_tag_table (buffer);
+    htag = gtk_text_tag_table_lookup (table, MOO_LONG_LINE_TAG);
+    if (!htag)
+        htag = gtk_text_buffer_create_tag (buffer, MOO_LONG_LINE_TAG,
+                   "invisible", TRUE, (char*)NULL);
+
+    for (i = first_line; i <= last_line; i++)
+    {
+        GtkTextIter it, le, tp;
+        int len;
+        if (i >= gtk_text_buffer_get_line_count (buffer))
+            break;
+        gtk_text_buffer_get_iter_at_line (buffer, &it, i);
+        le = it;
         if (!gtk_text_iter_ends_line (&le))
             gtk_text_iter_forward_to_line_end (&le);
-
-        /* Hide everything after the marker */
+        len = gtk_text_iter_get_line_offset (&le);
+        if (len <= MOO_MAX_LINE_LEN)
+            continue;
+        tp = it;
+        gtk_text_iter_set_line_offset (&tp, MOO_MAX_LINE_LEN);
         gtk_text_buffer_apply_tag (buffer, htag, &tp, &le);
     }
 }
@@ -458,76 +461,31 @@ extern "C" void
 moo_ll_remove_all (GtkTextBuffer *buffer)
 {
     GtkTextTagTable *table;
-    GtkTextTag *htag, *mtag;
+    GtkTextTag *htag;
     GtkTextIter s, e;
 
     table = gtk_text_buffer_get_tag_table (buffer);
     gtk_text_buffer_get_bounds (buffer, &s, &e);
-
     htag = gtk_text_tag_table_lookup (table, MOO_LONG_LINE_TAG);
     if (htag) gtk_text_buffer_remove_tag (buffer, htag, &s, &e);
-
-    mtag = gtk_text_tag_table_lookup (table, MOO_LONG_LINE_MARKER);
-    if (mtag)
-    {
-        GtkTextIter ms, me, search;
-        gtk_text_buffer_remove_tag (buffer, mtag, &s, &e);
-        /* Delete marker text in reverse */
-        gtk_text_buffer_get_end_iter (buffer, &search);
-        while (gtk_text_iter_backward_search (&search,
-                   MOO_LONG_LINE_MARKER_TEXT,
-                   GTK_TEXT_SEARCH_TEXT_ONLY,
-                   &ms, &me, NULL))
-        {
-            gtk_text_buffer_delete (buffer, &ms, &me);
-            search = ms;
-        }
-    }
 }
 
 extern "C" void
 moo_ll_reveal_line (GtkTextBuffer *buffer, int line)
 {
     GtkTextTagTable *table;
-    GtkTextTag *htag, *mtag;
-    GtkTextIter ls, le, ms, me;
+    GtkTextTag *htag;
+    GtkTextIter ls, le;
 
     table = gtk_text_buffer_get_tag_table (buffer);
     htag = gtk_text_tag_table_lookup (table, MOO_LONG_LINE_TAG);
-    mtag = gtk_text_tag_table_lookup (table, MOO_LONG_LINE_MARKER);
     if (!htag) return;
 
     gtk_text_buffer_get_iter_at_line (buffer, &ls, line);
     le = ls;
     if (!gtk_text_iter_ends_line (&le))
         gtk_text_iter_forward_to_line_end (&le);
-
-    /* Remove hidden tag */
     gtk_text_buffer_remove_tag (buffer, htag, &ls, &le);
-
-    /* Remove marker text on this line */
-    if (mtag)
-    {
-        gtk_text_buffer_remove_tag (buffer, mtag, &ls, &le);
-        /* Re-fetch le after potential tag changes */
-        gtk_text_buffer_get_iter_at_line (buffer, &ls, line);
-        le = ls;
-        if (!gtk_text_iter_ends_line (&le))
-            gtk_text_iter_forward_to_line_end (&le);
-
-        while (gtk_text_iter_forward_search (&ls,
-                   MOO_LONG_LINE_MARKER_TEXT,
-                   GTK_TEXT_SEARCH_TEXT_ONLY,
-                   &ms, &me, &le))
-        {
-            gtk_text_buffer_delete (buffer, &ms, &me);
-            /* Re-fetch after delete */
-            gtk_text_buffer_get_iter_at_line (buffer, &ls, line);
-            le = ls;
-            if (!gtk_text_iter_ends_line (&le))
-                gtk_text_iter_forward_to_line_end (&le);
-        }
-    }
 }
 
 /* File loading
@@ -973,6 +931,9 @@ moo_edit_save_local (MooEdit        *edit,
 
     if (!do_save_local (edit, file, encoding, flags, error))
         return FALSE;
+
+    /* Re-apply long-line truncation after save */
+    moo_ll_apply (moo_edit_get_buffer (edit));
 
     edit->priv->status = (MooEditStatus) 0;
     _moo_edit_set_file (edit, file, encoding);

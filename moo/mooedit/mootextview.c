@@ -101,6 +101,7 @@ static void     moo_text_view_remove        (GtkContainer       *container,
 extern void moo_ll_apply (GtkTextBuffer *buffer);
 extern void moo_ll_remove_all (GtkTextBuffer *buffer);
 extern void moo_ll_reveal_line (GtkTextBuffer *buffer, int line);
+extern void moo_ll_apply_range (GtkTextBuffer *buffer, int first_line, int last_line);
 
 static gboolean
 moo_ll_click_handler (GtkWidget *widget, GdkEventButton *event, gpointer data)
@@ -108,9 +109,10 @@ moo_ll_click_handler (GtkWidget *widget, GdkEventButton *event, gpointer data)
     GtkTextView *tv = GTK_TEXT_VIEW (widget);
     GtkTextBuffer *buf;
     GtkTextTagTable *table;
-    GtkTextTag *htag, *mtag;
+    GtkTextTag *htag;
     GtkTextIter iter;
-    int x, y, line;
+    int bx, by, line;
+
     (void)data;
 
     if (event->button != 1 || event->type != GDK_BUTTON_PRESS)
@@ -119,96 +121,167 @@ moo_ll_click_handler (GtkWidget *widget, GdkEventButton *event, gpointer data)
     buf = gtk_text_view_get_buffer (tv);
     table = gtk_text_buffer_get_tag_table (buf);
     htag = gtk_text_tag_table_lookup (table, MOO_LL_TAG);
-    mtag = gtk_text_tag_table_lookup (table, MOO_LL_MARKER);
-    if (!htag && !mtag) return FALSE;
+    if (!htag)
+        return FALSE;
 
+    /* Convert click coords to buffer coords */
     gtk_text_view_window_to_buffer_coords (tv, GTK_TEXT_WINDOW_TEXT,
-        (int)event->x, (int)event->y, &x, &y);
-    gtk_text_view_get_iter_at_location (tv, &iter, x, y);
+        (int)event->x, (int)event->y, &bx, &by);
+    gtk_text_view_get_iter_at_location (tv, &iter, bx, by);
 
-    /* Click on hidden text or marker text? */
-    if ((htag && gtk_text_iter_has_tag (&iter, htag)) ||
-        (mtag && gtk_text_iter_has_tag (&iter, mtag)))
+    line = gtk_text_iter_get_line (&iter);
+
+    /* Check if this line has any hidden (truncated) region */
     {
-        line = gtk_text_iter_get_line (&iter);
-
-        /* Reveal next 4K chunk, re-truncate at new position */
-        {
-            GtkTextIter ls, le, ms, me, tp;
-            GtkTextTag *hidden, *marker;
-            int old_trunc, line_len, new_trunc;
-
-            hidden = htag;
-            marker = mtag;
-
-            gtk_text_buffer_get_iter_at_line (buf, &ls, line);
-            le = ls;
-            if (!gtk_text_iter_ends_line (&le))
-                gtk_text_iter_forward_to_line_end (&le);
-
-            /* Find current truncation point (where hidden tag starts) */
-            old_trunc = gtk_text_iter_get_line_offset (&le);
-            {
-                GtkTextIter s = ls;
-                while (gtk_text_iter_compare (&s, &le) < 0) {
-                    if (hidden && gtk_text_iter_has_tag (&s, hidden)) {
-                        old_trunc = gtk_text_iter_get_line_offset (&s);
-                        break;
-                    }
-                    if (!gtk_text_iter_forward_char (&s)) break;
-                }
-            }
-
-            /* Remove all tags and marker text on this line */
-            moo_ll_reveal_line (buf, line);
-
-            /* Re-fetch line after marker deletion shifted things */
-            gtk_text_buffer_get_iter_at_line (buf, &ls, line);
-            le = ls;
-            if (!gtk_text_iter_ends_line (&le))
-                gtk_text_iter_forward_to_line_end (&le);
-            line_len = gtk_text_iter_get_line_offset (&le);
-
-            /* New truncation point: advance by 4090 */
-            new_trunc = old_trunc + 4096;
-            if (new_trunc < line_len)
-            {
-                /* Re-apply truncation at new position */
-                tp = ls;
-                gtk_text_iter_set_line_offset (&tp, new_trunc);
-
-                /* Insert marker */
-                if (marker)
-                    gtk_text_buffer_insert_with_tags (buf, &tp,
-                        " ...", -1, marker, NULL);
-
-                /* Re-fetch line end after insert */
-                gtk_text_buffer_get_iter_at_line (buf, &le, line);
-                if (!gtk_text_iter_ends_line (&le))
-                    gtk_text_iter_forward_to_line_end (&le);
-
-                /* Hide rest */
-                if (hidden)
-                    gtk_text_buffer_apply_tag (buf, hidden, &tp, &le);
-            }
-
-            /* Scroll to the new boundary or end of line */
-            {
-                GtkTextIter scroll_to;
-                gtk_text_buffer_get_iter_at_line (buf, &scroll_to, line);
-                if (new_trunc < line_len)
-                    gtk_text_iter_set_line_offset (&scroll_to, new_trunc - 1);
-                else {
-                    if (!gtk_text_iter_ends_line (&scroll_to))
-                        gtk_text_iter_forward_to_line_end (&scroll_to);
-                }
-                gtk_text_buffer_place_cursor (buf, &scroll_to);
-                gtk_text_view_scroll_to_iter (tv, &scroll_to, 0.05, FALSE, 1.0, 0.0);
-            }
-        }
-        return TRUE;
+        GtkTextIter scan;
+        gtk_text_buffer_get_iter_at_line (buf, &scan, line);
+        if (!gtk_text_iter_forward_to_tag_toggle (&scan, htag))
+            return FALSE;
+        if (gtk_text_iter_get_line (&scan) != line)
+            return FALSE;
     }
-    return FALSE;
+
+    /* Compute where the "..." marker is drawn and check if click hits it.
+     * This mirrors the logic in moo_text_view_draw_long_line_markers:
+     * - marker_x = position after last visible char on the line
+     * - if marker_x is off-screen, pin to right edge of viewport
+     * - marker width = text width of " ..." + 4px padding */
+    {
+        GtkTextIter line_start, tag_start, last_vis;
+        GdkRectangle char_rect, visible_rect;
+        PangoLayout *layout;
+        int win_x, win_y, right_edge;
+        int marker_x, marker_w, marker_h;
+        int click_wx, click_wy;
+
+        gtk_text_buffer_get_iter_at_line (buf, &line_start, line);
+        tag_start = line_start;
+        if (!gtk_text_iter_forward_to_tag_toggle (&tag_start, htag))
+            return FALSE;
+        if (gtk_text_iter_get_line (&tag_start) != line)
+            return FALSE;
+        if (gtk_text_iter_get_line_offset (&tag_start) == 0)
+            return FALSE;
+
+        /* Get position after last visible character (just before hidden starts) */
+        last_vis = tag_start;
+        gtk_text_iter_backward_char (&last_vis);
+        gtk_text_view_get_iter_location (tv, &last_vis, &char_rect);
+        gtk_text_view_buffer_to_window_coords (tv, GTK_TEXT_WINDOW_TEXT,
+            char_rect.x + char_rect.width, char_rect.y,
+            &win_x, &win_y);
+
+        /* Viewport right edge in window coords */
+        gtk_text_view_get_visible_rect (tv, &visible_rect);
+        gtk_text_view_buffer_to_window_coords (tv, GTK_TEXT_WINDOW_TEXT,
+            visible_rect.x + visible_rect.width, 0,
+            &right_edge, NULL);
+
+        /* Measure marker text */
+        layout = gtk_widget_create_pango_layout (widget, " ...");
+        pango_layout_get_pixel_size (layout, &marker_w, &marker_h);
+        g_object_unref (layout);
+        marker_w += 4;  /* padding, matches draw function */
+
+        /* Compute marker_x: same logic as draw function */
+        if (win_x >= 0 && win_x + marker_w <= right_edge)
+            marker_x = win_x;
+        else
+            marker_x = right_edge - marker_w;
+
+        if (marker_x < 0)
+            marker_x = 0;
+
+        /* Convert click position to window coords */
+        gtk_text_view_buffer_to_window_coords (tv, GTK_TEXT_WINDOW_TEXT,
+            bx, by, &click_wx, &click_wy);
+
+        /* Hit test: check if click is within the marker rectangle */
+        if (click_wx < marker_x || click_wx > marker_x + marker_w)
+            return FALSE;
+        if (click_wy < win_y || click_wy > win_y + char_rect.height)
+            return FALSE;
+    }
+
+    /* Click is on the "..." marker — reveal next chunk */
+    {
+        GtkTextIter ls, le, hidden_start, new_hide_start;
+        int old_trunc, line_len, new_trunc;
+
+        gtk_text_buffer_get_iter_at_line (buf, &ls, line);
+        le = ls;
+        if (!gtk_text_iter_ends_line (&le))
+            gtk_text_iter_forward_to_line_end (&le);
+
+        /* Find where the hidden tag starts on this line */
+        hidden_start = ls;
+        if (!gtk_text_iter_forward_to_tag_toggle (&hidden_start, htag))
+            return FALSE;
+        if (gtk_text_iter_get_line (&hidden_start) != line)
+            return FALSE;
+
+        old_trunc = gtk_text_iter_get_line_offset (&hidden_start);
+        line_len = gtk_text_iter_get_line_offset (&le);
+
+        /* Remove the hidden tag from this line entirely */
+        gtk_text_buffer_remove_tag (buf, htag, &ls, &le);
+
+        /* New truncation point: reveal 4096 more chars */
+        new_trunc = old_trunc + 4096;
+
+        if (new_trunc < line_len)
+        {
+            /* Re-apply hidden tag from new truncation point to line end */
+            new_hide_start = ls;
+            gtk_text_iter_set_line_offset (&new_hide_start, new_trunc);
+            gtk_text_buffer_apply_tag (buf, htag, &new_hide_start, &le);
+        }
+
+        /* Scroll to the new boundary or end of line */
+        {
+            GtkTextIter scroll_to;
+            gtk_text_buffer_get_iter_at_line (buf, &scroll_to, line);
+            if (new_trunc < line_len)
+                gtk_text_iter_set_line_offset (&scroll_to,
+                    new_trunc > 0 ? new_trunc - 1 : 0);
+            else
+            {
+                if (!gtk_text_iter_ends_line (&scroll_to))
+                    gtk_text_iter_forward_to_line_end (&scroll_to);
+            }
+            gtk_text_buffer_place_cursor (buf, &scroll_to);
+            gtk_text_view_scroll_to_iter (tv, &scroll_to, 0.05, FALSE, 1.0, 0.0);
+        }
+    }
+
+    gtk_widget_queue_draw (GTK_WIDGET (tv));
+    return TRUE;
+}
+
+/* After text is inserted, apply long-line truncation to affected lines */
+static void
+moo_ll_after_insert (GtkTextBuffer *buffer,
+                     GtkTextIter   *location,
+                     gchar         *text,
+                     gint           len,
+                     gpointer       user_data)
+{
+    extern void moo_ll_apply_range (GtkTextBuffer *buf, int first, int last);
+    GtkTextIter start_iter;
+    int first_line, last_line;
+
+    (void)user_data;
+
+    if (!GPOINTER_TO_INT (g_object_get_data (G_OBJECT (buffer), "moo-nowrap-mode")))
+        return;
+
+    /* location points to end of inserted text */
+    last_line = gtk_text_iter_get_line (location);
+    start_iter = *location;
+    gtk_text_iter_backward_chars (&start_iter, (int) g_utf8_strlen (text, len));
+    first_line = gtk_text_iter_get_line (&start_iter);
+
+    moo_ll_apply_range (buffer, first_line, last_line);
 }
 
 static void
@@ -850,6 +923,8 @@ moo_text_view_set_buffer_type (MooTextView *view,
 static void
 connect_buffer (MooTextView *view)
 {
+
+
     MooUndoStack *undo_stack;
     GtkTextBuffer *buffer = view->priv->buffer;
 
@@ -883,11 +958,14 @@ connect_buffer (MooTextView *view)
                       G_CALLBACK (moo_ll_click_handler), NULL);
     g_signal_connect (view, "notify::wrap-mode",
                       G_CALLBACK (moo_ll_wrap_changed), NULL);
+    g_signal_connect_after (buffer, "insert-text",
+                            G_CALLBACK (moo_ll_after_insert), NULL);
     {
         GtkWrapMode _wm = gtk_text_view_get_wrap_mode (GTK_TEXT_VIEW (view));
         g_object_set_data (G_OBJECT (buffer), "moo-nowrap-mode",
                            GINT_TO_POINTER (_wm == GTK_WRAP_NONE ? 1 : 0));
     }
+    moo_ll_apply (buffer);
 
 
     g_signal_connect_swapped (buffer, "line-mark-added",
@@ -2237,6 +2315,23 @@ moo_text_view_paste_clipboard (GtkTextView *text_view)
 
     gtk_text_buffer_end_user_action (buffer);
 
+    /* Apply long-line truncation to any pasted long lines */
+    {
+        extern void moo_ll_apply_range (GtkTextBuffer *buf, int first, int last);
+        int _n = gtk_text_buffer_get_line_count (buffer);
+        /* Ensure nowrap flag is set for new documents */
+        if (!GPOINTER_TO_INT (g_object_get_data (G_OBJECT (buffer), "moo-nowrap-mode")))
+        {
+            GtkWrapMode wm = gtk_text_view_get_wrap_mode (text_view);
+            if (wm == GTK_WRAP_NONE)
+                g_object_set_data (G_OBJECT (buffer), "moo-nowrap-mode",
+                                   GINT_TO_POINTER (1));
+        }
+        if (GPOINTER_TO_INT (g_object_get_data (G_OBJECT (buffer), "moo-nowrap-mode")))
+            moo_ll_apply_range (buffer, 0, _n - 1);
+    }
+
+
     /* Cursor is now at the end of the inserted text.
      * Only scroll if it's not already visible. */
     {
@@ -2601,6 +2696,110 @@ moo_text_view_draw_whitespace (GtkTextView       *text_view,
 }
 
 
+
+/* ------------------------------------------------------------------ */
+/* Draw "..." indicator at the end of truncated long lines            */
+/* ------------------------------------------------------------------ */
+
+#ifndef MOO_LONG_LINE_TAG
+#define MOO_LONG_LINE_TAG "moo-ll-hidden"
+#endif
+
+static void
+moo_text_view_draw_long_line_markers (GtkTextView *text_view,
+                                      cairo_t     *cr)
+{
+    GtkTextBuffer *buffer;
+    GtkTextTagTable *table;
+    GtkTextTag *htag;
+    GtkTextIter vis_start, vis_end;
+    GdkRectangle visible_rect;
+    int line, last_line;
+
+    buffer = gtk_text_view_get_buffer (text_view);
+    table = gtk_text_buffer_get_tag_table (buffer);
+    htag = gtk_text_tag_table_lookup (table, MOO_LONG_LINE_TAG);
+    if (!htag) return;
+
+    if (!GPOINTER_TO_INT (g_object_get_data (G_OBJECT (buffer), "moo-nowrap-mode")))
+        return;
+
+    gtk_text_view_get_visible_rect (text_view, &visible_rect);
+    gtk_text_view_get_line_at_y (text_view, &vis_start, visible_rect.y, NULL);
+    gtk_text_view_get_line_at_y (text_view, &vis_end,
+                                  visible_rect.y + visible_rect.height, NULL);
+    if (!gtk_text_iter_ends_line (&vis_end))
+        gtk_text_iter_forward_to_line_end (&vis_end);
+    last_line = gtk_text_iter_get_line (&vis_end);
+
+    cairo_save (cr);
+
+    for (line = gtk_text_iter_get_line (&vis_start); line <= last_line; line++)
+    {
+        GtkTextIter line_start, tag_start, last_vis;
+        int win_x, win_y, right_edge;
+        int draw_x;
+        GdkRectangle char_rect;
+
+        gtk_text_buffer_get_iter_at_line (buffer, &line_start, line);
+        tag_start = line_start;
+        if (!gtk_text_iter_forward_to_tag_toggle (&tag_start, htag))
+            continue;
+        if (gtk_text_iter_get_line (&tag_start) != line)
+            continue;
+        if (gtk_text_iter_get_line_offset (&tag_start) == 0)
+            continue;
+
+        /* Get position after last visible character */
+        last_vis = tag_start;
+        gtk_text_iter_backward_char (&last_vis);
+        gtk_text_view_get_iter_location (text_view, &last_vis, &char_rect);
+        gtk_text_view_buffer_to_window_coords (text_view, GTK_TEXT_WINDOW_TEXT,
+            char_rect.x + char_rect.width, char_rect.y,
+            &win_x, &win_y);
+
+        /* Right edge of viewport in window coords */
+        gtk_text_view_buffer_to_window_coords (text_view, GTK_TEXT_WINDOW_TEXT,
+            visible_rect.x + visible_rect.width, 0,
+            &right_edge, NULL);
+
+        {
+            PangoLayout *layout;
+            int tw, th;
+            GdkRGBA fg = {1.0, 1.0, 1.0, 1.0};
+            GdkRGBA bg = {0.33, 0.33, 0.33, 1.0};
+
+            layout = gtk_widget_create_pango_layout (GTK_WIDGET (text_view), " ...");
+            pango_layout_get_pixel_size (layout, &tw, &th);
+
+            /* Draw at the truncation point if it's visible,
+             * otherwise pin to the right edge of the viewport.
+             * This ensures "..." is always visible when the line
+             * is truncated, even if the truncation point is
+             * beyond the current scroll position. */
+            if (win_x >= 0 && win_x + tw + 4 <= right_edge)
+                draw_x = win_x;
+            else
+                draw_x = right_edge - tw - 4;
+
+            /* Only draw if draw_x is within the visible area */
+            if (draw_x < 0)
+                draw_x = 0;
+
+            cairo_set_source_rgba (cr, bg.red, bg.green, bg.blue, bg.alpha);
+            cairo_rectangle (cr, draw_x, win_y, tw + 4, char_rect.height);
+            cairo_fill (cr);
+
+            cairo_set_source_rgba (cr, fg.red, fg.green, fg.blue, fg.alpha);
+            cairo_move_to (cr, draw_x + 2, win_y + (char_rect.height - th) / 2);
+            pango_cairo_show_layout (cr, layout);
+            g_object_unref (layout);
+        }
+    }
+
+    cairo_restore (cr);
+}
+
 static gboolean
 moo_text_view_expose (GtkWidget      *widget,
                       cairo_t *cr)
@@ -2679,6 +2878,9 @@ moo_text_view_expose (GtkWidget      *widget,
         {
             if (view->priv->draw_whitespace != 0)
                 moo_text_view_draw_whitespace (text_view, cr, &start, &end);
+
+    /* Draw "..." on truncated long lines */
+    moo_text_view_draw_long_line_markers (text_view, cr);
         }
     }
 
