@@ -23,6 +23,9 @@
 #include "mooedit/moofold.h"
 #include "mooedit/mootextview.h"
 #include "mooedit/mootextbuffer.h"
+
+/* LL_EXTERN_DECL */
+extern void moo_ll_apply_range (GtkTextBuffer *buffer, int first_line, int last_line);
 #include "mooedit/mootextfind.h"
 #include "mooedit/mootext-private.h"
 #include "mooedit/mooeditprefs.h"
@@ -154,7 +157,7 @@ moo_ll_click_handler (GtkWidget *widget, GdkEventButton *event, gpointer data)
      * - marker width = text width of " ..." + 4px padding */
     {
         GtkTextIter line_start, tag_start, last_vis;
-        GdkRectangle char_rect, visible_rect;
+        GdkRectangle char_rect;
         PangoLayout *layout;
         int win_x, win_y, right_edge;
         int marker_x, marker_w, marker_h;
@@ -177,11 +180,9 @@ moo_ll_click_handler (GtkWidget *widget, GdkEventButton *event, gpointer data)
             char_rect.x + char_rect.width, char_rect.y,
             &win_x, &win_y);
 
-        /* Viewport right edge in window coords */
-        gtk_text_view_get_visible_rect (tv, &visible_rect);
-        gtk_text_view_buffer_to_window_coords (tv, GTK_TEXT_WINDOW_TEXT,
-            visible_rect.x + visible_rect.width, 0,
-            &right_edge, NULL);
+        /* LL_RIGHT_EDGE_FIX — use actual window width */
+        right_edge = gdk_window_get_width (
+            gtk_text_view_get_window (tv, GTK_TEXT_WINDOW_TEXT));
 
         /* Measure marker text */
         layout = gtk_widget_create_pango_layout (widget, " ...");
@@ -484,6 +485,8 @@ _moo_text_view_ensure_fold_header_tag (MooTextView *view)
 }
 
 /* Called when fold-toggled is emitted on the buffer */
+
+/* LL_FOLD_TOGGLE_FIX — manages ll truncation markers during fold/unfold */
 static void
 _moo_text_view_on_fold_toggled (MooTextBuffer  *buffer,
                                 MooFold        *fold,
@@ -491,13 +494,16 @@ _moo_text_view_on_fold_toggled (MooTextBuffer  *buffer,
 {
     GtkTextIter start, end;
     GtkTextBuffer *buf;
-    int fold_line;
+    int fold_line, fold_end_line;
 
     if (_moo_fold_is_deleted (fold))
         return;
 
     buf = GTK_TEXT_BUFFER (buffer);
     fold_line = _moo_fold_get_start (fold);
+    fold_end_line = _moo_fold_get_end (fold);
+
+    /* Apply/remove fold header highlight tag */
     gtk_text_buffer_get_iter_at_line (buf, &start, fold_line);
     end = start;
     gtk_text_iter_forward_line (&end);
@@ -514,10 +520,83 @@ _moo_text_view_on_fold_toggled (MooTextBuffer  *buffer,
                                         &start, &end);
     }
 
-    gtk_widget_queue_draw (GTK_WIDGET (view));
+    /* Long-line truncation marker management:
+     * When collapsing: remove ll-hidden tag from folded lines so
+     *   stale truncation markers don't paint on invisible lines.
+     * When expanding: re-apply ll truncation so markers reappear. */
+    if (fold->collapsed)
+    {
+        GtkTextTagTable *table = gtk_text_buffer_get_tag_table (buf);
+        GtkTextTag *ll_tag = gtk_text_tag_table_lookup (table, "moo-ll-hidden");
+
+        if (ll_tag && fold_end_line > fold_line + 1)
+        {
+            GtkTextIter ls, le;
+            gtk_text_buffer_get_iter_at_line (buf, &ls, fold_line + 1);
+            gtk_text_buffer_get_iter_at_line (buf, &le, fold_end_line);
+            if (!gtk_text_iter_ends_line (&le))
+                gtk_text_iter_forward_to_line_end (&le);
+            gtk_text_buffer_remove_tag (buf, ll_tag, &ls, &le);
+        }
+    }
+    else
+    {
+        if (fold_end_line > fold_line + 1)
+            moo_ll_apply_range (buf, fold_line + 1, fold_end_line - 1);
+    }
+
+    /* Redraw only the fold region */
+    {
+        GtkTextView *text_view = GTK_TEXT_VIEW (view);
+        GdkWindow *text_window;
+        GtkTextIter tmp_iter;
+        int line_y, line_h;
+        GdkRectangle redraw_rect;
+        int wy_start, wy_end;
+
+        text_window = gtk_text_view_get_window (text_view, GTK_TEXT_WINDOW_TEXT);
+        if (!text_window)
+        {
+            gtk_widget_queue_draw (GTK_WIDGET (view));
+            return;
+        }
+
+        gtk_text_buffer_get_iter_at_line (buf, &tmp_iter, fold_line);
+        gtk_text_view_get_line_yrange (text_view, &tmp_iter, &line_y, &line_h);
+        gtk_text_view_buffer_to_window_coords (text_view,
+                                                GTK_TEXT_WINDOW_TEXT,
+                                                0, line_y,
+                                                NULL, &wy_start);
+
+        gtk_text_buffer_get_iter_at_line (buf, &tmp_iter, fold_end_line);
+        gtk_text_view_get_line_yrange (text_view, &tmp_iter, &line_y, &line_h);
+        gtk_text_view_buffer_to_window_coords (text_view,
+                                                GTK_TEXT_WINDOW_TEXT,
+                                                0, line_y + line_h,
+                                                NULL, &wy_end);
+
+        redraw_rect.x = 0;
+        redraw_rect.y = wy_start;
+        redraw_rect.width = gdk_window_get_width (text_window);
+        redraw_rect.height = wy_end - wy_start + 1;
+
+        gdk_window_invalidate_rect (text_window, &redraw_rect, TRUE);
+
+        {
+            GdkWindow *left_window =
+                gtk_text_view_get_window (text_view, GTK_TEXT_WINDOW_LEFT);
+            if (left_window)
+            {
+                redraw_rect.width = gdk_window_get_width (left_window);
+                gdk_window_invalidate_rect (left_window, &redraw_rect, TRUE);
+            }
+        }
+    }
 }
 
+
 /* Draw " ..." after the end of text on each collapsed fold header line */
+
 static void
 _moo_text_view_draw_fold_ellipsis (MooTextView *view, cairo_t *cr)
 {
@@ -554,7 +633,9 @@ _moo_text_view_draw_fold_ellipsis (MooTextView *view, cairo_t *cr)
     if (!folds)
         return;
 
-    layout = gtk_widget_create_pango_layout (GTK_WIDGET (view), " \xe2\x80\xa6"); /* " …" */
+    /* Create ellipsis layout once */
+    layout = gtk_widget_create_pango_layout (GTK_WIDGET (view),
+                                              " \xe2\x80\xa6"); /* " …" */
     font_desc = pango_font_description_copy (
         pango_context_get_font_description (
             gtk_widget_get_pango_context (GTK_WIDGET (view))));
@@ -567,20 +648,38 @@ _moo_text_view_draw_fold_ellipsis (MooTextView *view, cairo_t *cr)
     for (l = folds; l != NULL; l = l->next)
     {
         MooFold *fold = (MooFold *) l->data;
-        GtkTextIter line_end_iter;
+        int fold_line;
+        int chars_in_line;
+        GtkTextIter line_start_iter, line_end_iter;
         GdkRectangle loc;
         int win_x, win_y;
-        int fold_line;
 
         if (!fold->collapsed || _moo_fold_is_deleted (fold))
             continue;
 
         fold_line = _moo_fold_get_start (fold);
-        gtk_text_buffer_get_iter_at_line (buffer, &line_end_iter, fold_line);
+
+        /* --- Guard 1: skip very long lines entirely --- */
+        gtk_text_buffer_get_iter_at_line (buffer, &line_start_iter, fold_line);
+        chars_in_line = gtk_text_iter_get_chars_in_line (&line_start_iter);
+        if (chars_in_line > 300)
+            continue;
+
+        /* Find end of text on this line */
+        line_end_iter = line_start_iter;
         if (!gtk_text_iter_ends_line (&line_end_iter))
             gtk_text_iter_forward_to_line_end (&line_end_iter);
 
+        /* Get pixel position of line end */
         gtk_text_view_get_iter_location (text_view, &line_end_iter, &loc);
+
+        /* --- Guard 2: if line end is past the right edge of the
+         *     visible area, the line is visually truncated.
+         *     Don't show ellipsis — it would overlap or confuse. --- */
+        if (loc.x + loc.width > visible_rect.x + visible_rect.width)
+            continue;
+
+        /* Convert to window coords and draw */
         gtk_text_view_buffer_to_window_coords (text_view,
                                                 GTK_TEXT_WINDOW_TEXT,
                                                 loc.x + loc.width,
@@ -632,15 +731,15 @@ _moo_text_view_draw_fold_guides (MooTextView *view, cairo_t *cr)
 
     cairo_save (cr);
     gdk_cairo_set_source_rgba (cr, &view->priv->fold_guide_color);
-    cairo_set_line_width (cr, 1.0);
+    cairo_set_line_width (cr, 2.0);
 
     for (l = folds; l != NULL; l = l->next)
     {
         MooFold *fold = (MooFold *) l->data;
         int start_line, end_line;
         GtkTextIter iter;
-        GdkRectangle start_loc, end_loc;
-        int indent_chars;
+        GdkRectangle start_loc, end_loc, iloc;
+        int guide_px;
         int win_x, y_top, y_bot;
         gunichar ch;
 
@@ -654,44 +753,29 @@ _moo_text_view_draw_fold_guides (MooTextView *view, cairo_t *cr)
         if (end_line < first_line || start_line > last_line)
             continue;
 
-        /* Compute indentation of the fold start line in pixels */
+        /* Align guide with the first non-whitespace character on
+         * the fold start line (the { line). For example:
+         *     keyname: {       -> aligns with 'k'
+         *     if (cond) {      -> aligns with 'i'
+         *   {                  -> aligns with '{'
+         */
         gtk_text_buffer_get_iter_at_line (buffer, &iter, start_line);
-        indent_chars = 0;
         while (!gtk_text_iter_ends_line (&iter))
         {
             ch = gtk_text_iter_get_char (&iter);
-            if (ch == ' ')
-                indent_chars++;
-            else if (ch == '\t')
-                indent_chars += view->priv->tab_width;
-            else
+            if (ch != ' ' && ch != '\t')
                 break;
             gtk_text_iter_forward_char (&iter);
         }
 
-        if (indent_chars <= 0)
-            continue;  /* top-level block at column 0 — skip guide */
+        /* If line is all whitespace, skip */
+        if (gtk_text_iter_ends_line (&iter))
+            continue;
 
-        /* Get pixel X of the indentation column */
-        {
-            GtkTextIter indent_iter;
-            GdkRectangle iloc;
-            int chars_in_line;
+        gtk_text_view_get_iter_location (text_view, &iter, &iloc);
+        guide_px = iloc.x;
 
-            gtk_text_buffer_get_iter_at_line (buffer, &indent_iter, start_line);
-            chars_in_line = gtk_text_iter_get_chars_in_line (&indent_iter);
-            if (chars_in_line > 1)
-            {
-                int target_off = indent_chars;
-                if (target_off >= chars_in_line)
-                    target_off = chars_in_line - 1;
-                gtk_text_iter_set_line_offset (&indent_iter, target_off);
-            }
-            gtk_text_view_get_iter_location (text_view, &indent_iter, &iloc);
-            win_x = iloc.x;  /* will convert below */
-        }
-
-        /* Y coordinates */
+        /* Y coordinates: from line below { to the } line */
         gtk_text_buffer_get_iter_at_line (buffer, &iter, start_line);
         gtk_text_view_get_iter_location (text_view, &iter, &start_loc);
 
@@ -702,7 +786,7 @@ _moo_text_view_draw_fold_guides (MooTextView *view, cairo_t *cr)
             int tmp_x;
             gtk_text_view_buffer_to_window_coords (text_view,
                                                     GTK_TEXT_WINDOW_TEXT,
-                                                    win_x,
+                                                    guide_px,
                                                     start_loc.y + start_loc.height,
                                                     &tmp_x, &y_top);
             win_x = tmp_x;
@@ -3987,10 +4071,9 @@ moo_text_view_draw_long_line_markers (GtkTextView *text_view,
             char_rect.x + char_rect.width, char_rect.y,
             &win_x, &win_y);
 
-        /* Right edge of viewport in window coords */
-        gtk_text_view_buffer_to_window_coords (text_view, GTK_TEXT_WINDOW_TEXT,
-            visible_rect.x + visible_rect.width, 0,
-            &right_edge, NULL);
+        /* LL_RIGHT_EDGE_FIX — use actual window width, not buffer coords */
+        right_edge = gdk_window_get_width (
+            gtk_text_view_get_window (text_view, GTK_TEXT_WINDOW_TEXT));
 
         {
             PangoLayout *layout;
@@ -4009,17 +4092,29 @@ moo_text_view_draw_long_line_markers (GtkTextView *text_view,
             if (win_x >= 0 && win_x + tw + 4 <= right_edge)
                 draw_x = win_x;
             else
-                draw_x = right_edge - tw - 4;
+                draw_x = right_edge - tw; /* flush to right edge */
 
             /* Only draw if draw_x is within the visible area */
             if (draw_x < 0)
                 draw_x = 0;
 
             cairo_set_source_rgba (cr, bg.red, bg.green, bg.blue, bg.alpha);
-            cairo_rectangle (cr, draw_x, win_y, tw + 4, char_rect.height);
+            cairo_rectangle (cr, draw_x, win_y, right_edge - draw_x + 20, char_rect.height);
             cairo_fill (cr);
 
             cairo_set_source_rgba (cr, fg.red, fg.green, fg.blue, fg.alpha);
+                    /* LL_MARKER_CLAMP_FIX — pin marker to right edge */
+                    {
+                        GdkWindow *_tw = gtk_text_view_get_window (text_view, GTK_TEXT_WINDOW_TEXT);
+                        if (_tw)
+                        {
+                            int _tw_w = gdk_window_get_width (_tw);
+                            int _mk_w, _mk_h;
+                            pango_layout_get_pixel_size (layout, &_mk_w, &_mk_h);
+                            if (win_x + _mk_w > _tw_w || win_x > _tw_w)
+                                win_x = _tw_w - _mk_w;
+                        }
+                    }
             cairo_move_to (cr, draw_x + 2, win_y + (char_rect.height - th) / 2);
             pango_cairo_show_layout (cr, layout);
             g_object_unref (layout);

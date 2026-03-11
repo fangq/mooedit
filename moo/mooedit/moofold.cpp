@@ -610,7 +610,6 @@ expand_check_visible (MooFoldTree *tree,
                                               _moo_fold_get_end (child) + 1);
             gtk_text_buffer_get_iter_at_line (buffer, &end,
                                               _moo_fold_get_end (fold));
-            gtk_text_iter_forward_line (&end);
             gtk_text_buffer_remove_tag_by_name (buffer, MOO_FOLD_TAG, &start, &end);
         }
     }
@@ -619,7 +618,6 @@ expand_check_visible (MooFoldTree *tree,
         start = end;
         gtk_text_buffer_get_iter_at_line (buffer, &end,
                                           _moo_fold_get_end (fold));
-        gtk_text_iter_forward_line (&end);
         gtk_text_buffer_remove_tag_by_name (buffer, MOO_FOLD_TAG, &start, &end);
     }
 }
@@ -716,7 +714,6 @@ _moo_fold_tree_collapse (MooFoldTree *tree,
                                       _moo_fold_get_start (fold) + 1);
     gtk_text_buffer_get_iter_at_line (buffer, &end,
                                       _moo_fold_get_end (fold));
-    gtk_text_iter_forward_line (&end);
     gtk_text_buffer_apply_tag_by_name (buffer, MOO_FOLD_TAG, &start, &end);
 }
 
