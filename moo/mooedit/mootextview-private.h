@@ -134,6 +134,15 @@ struct MooTextViewPrivate {
     guint update_n_lines_idle;
 
     gboolean enable_folding;
+
+    /***********************************************************************/
+    /* Fold visual features (ellipsis, header bg, guide lines)
+     */  /* FOLD_VISUALS patched */
+    GtkTextTag *fold_header_tag;
+    GdkRGBA     fold_header_bg;
+    GdkRGBA     fold_ellipsis_fg;
+    GdkRGBA     fold_guide_color;
+
     GSList *line_marks;
 
     /***********************************************************************/

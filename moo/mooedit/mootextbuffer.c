@@ -2074,7 +2074,10 @@ moo_text_buffer_add_fold (MooTextBuffer *buffer,
     g_return_val_if_fail (last_line < gtk_text_buffer_get_line_count (GTK_TEXT_BUFFER (buffer)), NULL);
 
     fold = _moo_fold_tree_add (buffer->priv->fold_tree, first_line, last_line);
-    g_return_val_if_fail (fold != NULL, NULL);
+    /* FOLD_VISUALS fold-null-fix */
+    /* NULL is normal: overlapping/boundary fold ranges from bracket scanner */
+    if (fold == NULL)
+        return NULL;
 
     g_object_ref (fold);
     g_signal_emit (buffer, signals[FOLD_ADDED], 0, fold);
@@ -2148,6 +2151,25 @@ moo_text_buffer_get_fold_at_line (MooTextBuffer *buffer,
 
     g_slist_free (marks);
     return fold;
+}
+
+/* FOLD_VISUALS get_folds_in_range impl */
+GSList *
+moo_text_buffer_get_folds_in_range (MooTextBuffer *buffer,
+                                    int            first_line,
+                                    int            last_line)
+{
+    g_return_val_if_fail (MOO_IS_TEXT_BUFFER (buffer), NULL);
+    g_return_val_if_fail (buffer->priv->fold_tree != NULL, NULL);
+
+    if (first_line < 0)
+        first_line = 0;
+    if (last_line >= gtk_text_buffer_get_line_count (GTK_TEXT_BUFFER (buffer)))
+        last_line = gtk_text_buffer_get_line_count (GTK_TEXT_BUFFER (buffer)) - 1;
+    if (first_line > last_line)
+        return NULL;
+
+    return _moo_fold_tree_get (buffer->priv->fold_tree, first_line, last_line);
 }
 
 

@@ -20,6 +20,7 @@
 #include "mooedit/mooedit-accels.h"
 #define SAFE_GDK_WINDOW_GET_WIDTH(w) ((w) && GDK_IS_WINDOW(w) ? gdk_window_get_width(w) : 0)
 #include "mooedit/mootextview-private.h"
+#include "mooedit/moofold.h"
 #include "mooedit/mootextview.h"
 #include "mooedit/mootextbuffer.h"
 #include "mooedit/mootextfind.h"
@@ -425,6 +426,303 @@ enum {
 };
 
 static guint signals[LAST_SIGNAL];
+
+/* ======================================================================
+ * FOLD VISUALS — ellipsis, header highlight, vertical guide lines
+ * ====================================================================== */
+/* FOLD_VISUALS_DRAW patched */
+
+#include "mooedit/moofold.h"
+#include "mooedit/mootext-private.h"
+#include "mooedit/mootextbuffer.h"
+
+static void
+_moo_text_view_init_fold_visuals (MooTextView *view)
+{
+    view->priv->fold_header_bg.red   = 0.20;
+    view->priv->fold_header_bg.green = 0.20;
+    view->priv->fold_header_bg.blue  = 0.30;
+    view->priv->fold_header_bg.alpha = 0.30;
+
+    view->priv->fold_ellipsis_fg.red   = 0.60;
+    view->priv->fold_ellipsis_fg.green = 0.60;
+    view->priv->fold_ellipsis_fg.blue  = 0.65;
+    view->priv->fold_ellipsis_fg.alpha = 1.0;
+
+    view->priv->fold_guide_color.red   = 0.40;
+    view->priv->fold_guide_color.green = 0.40;
+    view->priv->fold_guide_color.blue  = 0.40;
+    view->priv->fold_guide_color.alpha = 0.35;
+}
+
+static void
+_moo_text_view_ensure_fold_header_tag (MooTextView *view)
+{
+    GtkTextBuffer *buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
+    GtkTextTagTable *table;
+
+    if (!buffer)
+        return;
+
+    table = gtk_text_buffer_get_tag_table (buffer);
+
+    if (!gtk_text_tag_table_lookup (table, "moo-fold-header"))
+    {
+        view->priv->fold_header_tag = gtk_text_buffer_create_tag (
+            buffer, "moo-fold-header",
+            "paragraph-background", "#2a2a3a",
+            NULL);
+        /* Give it high priority so it shows over syntax tags */
+        gtk_text_tag_set_priority (view->priv->fold_header_tag,
+            gtk_text_tag_table_get_size (table) - 1);
+    }
+    else
+    {
+        view->priv->fold_header_tag =
+            gtk_text_tag_table_lookup (table, "moo-fold-header");
+    }
+}
+
+/* Called when fold-toggled is emitted on the buffer */
+static void
+_moo_text_view_on_fold_toggled (MooTextBuffer  *buffer,
+                                MooFold        *fold,
+                                MooTextView    *view)
+{
+    GtkTextIter start, end;
+    GtkTextBuffer *buf;
+    int fold_line;
+
+    if (_moo_fold_is_deleted (fold))
+        return;
+
+    buf = GTK_TEXT_BUFFER (buffer);
+    fold_line = _moo_fold_get_start (fold);
+    gtk_text_buffer_get_iter_at_line (buf, &start, fold_line);
+    end = start;
+    gtk_text_iter_forward_line (&end);
+
+    _moo_text_view_ensure_fold_header_tag (view);
+
+    if (view->priv->fold_header_tag)
+    {
+        if (fold->collapsed)
+            gtk_text_buffer_apply_tag (buf, view->priv->fold_header_tag,
+                                       &start, &end);
+        else
+            gtk_text_buffer_remove_tag (buf, view->priv->fold_header_tag,
+                                        &start, &end);
+    }
+
+    gtk_widget_queue_draw (GTK_WIDGET (view));
+}
+
+/* Draw " ..." after the end of text on each collapsed fold header line */
+static void
+_moo_text_view_draw_fold_ellipsis (MooTextView *view, cairo_t *cr)
+{
+    GtkTextView *text_view = GTK_TEXT_VIEW (view);
+    GtkTextBuffer *buffer = gtk_text_view_get_buffer (text_view);
+    MooTextBuffer *mbuf;
+    GdkRectangle visible_rect;
+    GtkTextIter vis_iter;
+    int first_line, last_line, total_lines;
+    GSList *folds, *l;
+    PangoLayout *layout;
+    PangoFontDescription *font_desc;
+
+    if (!MOO_IS_TEXT_BUFFER (buffer))
+        return;
+
+    mbuf = MOO_TEXT_BUFFER (buffer);
+    total_lines = gtk_text_buffer_get_line_count (buffer);
+    if (total_lines < 2)
+        return;
+
+    gtk_text_view_get_visible_rect (text_view, &visible_rect);
+    gtk_text_view_get_line_at_y (text_view, &vis_iter, visible_rect.y, NULL);
+    first_line = gtk_text_iter_get_line (&vis_iter);
+    gtk_text_view_get_line_at_y (text_view, &vis_iter,
+                                  visible_rect.y + visible_rect.height, NULL);
+    last_line = gtk_text_iter_get_line (&vis_iter);
+    if (last_line >= total_lines)
+        last_line = total_lines - 1;
+    if (first_line > last_line)
+        return;
+
+    folds = moo_text_buffer_get_folds_in_range (mbuf, first_line, last_line);
+    if (!folds)
+        return;
+
+    layout = gtk_widget_create_pango_layout (GTK_WIDGET (view), " \xe2\x80\xa6"); /* " …" */
+    font_desc = pango_font_description_copy (
+        pango_context_get_font_description (
+            gtk_widget_get_pango_context (GTK_WIDGET (view))));
+    pango_font_description_set_style (font_desc, PANGO_STYLE_ITALIC);
+    pango_layout_set_font_description (layout, font_desc);
+
+    cairo_save (cr);
+    gdk_cairo_set_source_rgba (cr, &view->priv->fold_ellipsis_fg);
+
+    for (l = folds; l != NULL; l = l->next)
+    {
+        MooFold *fold = (MooFold *) l->data;
+        GtkTextIter line_end_iter;
+        GdkRectangle loc;
+        int win_x, win_y;
+        int fold_line;
+
+        if (!fold->collapsed || _moo_fold_is_deleted (fold))
+            continue;
+
+        fold_line = _moo_fold_get_start (fold);
+        gtk_text_buffer_get_iter_at_line (buffer, &line_end_iter, fold_line);
+        if (!gtk_text_iter_ends_line (&line_end_iter))
+            gtk_text_iter_forward_to_line_end (&line_end_iter);
+
+        gtk_text_view_get_iter_location (text_view, &line_end_iter, &loc);
+        gtk_text_view_buffer_to_window_coords (text_view,
+                                                GTK_TEXT_WINDOW_TEXT,
+                                                loc.x + loc.width,
+                                                loc.y,
+                                                &win_x, &win_y);
+        cairo_move_to (cr, win_x + 4.0, win_y);
+        pango_cairo_show_layout (cr, layout);
+    }
+
+    cairo_restore (cr);
+    pango_font_description_free (font_desc);
+    g_object_unref (layout);
+    g_slist_free (folds);
+}
+
+/* Draw vertical indent guide lines for expanded folds */
+static void
+_moo_text_view_draw_fold_guides (MooTextView *view, cairo_t *cr)
+{
+    GtkTextView *text_view = GTK_TEXT_VIEW (view);
+    GtkTextBuffer *buffer = gtk_text_view_get_buffer (text_view);
+    MooTextBuffer *mbuf;
+    GdkRectangle visible_rect;
+    GtkTextIter vis_iter;
+    int first_line, last_line, total_lines;
+    GSList *folds, *l;
+
+    if (!MOO_IS_TEXT_BUFFER (buffer))
+        return;
+
+    mbuf = MOO_TEXT_BUFFER (buffer);
+    total_lines = gtk_text_buffer_get_line_count (buffer);
+    if (total_lines < 2)
+        return;
+
+    gtk_text_view_get_visible_rect (text_view, &visible_rect);
+    gtk_text_view_get_line_at_y (text_view, &vis_iter, visible_rect.y, NULL);
+    first_line = gtk_text_iter_get_line (&vis_iter);
+    gtk_text_view_get_line_at_y (text_view, &vis_iter,
+                                  visible_rect.y + visible_rect.height, NULL);
+    last_line = gtk_text_iter_get_line (&vis_iter);
+    if (last_line >= total_lines)
+        last_line = total_lines - 1;
+
+    /* Get ALL folds (from line 0) so we catch folds starting above viewport */
+    folds = moo_text_buffer_get_folds_in_range (mbuf, 0, last_line);
+    if (!folds)
+        return;
+
+    cairo_save (cr);
+    gdk_cairo_set_source_rgba (cr, &view->priv->fold_guide_color);
+    cairo_set_line_width (cr, 1.0);
+
+    for (l = folds; l != NULL; l = l->next)
+    {
+        MooFold *fold = (MooFold *) l->data;
+        int start_line, end_line;
+        GtkTextIter iter;
+        GdkRectangle start_loc, end_loc;
+        int indent_chars;
+        int win_x, y_top, y_bot;
+        gunichar ch;
+
+        if (_moo_fold_is_deleted (fold) || fold->collapsed)
+            continue;
+
+        start_line = _moo_fold_get_start (fold);
+        end_line   = _moo_fold_get_end (fold);
+
+        /* Skip folds entirely outside the viewport */
+        if (end_line < first_line || start_line > last_line)
+            continue;
+
+        /* Compute indentation of the fold start line in pixels */
+        gtk_text_buffer_get_iter_at_line (buffer, &iter, start_line);
+        indent_chars = 0;
+        while (!gtk_text_iter_ends_line (&iter))
+        {
+            ch = gtk_text_iter_get_char (&iter);
+            if (ch == ' ')
+                indent_chars++;
+            else if (ch == '\t')
+                indent_chars += view->priv->tab_width;
+            else
+                break;
+            gtk_text_iter_forward_char (&iter);
+        }
+
+        if (indent_chars <= 0)
+            continue;  /* top-level block at column 0 — skip guide */
+
+        /* Get pixel X of the indentation column */
+        {
+            GtkTextIter indent_iter;
+            GdkRectangle iloc;
+            int chars_in_line;
+
+            gtk_text_buffer_get_iter_at_line (buffer, &indent_iter, start_line);
+            chars_in_line = gtk_text_iter_get_chars_in_line (&indent_iter);
+            if (chars_in_line > 1)
+            {
+                int target_off = indent_chars;
+                if (target_off >= chars_in_line)
+                    target_off = chars_in_line - 1;
+                gtk_text_iter_set_line_offset (&indent_iter, target_off);
+            }
+            gtk_text_view_get_iter_location (text_view, &indent_iter, &iloc);
+            win_x = iloc.x;  /* will convert below */
+        }
+
+        /* Y coordinates */
+        gtk_text_buffer_get_iter_at_line (buffer, &iter, start_line);
+        gtk_text_view_get_iter_location (text_view, &iter, &start_loc);
+
+        gtk_text_buffer_get_iter_at_line (buffer, &iter, end_line);
+        gtk_text_view_get_iter_location (text_view, &iter, &end_loc);
+
+        {
+            int tmp_x;
+            gtk_text_view_buffer_to_window_coords (text_view,
+                                                    GTK_TEXT_WINDOW_TEXT,
+                                                    win_x,
+                                                    start_loc.y + start_loc.height,
+                                                    &tmp_x, &y_top);
+            win_x = tmp_x;
+        }
+        gtk_text_view_buffer_to_window_coords (text_view,
+                                                GTK_TEXT_WINDOW_TEXT,
+                                                0,
+                                                end_loc.y + end_loc.height,
+                                                NULL, &y_bot);
+
+        /* Draw the vertical guide */
+        cairo_move_to (cr, win_x + 0.5, y_top);
+        cairo_line_to (cr, win_x + 0.5, y_bot);
+        cairo_stroke (cr);
+    }
+
+    cairo_restore (cr);
+    g_slist_free (folds);
+}
+
 gpointer _moo_text_view_parent_class = NULL;
 
 enum {
@@ -927,6 +1225,279 @@ moo_text_view_set_buffer_type (MooTextView *view,
         view->priv->buffer_type = type;
 }
 
+/* ------------------------------------------------------------------ */
+/* Automatic brace-based code folding                                  */
+/* ------------------------------------------------------------------ */
+
+static void
+moo_fold_clear_all (MooTextBuffer *mbuf)
+{
+    /* Remove all existing folds using the public API.
+     * Iterate lines and remove any fold found. Repeat until
+     * no folds remain (nested folds may be revealed). */
+    int line_count = gtk_text_buffer_get_line_count (GTK_TEXT_BUFFER (mbuf));
+    gboolean found = TRUE;
+    while (found)
+    {
+        int i;
+        found = FALSE;
+        for (i = 0; i < line_count; i++)
+        {
+            MooFold *fold = moo_text_buffer_get_fold_at_line (mbuf, i);
+            if (fold)
+            {
+                /* Expand before delete to make nested folds visible */
+                if (fold->collapsed)
+                    moo_text_buffer_toggle_fold (mbuf, fold);
+                moo_text_buffer_delete_fold (mbuf, fold);
+                found = TRUE;
+                break;  /* Restart scan since line numbers may have shifted */
+            }
+        }
+    }
+}
+
+static void
+moo_fold_scan_braces (GtkTextView *text_view)
+{
+    GtkTextBuffer *buffer;
+    MooTextBuffer *mbuf;
+    GtkTextIter iter;
+    int line_count;
+    int *stack;
+    int stack_size, stack_cap;
+    gboolean in_string, in_char, in_line_comment, in_block_comment;
+    gunichar prev_ch;
+
+    buffer = gtk_text_view_get_buffer (text_view);
+    if (!MOO_IS_TEXT_BUFFER (buffer))
+        return;
+
+    mbuf = MOO_TEXT_BUFFER (buffer);
+
+    /* Check that this is a valid MooTextBuffer */
+    if (!mbuf)
+        return;
+
+    /* Save which fold start-lines are currently collapsed */
+    {
+        int _i;
+        int _n = gtk_text_buffer_get_line_count (buffer);
+        GArray *collapsed_lines = g_array_new (FALSE, FALSE, sizeof(int));
+        for (_i = 0; _i < _n; _i++)
+        {
+            MooFold *_f = moo_text_buffer_get_fold_at_line (mbuf, _i);
+            if (_f && _f->collapsed)
+                g_array_append_val (collapsed_lines, _i);
+        }
+
+        /* Clear existing folds */
+        moo_fold_clear_all (mbuf);
+
+        /* Store collapsed lines for later restoration */
+        g_object_set_data_full (G_OBJECT (buffer), "moo-fold-collapsed-lines",
+                                collapsed_lines, (GDestroyNotify) g_array_unref);
+    }
+
+    line_count = gtk_text_buffer_get_line_count (buffer);
+    if (line_count < 2)
+        return;
+
+    /* Stack of opening brace line numbers */
+    stack_cap = 64;
+    stack_size = 0;
+    stack = g_new (int, stack_cap);
+
+    /* Scan character by character, tracking string/comment state */
+    gtk_text_buffer_get_start_iter (buffer, &iter);
+    in_string = FALSE;
+    in_char = FALSE;
+    in_line_comment = FALSE;
+    in_block_comment = FALSE;
+    prev_ch = 0;
+
+    while (!gtk_text_iter_is_end (&iter))
+    {
+        gunichar ch = gtk_text_iter_get_char (&iter);
+        int line = gtk_text_iter_get_line (&iter);
+
+        /* Handle newline: reset line comment */
+        if (ch == '\n')
+        {
+            in_line_comment = FALSE;
+            in_string = FALSE;  /* unterminated string resets at EOL */
+            in_char = FALSE;
+            prev_ch = ch;
+            gtk_text_iter_forward_char (&iter);
+            continue;
+        }
+
+        /* Skip if inside comment or string */
+        if (in_line_comment)
+        {
+            prev_ch = ch;
+            gtk_text_iter_forward_char (&iter);
+            continue;
+        }
+
+        if (in_block_comment)
+        {
+            if (ch == '/' && prev_ch == '*')
+                in_block_comment = FALSE;
+            prev_ch = ch;
+            gtk_text_iter_forward_char (&iter);
+            continue;
+        }
+
+        if (in_string)
+        {
+            if (ch == '"' && prev_ch != '\\')
+                in_string = FALSE;
+            prev_ch = (prev_ch == '\\' && ch == '\\') ? 0 : ch;
+            gtk_text_iter_forward_char (&iter);
+            continue;
+        }
+
+        if (in_char)
+        {
+            if (ch == '\'' && prev_ch != '\\')
+                in_char = FALSE;
+            prev_ch = (prev_ch == '\\' && ch == '\\') ? 0 : ch;
+            gtk_text_iter_forward_char (&iter);
+            continue;
+        }
+
+        /* Detect comment/string start */
+        if (ch == '/' && prev_ch == '/')
+        {
+            in_line_comment = TRUE;
+            prev_ch = ch;
+            gtk_text_iter_forward_char (&iter);
+            continue;
+        }
+
+        if (ch == '*' && prev_ch == '/')
+        {
+            in_block_comment = TRUE;
+            prev_ch = ch;
+            gtk_text_iter_forward_char (&iter);
+            continue;
+        }
+
+        if (ch == '"')
+        {
+            in_string = TRUE;
+            prev_ch = ch;
+            gtk_text_iter_forward_char (&iter);
+            continue;
+        }
+
+        if (ch == '\'')
+        {
+            in_char = TRUE;
+            prev_ch = ch;
+            gtk_text_iter_forward_char (&iter);
+            continue;
+        }
+
+        /* Track braces */
+        if (ch == '{')
+        {
+            if (stack_size >= stack_cap)
+            {
+                stack_cap *= 2;
+                stack = g_renew (int, stack, stack_cap);
+            }
+            stack[stack_size++] = line;
+        }
+        else if (ch == '}')
+        {
+            if (stack_size > 0)
+            {
+                int open_line = stack[--stack_size];
+                int close_line = line;
+
+                /* Only create fold if it spans multiple lines */
+                if (close_line > open_line + 1)
+                {
+                    { g_log_set_handler ("Moo", G_LOG_LEVEL_CRITICAL, (GLogFunc) g_log_default_handler, NULL); moo_text_buffer_add_fold (mbuf, open_line, close_line); }
+                }
+            }
+        }
+
+        prev_ch = ch;
+        gtk_text_iter_forward_char (&iter);
+    }
+
+    /* Restore collapsed state */
+    {
+        GArray *collapsed_lines = (GArray *) g_object_get_data (
+            G_OBJECT (buffer), "moo-fold-collapsed-lines");
+        if (collapsed_lines)
+        {
+            guint _j;
+            for (_j = 0; _j < collapsed_lines->len; _j++)
+            {
+                int cline = g_array_index (collapsed_lines, int, _j);
+                MooFold *_f = moo_text_buffer_get_fold_at_line (mbuf, cline);
+                if (_f && !_f->collapsed)
+                    moo_text_buffer_toggle_fold (mbuf, _f);
+            }
+            g_object_set_data (G_OBJECT (buffer), "moo-fold-collapsed-lines", NULL);
+        }
+    }
+
+    g_free (stack);
+}
+
+/* Debounced fold update: schedule via idle */
+static gboolean
+moo_fold_update_idle (gpointer data)
+{
+    MooTextView *view = MOO_TEXT_VIEW (data);
+    guint *idle_id;
+
+    idle_id = (guint *) g_object_get_data (G_OBJECT (view), "moo-fold-update-idle");
+    if (idle_id)
+        *idle_id = 0;
+
+    if (view->priv->enable_folding)
+        moo_fold_scan_braces (GTK_TEXT_VIEW (view));
+
+    return G_SOURCE_REMOVE;
+}
+
+static void
+moo_fold_schedule_update (MooTextView *view)
+{
+    guint *idle_id;
+
+    if (!view->priv->enable_folding)
+        return;
+
+    idle_id = (guint *) g_object_get_data (G_OBJECT (view), "moo-fold-update-idle");
+    if (!idle_id)
+    {
+        idle_id = g_new0 (guint, 1);
+        g_object_set_data_full (G_OBJECT (view), "moo-fold-update-idle",
+                                idle_id, g_free);
+    }
+
+    if (*idle_id == 0)
+    {
+        *idle_id = g_idle_add_full (G_PRIORITY_LOW,
+                                    moo_fold_update_idle, view, NULL);
+    }
+}
+
+/* Called after buffer text changes */
+static void
+moo_fold_after_buffer_changed (MooTextView *view)
+{
+    moo_fold_schedule_update (view);
+}
+
+
 static void
 connect_buffer (MooTextView *view)
 {
@@ -974,6 +1545,13 @@ connect_buffer (MooTextView *view)
     }
     moo_ll_apply (buffer);
 
+    /* Enable folding and scan for brace folds */
+    if (!view->priv->enable_folding)
+        set_enable_folding (view, TRUE);
+    moo_fold_scan_braces (GTK_TEXT_VIEW (view));
+    g_signal_connect_swapped (buffer, "changed",
+                              G_CALLBACK (moo_fold_after_buffer_changed), view);
+
 
     g_signal_connect_swapped (buffer, "line-mark-added",
                               G_CALLBACK (line_mark_added), view);
@@ -1005,6 +1583,18 @@ disconnect_buffer (MooTextView *view)
     /* Disconnect long-line after-insert handler (connected with NULL data) */
     g_signal_handlers_disconnect_by_func (view->priv->buffer,
                                           (gpointer) moo_ll_after_insert, NULL);
+
+    /* Disconnect fold update handler */
+    g_signal_handlers_disconnect_by_func (view->priv->buffer,
+                                          (gpointer) moo_fold_after_buffer_changed, view);
+    {
+        guint *idle_id = (guint *) g_object_get_data (G_OBJECT (view), "moo-fold-update-idle");
+        if (idle_id && *idle_id)
+        {
+            g_source_remove (*idle_id);
+            *idle_id = 0;
+        }
+    }
     g_signal_handlers_disconnect_matched (view->priv->buffer,
                                           G_SIGNAL_MATCH_DATA,
                                           0, 0, NULL, NULL,
@@ -1041,6 +1631,8 @@ moo_text_view_constructor (GType                  type,
     g_assert (view->priv->buffer == gtk_text_view_get_buffer (GTK_TEXT_VIEW (view)));
 
     view->priv->constructed = TRUE;
+
+    _moo_text_view_init_fold_visuals (view);
 
     g_object_set (view->priv->buffer,
                   "highlight-matching-brackets", view->priv->highlight_matching_brackets,
@@ -1336,6 +1928,16 @@ moo_text_view_set_property (GObject        *object,
 
             gtk_text_view_set_buffer (GTK_TEXT_VIEW (view), buffer);
             view->priv->buffer = buffer;
+
+/* Connect fold-toggled for visual features */
+if (MOO_IS_TEXT_BUFFER (gtk_text_view_get_buffer (GTK_TEXT_VIEW (view))))
+{
+    _moo_text_view_ensure_fold_header_tag (view);
+    g_signal_connect (gtk_text_view_get_buffer (GTK_TEXT_VIEW (view)),
+                     "fold-toggled",
+                     G_CALLBACK (_moo_text_view_on_fold_toggled),
+                     view);
+}
             break;
 
         case PROP_INDENTER:
@@ -3464,7 +4066,7 @@ moo_text_view_expose (GtkWidget      *widget,
 
     if (left_window && GDK_IS_WINDOW(left_window) && gtk_cairo_should_draw_window (cr, left_window))
         draw_left_margin (view, cr);
-    else if (text_window && GDK_IS_WINDOW(text_window) && gtk_cairo_should_draw_window (cr, text_window))
+    if (text_window && GDK_IS_WINDOW(text_window) && gtk_cairo_should_draw_window (cr, text_window))
         draw_marks_background (view, cr);
 
     if (text_window && GDK_IS_WINDOW(text_window) && gtk_cairo_should_draw_window (cr, text_window))
@@ -3481,6 +4083,22 @@ moo_text_view_expose (GtkWidget      *widget,
     }
 
     handled = GTK_WIDGET_CLASS(moo_text_view_parent_class)->draw (widget, cr);
+    /* --- FOLD VISUALS overlay (after parent draw) --- */
+    if (view->priv->enable_folding)
+    {
+        GdkWindow *text_window =
+            gtk_text_view_get_window (GTK_TEXT_VIEW (widget), GTK_TEXT_WINDOW_TEXT);
+
+        if (text_window && gtk_cairo_should_draw_window (cr, text_window))
+        {
+            cairo_save (cr);
+            gtk_cairo_transform_to_window (cr, widget, text_window);
+            _moo_text_view_draw_fold_guides (MOO_TEXT_VIEW (widget), cr);
+            _moo_text_view_draw_fold_ellipsis (MOO_TEXT_VIEW (widget), cr);
+            cairo_restore (cr);
+        }
+    }
+
     /* Fill left margin background after parent draw */
     if (left_window && GDK_IS_WINDOW(left_window) && gtk_cairo_should_draw_window(cr, left_window))
     {
@@ -4017,32 +4635,53 @@ draw_marks (MooTextView    *view,
 static void
 draw_fold_mark (MooTextView    *view,
                 cairo_t *cr_param,
-                G_GNUC_UNUSED MooFold        *fold,
+                MooFold        *fold,
                 int             y,
                 int             height,
                 int             window_width)
 {
+    /* VS Code-style rotating triangle:
+     * ▼ (pointing down) when expanded, ▶ (pointing right) when collapsed */
+    int cx, cy, sz;
+    GtkStyleContext *ctx;
+    GdkRGBA fg = {0.6, 0.6, 0.6, 1.0};
+
+    sz = view->priv->lm.fold_width - 4;
+    if (sz < 6) sz = 6;
+    cx = window_width - view->priv->lm.fold_width / 2;
+    cy = y + height / 2;
+
+    /* Get foreground color from theme */
+    ctx = gtk_widget_get_style_context (GTK_WIDGET (view));
+    gtk_style_context_save (ctx);
+    gtk_style_context_get_color (ctx, gtk_style_context_get_state (ctx), &fg);
+    gtk_style_context_restore (ctx);
+    /* Dim the color a bit for the fold markers */
+    fg.alpha = 0.55;
+
+    cairo_save (cr_param);
+    cairo_set_source_rgba (cr_param, fg.red, fg.green, fg.blue, fg.alpha);
+
+    if (fold->collapsed)
     {
+        /* ▶ Right-pointing triangle */
+        cairo_move_to (cr_param, cx - sz/4, cy - sz/2);
+        cairo_line_to (cr_param, cx + sz/2, cy);
+        cairo_line_to (cr_param, cx - sz/4, cy + sz/2);
+        cairo_close_path (cr_param);
+        cairo_fill (cr_param);
+    }
+    else
+    {
+        /* ▼ Down-pointing triangle */
+        cairo_move_to (cr_param, cx - sz/2, cy - sz/4);
+        cairo_line_to (cr_param, cx + sz/2, cy - sz/4);
+        cairo_line_to (cr_param, cx, cy + sz/2);
+        cairo_close_path (cr_param);
+        cairo_fill (cr_param);
+    }
 
-        GtkStyleContext *_ctx = gtk_widget_get_style_context (GTK_WIDGET (view));
-
-        gtk_style_context_save (_ctx);
-
-        gtk_style_context_add_class (_ctx, GTK_STYLE_CLASS_EXPANDER);
-
-        gtk_render_expander (_ctx, cr_param,
-
-                            window_width - view->priv->lm.fold_width / 2,
-
-                            y + height / 2,
-
-                            view->priv->lm.fold_width,
-
-                            view->priv->lm.fold_width);
-
-        gtk_style_context_restore (_ctx);
-
-    };
+    cairo_restore (cr_param);
 }
 
 static void
@@ -4152,16 +4791,148 @@ draw_fold_background (MooTextView    *view,
                       int             height,
                       int             window_width)
 {
-    if (fold->collapsed)
+    if (!fold->collapsed)
+        return;
+
+    /* Override window_width: use text area width, not left margin */
+    window_width = SAFE_GDK_WINDOW_GET_WIDTH (gtk_text_view_get_window (GTK_TEXT_VIEW (view), GTK_TEXT_WINDOW_TEXT));
+
+    /* 1. Shade the fold header line background */
     {
+        GtkStyleContext *ctx;
+        GdkRGBA bg;
+        int left_margin = gtk_text_view_get_left_margin (GTK_TEXT_VIEW (view));
+
+        ctx = gtk_widget_get_style_context (GTK_WIDGET (view));
+        gtk_style_context_save (ctx);
+        gtk_style_context_get_background_color (ctx,
+            gtk_style_context_get_state (ctx), &bg);
+        gtk_style_context_restore (ctx);
+
+        /* Slightly darken/lighten the background for the fold header */
+        if (bg.red + bg.green + bg.blue > 1.5)
+        {
+            /* Light theme — darken slightly */
+            bg.red   = MAX (0.0, bg.red   - 0.04);
+            bg.green = MAX (0.0, bg.green - 0.04);
+            bg.blue  = MAX (0.0, bg.blue  - 0.04);
+        }
+        else
+        {
+            /* Dark theme — lighten slightly */
+            bg.red   = MIN (1.0, bg.red   + 0.06);
+            bg.green = MIN (1.0, bg.green + 0.06);
+            bg.blue  = MIN (1.0, bg.blue  + 0.06);
+        }
+
+        cairo_set_source_rgba (cr_param, bg.red, bg.green, bg.blue, 1.0);
+        cairo_rectangle (cr_param, left_margin, y,
+                         window_width, height);
+        cairo_fill (cr_param);
+    }
+
+    /* 2. Draw bottom border line */
+    {
+        GtkStyleContext *ctx;
+        GdkRGBA fg;
+        int left_margin = gtk_text_view_get_left_margin (GTK_TEXT_VIEW (view));
+
+        ctx = gtk_widget_get_style_context (GTK_WIDGET (view));
+        gtk_style_context_save (ctx);
+        gtk_style_context_get_color (ctx,
+            gtk_style_context_get_state (ctx), &fg);
+        gtk_style_context_restore (ctx);
+        fg.alpha = 0.15;
+
+        cairo_set_source_rgba (cr_param, fg.red, fg.green, fg.blue, fg.alpha);
         cairo_set_line_width (cr_param, 1.0);
-        cairo_move_to (cr_param,
-                       gtk_text_view_get_left_margin (GTK_TEXT_VIEW (view)),
-                       y + height - 1);
-        cairo_line_to (cr_param,
-                       gtk_text_view_get_left_margin (GTK_TEXT_VIEW (view)) + window_width,
-                       y + height - 1);
+        cairo_move_to (cr_param, left_margin, y + height - 0.5);
+        cairo_line_to (cr_param, left_margin + window_width, y + height - 0.5);
         cairo_stroke (cr_param);
+    }
+
+    /* 3. Draw "..." marker after the fold header text */
+    {
+        GtkTextView *text_view = GTK_TEXT_VIEW (view);
+        GtkTextBuffer *buffer = gtk_text_view_get_buffer (text_view);
+        GtkTextIter line_end;
+        GdkRectangle end_rect;
+        int fold_line = _moo_fold_get_start (fold);
+        int wx, wy;
+
+        gtk_text_buffer_get_iter_at_line (buffer, &line_end, fold_line);
+        if (!gtk_text_iter_ends_line (&line_end))
+            gtk_text_iter_forward_to_line_end (&line_end);
+
+        gtk_text_view_get_iter_location (text_view, &line_end, &end_rect);
+        gtk_text_view_buffer_to_window_coords (text_view, GTK_TEXT_WINDOW_TEXT,
+            end_rect.x + end_rect.width, end_rect.y, &wx, &wy);
+
+        {
+            PangoLayout *layout;
+            int tw, th;
+            GtkStyleContext *ctx;
+            GdkRGBA marker_fg = {0.5, 0.5, 0.5, 0.8};
+            GdkRGBA marker_bg = {0.0, 0.0, 0.0, 0.0};
+
+            ctx = gtk_widget_get_style_context (GTK_WIDGET (view));
+            gtk_style_context_save (ctx);
+            gtk_style_context_get_color (ctx,
+                gtk_style_context_get_state (ctx), &marker_fg);
+            gtk_style_context_get_background_color (ctx,
+                gtk_style_context_get_state (ctx), &marker_bg);
+            gtk_style_context_restore (ctx);
+
+            /* Adjust marker colors */
+            marker_fg.alpha = 0.6;
+
+            /* Slightly different background for the marker box */
+            if (marker_bg.red + marker_bg.green + marker_bg.blue > 1.5)
+            {
+                marker_bg.red   = MAX (0.0, marker_bg.red   - 0.08);
+                marker_bg.green = MAX (0.0, marker_bg.green - 0.08);
+                marker_bg.blue  = MAX (0.0, marker_bg.blue  - 0.08);
+            }
+            else
+            {
+                marker_bg.red   = MIN (1.0, marker_bg.red   + 0.10);
+                marker_bg.green = MIN (1.0, marker_bg.green + 0.10);
+                marker_bg.blue  = MIN (1.0, marker_bg.blue  + 0.10);
+            }
+            marker_bg.alpha = 1.0;
+
+            layout = gtk_widget_create_pango_layout (GTK_WIDGET (view), " \xe2\x80\xa6 ");
+            pango_layout_get_pixel_size (layout, &tw, &th);
+
+            /* Draw marker background */
+            cairo_set_source_rgba (cr_param,
+                marker_bg.red, marker_bg.green, marker_bg.blue, marker_bg.alpha);
+
+            {
+                double rx = wx + 4;
+                double ry = y + (height - th) / 2.0 - 1;
+                double rw = tw + 2;
+                double rh = th + 2;
+                double radius = 3.0;
+
+                /* Rounded rectangle */
+                cairo_new_sub_path (cr_param);
+                cairo_arc (cr_param, rx + rw - radius, ry + radius, radius, -G_PI/2, 0);
+                cairo_arc (cr_param, rx + rw - radius, ry + rh - radius, radius, 0, G_PI/2);
+                cairo_arc (cr_param, rx + radius, ry + rh - radius, radius, G_PI/2, G_PI);
+                cairo_arc (cr_param, rx + radius, ry + radius, radius, G_PI, 3*G_PI/2);
+                cairo_close_path (cr_param);
+                cairo_fill (cr_param);
+            }
+
+            /* Draw "..." text */
+            cairo_set_source_rgba (cr_param,
+                marker_fg.red, marker_fg.green, marker_fg.blue, marker_fg.alpha);
+            cairo_move_to (cr_param, wx + 5, y + (height - th) / 2.0);
+            pango_cairo_show_layout (cr_param, layout);
+
+            g_object_unref (layout);
+        }
     }
 }
 

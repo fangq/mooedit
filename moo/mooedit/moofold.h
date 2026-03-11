@@ -57,6 +57,7 @@ struct MooFoldClass
 
 
 int          _moo_fold_get_start    (MooFold        *fold);
+int          _moo_fold_get_end      (MooFold        *fold); /* FOLD_GET_END exposed */
 
 gboolean     _moo_fold_is_deleted   (MooFold        *fold);
 

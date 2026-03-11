@@ -31,7 +31,7 @@ static void     moo_fold_get_property       (GObject    *object,
 static void     moo_fold_finalize           (GObject    *object);
 static void     moo_fold_free_recursively   (MooFold    *fold);
 
-static int      _moo_fold_get_end           (MooFold    *fold);
+int      _moo_fold_get_end           (MooFold    *fold);
 
 enum {
     PROP_0,
@@ -224,8 +224,8 @@ _moo_fold_get_start (MooFold *fold)
 }
 
 
-static int
-_moo_fold_get_end (MooFold *fold)
+int
+_moo_fold_get_end (MooFold *fold) /* FOLD_GET_END de-staticified */
 {
     g_return_val_if_fail (MOO_IS_FOLD (fold), -1);
     g_return_val_if_fail (!_moo_fold_is_deleted (fold), -1);
