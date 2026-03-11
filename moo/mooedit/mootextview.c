@@ -994,9 +994,17 @@ disconnect_buffer (MooTextView *view)
 {
     MooUndoStack *undo_stack;
 
+    /* Disconnect long-line handlers */
+    g_signal_handlers_disconnect_by_func (GTK_WIDGET (view),
+                                          (gpointer) moo_ll_click_handler, NULL);
+    g_signal_handlers_disconnect_by_func (GTK_WIDGET (view),
+                                          (gpointer) moo_ll_wrap_changed, NULL);
     if (!view->priv->buffer)
         return;
 
+    /* Disconnect long-line after-insert handler (connected with NULL data) */
+    g_signal_handlers_disconnect_by_func (view->priv->buffer,
+                                          (gpointer) moo_ll_after_insert, NULL);
     g_signal_handlers_disconnect_matched (view->priv->buffer,
                                           G_SIGNAL_MATCH_DATA,
                                           0, 0, NULL, NULL,
@@ -2793,7 +2801,7 @@ moo_text_view_change_font_size (MooTextView *view, int delta)
     update_left_margin (view);
 }
 
-static void
+void
 moo_text_view_reset_font_size (MooTextView *view)
 {
     /* Remove the font override — reverts to the style/prefs font */

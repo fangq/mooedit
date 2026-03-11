@@ -22,6 +22,8 @@
 #include "mooutils/moocompat.h"
 #include <gdk/gdkkeysyms.h>
 
+extern void moo_text_view_reset_font_size (MooTextView *view);
+
 
 static gboolean
 iter_is_word_char (const GtkTextIter *iter,
@@ -1514,6 +1516,14 @@ _moo_text_view_key_press_event (GtkWidget          *widget,
     if (event->keyval == GDK_KEY_Escape && view->priv->box_sel.active)
     {
         box_sel_clear (view);
+        return TRUE;
+    }
+
+    /* Ctrl+0 resets font zoom */
+    if ((event->keyval == GDK_KEY_0 || event->keyval == GDK_KEY_KP_0) &&
+        (event->state & GDK_CONTROL_MASK))
+    {
+        moo_text_view_reset_font_size (view);
         return TRUE;
     }
 
