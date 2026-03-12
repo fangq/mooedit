@@ -1342,85 +1342,83 @@ moo_fold_clear_all (MooTextBuffer *mbuf)
 }
 
 static void
+/* FAST_FOLD_SCAN — replacement using raw text scanning */
 moo_fold_scan_braces (GtkTextView *text_view)
 {
     GtkTextBuffer *buffer;
     MooTextBuffer *mbuf;
-    GtkTextIter iter;
     int line_count;
     int *stack;
-    int stack_size, stack_cap;
-    gboolean in_string, in_char, in_line_comment, in_block_comment;
-    gunichar prev_ch;
+    int stack_size = 0, stack_cap = 256;
+    gboolean in_string = FALSE, in_char = FALSE;
+    gboolean in_line_comment = FALSE, in_block_comment = FALSE;
+    char prev_ch = 0;
+    char *text;
+    const char *p;
+    int line;
 
     buffer = gtk_text_view_get_buffer (text_view);
     if (!MOO_IS_TEXT_BUFFER (buffer))
         return;
-
     mbuf = MOO_TEXT_BUFFER (buffer);
-
-    /* Check that this is a valid MooTextBuffer */
     if (!mbuf)
         return;
 
-    /* Save which fold start-lines are currently collapsed */
+    /* Save collapsed fold lines using fold range query (not per-line) */
+    line_count = gtk_text_buffer_get_line_count (buffer);
     {
-        int _i;
-        int _n = gtk_text_buffer_get_line_count (buffer);
         GArray *collapsed_lines = g_array_new (FALSE, FALSE, sizeof(int));
-        for (_i = 0; _i < _n; _i++)
+        if (line_count > 1)
         {
-            MooFold *_f = moo_text_buffer_get_fold_at_line (mbuf, _i);
-            if (_f && _f->collapsed)
-                g_array_append_val (collapsed_lines, _i);
+            GSList *all_folds = moo_text_buffer_get_folds_in_range (mbuf, 0, line_count - 1);
+            GSList *fl;
+            for (fl = all_folds; fl; fl = fl->next)
+            {
+                MooFold *_f = (MooFold *) fl->data;
+                if (_f && !_moo_fold_is_deleted (_f) && _f->collapsed)
+                {
+                    int cline = _moo_fold_get_start (_f);
+                    g_array_append_val (collapsed_lines, cline);
+                }
+            }
+            g_slist_free (all_folds);
         }
-
-        /* Clear existing folds */
         moo_fold_clear_all (mbuf);
-
-        /* Store collapsed lines for later restoration */
         g_object_set_data_full (G_OBJECT (buffer), "moo-fold-collapsed-lines",
                                 collapsed_lines, (GDestroyNotify) g_array_unref);
     }
 
-    line_count = gtk_text_buffer_get_line_count (buffer);
     if (line_count < 2)
         return;
 
-    /* Stack of opening brace line numbers */
-    stack_cap = 64;
-    stack_size = 0;
-    stack = g_new (int, stack_cap);
-
-    /* Scan character by character, tracking string/comment state */
-    gtk_text_buffer_get_start_iter (buffer, &iter);
-    in_string = FALSE;
-    in_char = FALSE;
-    in_line_comment = FALSE;
-    in_block_comment = FALSE;
-    prev_ch = 0;
-
-    while (!gtk_text_iter_is_end (&iter))
+    /* Get entire buffer as raw C string — orders of magnitude faster
+     * than per-character GtkTextIter walking */
     {
-        gunichar ch = gtk_text_iter_get_char (&iter);
-        int line = gtk_text_iter_get_line (&iter);
+        GtkTextIter start, end;
+        gtk_text_buffer_get_bounds (buffer, &start, &end);
+        text = gtk_text_buffer_get_text (buffer, &start, &end, FALSE);
+    }
 
-        /* Handle newline: reset line comment */
+    stack = (int *) g_malloc (stack_cap * sizeof (int));
+    line = 0;
+
+    for (p = text; *p; p++)
+    {
+        char ch = *p;
+
         if (ch == '\n')
         {
+            line++;
             in_line_comment = FALSE;
-            in_string = FALSE;  /* unterminated string resets at EOL */
-            in_char = FALSE;
             prev_ch = ch;
-            gtk_text_iter_forward_char (&iter);
             continue;
         }
-
-        /* Skip if inside comment or string */
-        if (in_line_comment)
+        if (ch == '\r')
         {
-            prev_ch = ch;
-            gtk_text_iter_forward_char (&iter);
+            if (*(p + 1) == '\n') p++;
+            line++;
+            in_line_comment = FALSE;
+            prev_ch = '\n';
             continue;
         }
 
@@ -1428,90 +1426,63 @@ moo_fold_scan_braces (GtkTextView *text_view)
         {
             if (ch == '/' && prev_ch == '*')
                 in_block_comment = FALSE;
-            prev_ch = ch;
-            gtk_text_iter_forward_char (&iter);
-            continue;
         }
-
-        if (in_string)
+        else if (in_line_comment)
+        {
+            /* skip until newline */
+        }
+        else if (in_string)
         {
             if (ch == '"' && prev_ch != '\\')
                 in_string = FALSE;
-            prev_ch = (prev_ch == '\\' && ch == '\\') ? 0 : ch;
-            gtk_text_iter_forward_char (&iter);
-            continue;
+            else if (ch == '\\' && prev_ch == '\\')
+            {
+                prev_ch = 0;
+                continue;
+            }
         }
-
-        if (in_char)
+        else if (in_char)
         {
             if (ch == '\'' && prev_ch != '\\')
                 in_char = FALSE;
-            prev_ch = (prev_ch == '\\' && ch == '\\') ? 0 : ch;
-            gtk_text_iter_forward_char (&iter);
-            continue;
-        }
-
-        /* Detect comment/string start */
-        if (ch == '/' && prev_ch == '/')
-        {
-            in_line_comment = TRUE;
-            prev_ch = ch;
-            gtk_text_iter_forward_char (&iter);
-            continue;
-        }
-
-        if (ch == '*' && prev_ch == '/')
-        {
-            in_block_comment = TRUE;
-            prev_ch = ch;
-            gtk_text_iter_forward_char (&iter);
-            continue;
-        }
-
-        if (ch == '"')
-        {
-            in_string = TRUE;
-            prev_ch = ch;
-            gtk_text_iter_forward_char (&iter);
-            continue;
-        }
-
-        if (ch == '\'')
-        {
-            in_char = TRUE;
-            prev_ch = ch;
-            gtk_text_iter_forward_char (&iter);
-            continue;
-        }
-
-        /* Track braces */
-        if (ch == '{')
-        {
-            if (stack_size >= stack_cap)
+            else if (ch == '\\' && prev_ch == '\\')
             {
-                stack_cap *= 2;
-                stack = g_renew (int, stack, stack_cap);
+                prev_ch = 0;
+                continue;
             }
-            stack[stack_size++] = line;
         }
-        else if (ch == '}')
+        else
         {
-            if (stack_size > 0)
+            if (ch == '"')
+                in_string = TRUE;
+            else if (ch == '\'')
+                in_char = TRUE;
+            else if (ch == '/' && *(p + 1) == '/')
+                in_line_comment = TRUE;
+            else if (ch == '/' && *(p + 1) == '*')
+                in_block_comment = TRUE;
+            else if (ch == '{')
+            {
+                if (stack_size >= stack_cap)
+                {
+                    stack_cap *= 2;
+                    stack = (int *) g_realloc (stack, stack_cap * sizeof (int));
+                }
+                stack[stack_size++] = line;
+            }
+            else if (ch == '}' && stack_size > 0)
             {
                 int open_line = stack[--stack_size];
-                int close_line = line;
-
-                /* Only create fold if it spans multiple lines */
-                if (close_line > open_line + 1)
-                {
-                    { g_log_set_handler ("Moo", G_LOG_LEVEL_CRITICAL, (GLogFunc) g_log_default_handler, NULL); moo_text_buffer_add_fold (mbuf, open_line, close_line); }
-                }
+                if (line > open_line)
+                    moo_text_buffer_add_fold (mbuf, open_line, line);
             }
         }
 
         prev_ch = ch;
-        gtk_text_iter_forward_char (&iter);
     }
+
+    g_free (stack);
+    g_free (text);
 
     /* Restore collapsed state */
     {
@@ -1519,10 +1490,10 @@ moo_fold_scan_braces (GtkTextView *text_view)
             G_OBJECT (buffer), "moo-fold-collapsed-lines");
         if (collapsed_lines)
         {
-            guint _j;
-            for (_j = 0; _j < collapsed_lines->len; _j++)
+            guint _i;
+            for (_i = 0; _i < collapsed_lines->len; _i++)
             {
-                int cline = g_array_index (collapsed_lines, int, _j);
+                int cline = g_array_index (collapsed_lines, int, _i);
                 MooFold *_f = moo_text_buffer_get_fold_at_line (mbuf, cline);
                 if (_f && !_f->collapsed)
                     moo_text_buffer_toggle_fold (mbuf, _f);
@@ -1531,24 +1502,52 @@ moo_fold_scan_braces (GtkTextView *text_view)
         }
     }
 
-    g_free (stack);
 }
 
 /* Debounced fold update: schedule via idle */
+
+/* TYPING_DEBOUNCE_FIX — actual rescan runs after 2s of no changes */
+static gboolean
+moo_fold_debounce_timer_cb (gpointer data)
+{
+    MooTextView *view = MOO_TEXT_VIEW (data);
+    guint *tid = (guint *) g_object_get_data (G_OBJECT (view), "moo-fold-debounce-tid");
+    if (tid) *tid = 0;
+    if (view->priv->enable_folding)
+        moo_fold_scan_braces (GTK_TEXT_VIEW (view));
+    return G_SOURCE_REMOVE;
+}
+
 static gboolean
 moo_fold_update_idle (gpointer data)
 {
+    /* TYPING_DEBOUNCE_FIX — don't rescan immediately, start a 2s timer.
+     * Each new idle call resets the timer, so rescan only happens
+     * after 2 seconds of no buffer changes. */
     MooTextView *view = MOO_TEXT_VIEW (data);
     guint *idle_id;
+    guint *debounce_tid;
 
     idle_id = (guint *) g_object_get_data (G_OBJECT (view), "moo-fold-update-idle");
     if (idle_id)
         *idle_id = 0;
 
-    if (view->priv->enable_folding)
-        moo_fold_scan_braces (GTK_TEXT_VIEW (view));
+    /* Cancel any pending debounce timer */
+    debounce_tid = (guint *) g_object_get_data (G_OBJECT (view), "moo-fold-debounce-tid");
+    if (!debounce_tid)
+    {
+        debounce_tid = g_new0 (guint, 1);
+        g_object_set_data_full (G_OBJECT (view), "moo-fold-debounce-tid",
+                                debounce_tid, g_free);
+    }
+    if (*debounce_tid != 0)
+        g_source_remove (*debounce_tid);
+
+    /* Start 2-second timer */
+    *debounce_tid = g_timeout_add (200, moo_fold_debounce_timer_cb, view);
 
     return G_SOURCE_REMOVE;
+
 }
 
 static void
