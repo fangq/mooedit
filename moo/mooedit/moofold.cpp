@@ -598,6 +598,33 @@ expand_check_visible (MooFoldTree *tree,
 
         expand_check_visible (tree, child);
 
+        /* NESTED_FOLD_FIX: if this child is still collapsed, re-apply
+         * its invisible tag since the parent's tag removal may have
+         * uncovered lines that should remain hidden */
+        if (child->collapsed)
+        {
+            /* FOLD_END_FIX: re-apply with safe range */
+            GtkTextIter cs, ce;
+            int child_end = _moo_fold_get_end (child);
+            gtk_text_buffer_get_iter_at_line (buffer, &cs,
+                                              _moo_fold_get_start (child) + 1);
+            if (child_end > _moo_fold_get_start (child) + 1)
+            {
+                gtk_text_buffer_get_iter_at_line (buffer, &ce, child_end - 1);
+                if (!gtk_text_iter_ends_line (&ce))
+                    gtk_text_iter_forward_to_line_end (&ce);
+                gtk_text_iter_forward_char (&ce);
+            }
+            else
+            {
+                ce = cs;
+                if (!gtk_text_iter_ends_line (&ce))
+                    gtk_text_iter_forward_to_line_end (&ce);
+                gtk_text_iter_forward_char (&ce);
+            }
+            gtk_text_buffer_apply_tag_by_name (buffer, MOO_FOLD_TAG, &cs, &ce);
+        }
+
         if (!child->next)
             break;
     }
@@ -606,18 +633,22 @@ expand_check_visible (MooFoldTree *tree,
     {
         if (_moo_fold_get_end (child) < _moo_fold_get_end (fold))
         {
+            /* FOLD_END_FIX: remove tag through end of line before } */
             gtk_text_buffer_get_iter_at_line (buffer, &start,
                                               _moo_fold_get_end (child) + 1);
             gtk_text_buffer_get_iter_at_line (buffer, &end,
                                               _moo_fold_get_end (fold));
+            gtk_text_iter_forward_line (&end);
             gtk_text_buffer_remove_tag_by_name (buffer, MOO_FOLD_TAG, &start, &end);
         }
     }
     else
     {
+        /* FOLD_END_FIX: remove tag through end of } line */
         start = end;
         gtk_text_buffer_get_iter_at_line (buffer, &end,
                                           _moo_fold_get_end (fold));
+        gtk_text_iter_forward_line (&end);
         gtk_text_buffer_remove_tag_by_name (buffer, MOO_FOLD_TAG, &start, &end);
     }
 }
@@ -710,11 +741,33 @@ _moo_fold_tree_collapse (MooFoldTree *tree,
     fold->collapsed = TRUE;
 
     buffer = GTK_TEXT_BUFFER (tree->buffer);
-    gtk_text_buffer_get_iter_at_line (buffer, &start,
-                                      _moo_fold_get_start (fold) + 1);
-    gtk_text_buffer_get_iter_at_line (buffer, &end,
-                                      _moo_fold_get_end (fold));
-    gtk_text_buffer_apply_tag_by_name (buffer, MOO_FOLD_TAG, &start, &end);
+    /* FOLD_END_FIX: end the invisible region at the end of the line
+     * BEFORE the closing }, not at the start of the } line.
+     * This prevents GTK from eating the } during editing. */
+    {
+        int end_line = _moo_fold_get_end (fold);
+        gtk_text_buffer_get_iter_at_line (buffer, &start,
+                                          _moo_fold_get_start (fold) + 1);
+        if (end_line > _moo_fold_get_start (fold) + 1)
+        {
+            /* Hide from start+1 to end of (end_line - 1) */
+            gtk_text_buffer_get_iter_at_line (buffer, &end, end_line - 1);
+            if (!gtk_text_iter_ends_line (&end))
+                gtk_text_iter_forward_to_line_end (&end);
+            gtk_text_iter_forward_char (&end);  /* include the newline */
+            gtk_text_buffer_apply_tag_by_name (buffer, MOO_FOLD_TAG, &start, &end);
+        }
+        else
+        {
+            /* Only one line between { and } — hide just that line */
+            gtk_text_buffer_get_iter_at_line (buffer, &end,
+                                              _moo_fold_get_start (fold) + 1);
+            if (!gtk_text_iter_ends_line (&end))
+                gtk_text_iter_forward_to_line_end (&end);
+            gtk_text_iter_forward_char (&end);
+            gtk_text_buffer_apply_tag_by_name (buffer, MOO_FOLD_TAG, &start, &end);
+        }
+    }
 }
 
 gboolean
