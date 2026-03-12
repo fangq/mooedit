@@ -1519,11 +1519,51 @@ _moo_text_view_key_press_event (GtkWidget          *widget,
         return TRUE;
     }
 
-    /* Ctrl+0 resets font zoom */
-    if ((event->keyval == GDK_KEY_0 || event->keyval == GDK_KEY_KP_0) &&
-        (event->state & GDK_CONTROL_MASK))
+    /* Ctrl+0: pad one space to left of all selected lines
+     * Ctrl+9: remove one space from left of all selected lines */
+    if ((event->keyval == GDK_KEY_0 || event->keyval == GDK_KEY_KP_0 ||
+         event->keyval == GDK_KEY_9 || event->keyval == GDK_KEY_KP_9) &&
+        (event->state & GDK_CONTROL_MASK) &&
+        !(event->state & (GDK_SHIFT_MASK | GDK_MOD1_MASK)))
     {
-        moo_text_view_reset_font_size (view);
+        GtkTextIter sel_start, sel_end;
+        int first_line, last_line, i;
+        gboolean adding = (event->keyval == GDK_KEY_0 || event->keyval == GDK_KEY_KP_0);
+
+        gtk_text_buffer_get_selection_bounds (buffer, &sel_start, &sel_end);
+        first_line = gtk_text_iter_get_line (&sel_start);
+        last_line = gtk_text_iter_get_line (&sel_end);
+        if (gtk_text_iter_starts_line (&sel_end) && first_line != last_line)
+            last_line--;
+
+        gtk_text_buffer_begin_user_action (buffer);
+
+        for (i = first_line; i <= last_line; i++)
+        {
+            GtkTextIter line_iter;
+            gtk_text_buffer_get_iter_at_line (buffer, &line_iter, i);
+
+            if (adding)
+            {
+                /* Insert one space at the beginning of the line */
+                gtk_text_buffer_insert (buffer, &line_iter, " ", 1);
+            }
+            else
+            {
+                /* Remove one leading space if present */
+                if (!gtk_text_iter_ends_line (&line_iter) &&
+                    gtk_text_iter_get_char (&line_iter) == ' ')
+                {
+                    GtkTextIter next = line_iter;
+                    gtk_text_iter_forward_char (&next);
+                    gtk_text_buffer_delete (buffer, &line_iter, &next);
+                }
+            }
+        }
+
+        gtk_text_buffer_end_user_action (buffer);
+        gtk_text_view_scroll_mark_onscreen (GTK_TEXT_VIEW (view),
+                                            gtk_text_buffer_get_insert (buffer));
         return TRUE;
     }
 
