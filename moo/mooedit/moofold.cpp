@@ -529,6 +529,7 @@ _moo_fold_tree_remove (MooFoldTree *tree,
             last->parent = fold->parent;
             if (!last->next)
                 break;
+            last = last->next;
         }
     }
 

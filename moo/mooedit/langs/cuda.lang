@@ -34,6 +34,7 @@
     <style id="cuda-global"   name="Global Functions"  map-to="def:function"/>
     <style id="cuda-device"   name="Device Functions"  map-to="def:function"/>
     <style id="global-var"    name="Global Variables"  map-to="def:identifier"/>
+    <style id="kernel-call"   name="Kernel Launch"     map-to="def:preprocessor"/>
   </styles>
 
   <definitions>
@@ -84,7 +85,7 @@
       <keyword>threadIdx</keyword>
     </context>
 
-    <context id="kernel-call" style-ref="latex:display-math">
+    <context id="kernel-call" style-ref="kernel-call">
       <start>&lt;&lt;&lt;</start>
       <end>&gt;&gt;&gt;</end>
     </context>

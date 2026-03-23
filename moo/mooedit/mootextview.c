@@ -753,27 +753,107 @@ _moo_text_view_draw_fold_guides (MooTextView *view, cairo_t *cr)
         if (end_line < first_line || start_line > last_line)
             continue;
 
-        /* Align guide with the first non-whitespace character on
-         * the fold start line (the { line). For example:
-         *     keyname: {       -> aligns with 'k'
-         *     if (cond) {      -> aligns with 'i'
-         *   {                  -> aligns with '{'
+        /* Align guide with the logical "owner" of the block.
+         *
+         * Problem: for functions with multi-line parameter lists the { falls
+         * on the last parameter line which may be deeply indented, causing
+         * the guide to cut through the function body:
+         *
+         *     void func (int a,         <- indent 0  (owner)
+         *                int b) {       <- indent 15 (start_line)
+         *         body;                 <- indent 4
+         *     }
+         *
+         * Fix: measure start_line's leading-whitespace depth; scan backward
+         * through continuation lines (same or deeper indent) until a line
+         * with strictly less indentation is found — that is the owner.
+         * Only one gtk_text_view_get_iter_location call is made, for the
+         * winning line, to keep drawing fast.
          */
-        gtk_text_buffer_get_iter_at_line (buffer, &iter, start_line);
-        while (!gtk_text_iter_ends_line (&iter))
         {
-            ch = gtk_text_iter_get_char (&iter);
-            if (ch != ' ' && ch != '\t')
-                break;
-            gtk_text_iter_forward_char (&iter);
+            int start_ws, best_ws, guide_line, scan_line;
+
+            /* Count leading whitespace on start_line */
+            gtk_text_buffer_get_iter_at_line (buffer, &iter, start_line);
+            start_ws = 0;
+            while (!gtk_text_iter_ends_line (&iter))
+            {
+                ch = gtk_text_iter_get_char (&iter);
+                if (ch != ' ' && ch != '\t') break;
+                start_ws++;
+                gtk_text_iter_forward_char (&iter);
+            }
+
+            /* Skip fold if start line is all whitespace */
+            if (gtk_text_iter_ends_line (&iter))
+                continue;
+
+            best_ws    = start_ws;
+            guide_line = start_line;
+
+            /* Scan backward for a less-indented line (max 50 lines).
+             * Stop early at blank lines to avoid crossing unrelated code. */
+            for (scan_line = start_line - 1;
+                 scan_line >= 0 && (start_line - scan_line) <= 50;
+                 scan_line--)
+            {
+                int scan_ws = 0;
+                gtk_text_buffer_get_iter_at_line (buffer, &iter, scan_line);
+                while (!gtk_text_iter_ends_line (&iter))
+                {
+                    ch = gtk_text_iter_get_char (&iter);
+                    if (ch != ' ' && ch != '\t') break;
+                    scan_ws++;
+                    gtk_text_iter_forward_char (&iter);
+                }
+                /* Blank line: stop — we've left the declaration block */
+                if (gtk_text_iter_ends_line (&iter))
+                    break;
+                /* Stop if this line ends with a block/statement delimiter.
+                 * A line ending in { } or ; is a complete statement or block
+                 * opener/closer — not a continuation of the next line's header.
+                 * Without this, scanning past an `if { }` block would find the
+                 * outer scope's indentation and wrongly skip the else-if guide. */
+                {
+                    GtkTextIter tail = iter;
+                    gunichar lc = 0;
+                    gtk_text_iter_forward_to_line_end (&tail);
+                    while (!gtk_text_iter_starts_line (&tail))
+                    {
+                        gtk_text_iter_backward_char (&tail);
+                        lc = gtk_text_iter_get_char (&tail);
+                        if (lc != ' ' && lc != '\t')
+                            break;
+                    }
+                    if (lc == '{' || lc == '}' || lc == ';')
+                        break;
+                }
+                /* Less-indented line found: this is the owner */
+                if (scan_ws < best_ws)
+                {
+                    best_ws    = scan_ws;
+                    guide_line = scan_line;
+                    break;
+                }
+                /* Same or deeper indent: continuation line, keep going */
+            }
+
+            /* Get pixel x of first non-ws char on the owner line */
+            gtk_text_buffer_get_iter_at_line (buffer, &iter, guide_line);
+            while (!gtk_text_iter_ends_line (&iter))
+            {
+                ch = gtk_text_iter_get_char (&iter);
+                if (ch != ' ' && ch != '\t') break;
+                gtk_text_iter_forward_char (&iter);
+            }
+            gtk_text_view_get_iter_location (text_view, &iter, &iloc);
+            guide_px = iloc.x;
         }
 
-        /* If line is all whitespace, skip */
-        if (gtk_text_iter_ends_line (&iter))
+        /* Skip guides at x == 0: these are top-level blocks whose guide
+         * would run along the leftmost edge of the text area. */
+        if (guide_px <= 0)
             continue;
-
-        gtk_text_view_get_iter_location (text_view, &iter, &iloc);
-        guide_px = iloc.x;
 
         /* Y coordinates: from line below { to the } line */
         gtk_text_buffer_get_iter_at_line (buffer, &iter, start_line);
@@ -791,10 +871,12 @@ _moo_text_view_draw_fold_guides (MooTextView *view, cairo_t *cr)
                                                     &tmp_x, &y_top);
             win_x = tmp_x;
         }
+        /* Use end_loc.y (not +height) so the guide stops at the top of the
+         * closing `}` line rather than running all the way through it. */
         gtk_text_view_buffer_to_window_coords (text_view,
                                                 GTK_TEXT_WINDOW_TEXT,
                                                 0,
-                                                end_loc.y + end_loc.height,
+                                                end_loc.y,
                                                 NULL, &y_bot);
 
         /* Draw the vertical guide */
@@ -1316,35 +1398,42 @@ moo_text_view_set_buffer_type (MooTextView *view,
 static void
 moo_fold_clear_all (MooTextBuffer *mbuf)
 {
-    /* Remove all existing folds using the public API.
-     * Iterate lines and remove any fold found. Repeat until
-     * no folds remain (nested folds may be revealed). */
+    /* Fast O(F) clear: remove the invisible tag from the entire buffer in
+     * one shot, then collect and delete all folds from the fold tree in a
+     * single pass.  Marking each fold as expanded before deletion prevents
+     * _moo_fold_tree_remove from doing redundant per-fold tag work. */
     int line_count = gtk_text_buffer_get_line_count (GTK_TEXT_BUFFER (mbuf));
-    gboolean found = TRUE;
-    while (found)
+    GtkTextIter ts, te;
+    GSList *folds, *l;
+
+    if (line_count < 2)
+        return;
+
+    /* Remove ALL invisible tags at once — O(text_length) but only one call */
+    gtk_text_buffer_get_bounds (GTK_TEXT_BUFFER (mbuf), &ts, &te);
+    gtk_text_buffer_remove_tag_by_name (GTK_TEXT_BUFFER (mbuf), MOO_FOLD_TAG, &ts, &te);
+
+    /* get_folds_in_range returns parent and child folds alike.
+     * After deleting a parent its children are promoted but remain in
+     * our snapshot list and are processed in the same pass. */
+    folds = moo_text_buffer_get_folds_in_range (mbuf, 0, line_count - 1);
+    for (l = folds; l != NULL; l = l->next)
     {
-        int i;
-        found = FALSE;
-        for (i = 0; i < line_count; i++)
+        MooFold *fold = (MooFold *) l->data;
+        if (!_moo_fold_is_deleted (fold))
         {
-            MooFold *fold = moo_text_buffer_get_fold_at_line (mbuf, i);
-            if (fold)
-            {
-                /* Expand before delete to make nested folds visible */
-                if (fold->collapsed)
-                    moo_text_buffer_toggle_fold (mbuf, fold);
-                moo_text_buffer_delete_fold (mbuf, fold);
-                found = TRUE;
-                break;  /* Restart scan since line numbers may have shifted */
-            }
+            fold->collapsed = FALSE;  /* tag already cleared above; skip expand */
+            moo_text_buffer_delete_fold (mbuf, fold);
         }
     }
+    g_slist_free (folds);
 }
 
 static void
 /* FAST_FOLD_SCAN — replacement using raw text scanning */
 moo_fold_scan_braces (GtkTextView *text_view)
 {
+    MooTextView *view;
     GtkTextBuffer *buffer;
     MooTextBuffer *mbuf;
     int line_count;
@@ -1363,6 +1452,15 @@ moo_fold_scan_braces (GtkTextView *text_view)
     mbuf = MOO_TEXT_BUFFER (buffer);
     if (!mbuf)
         return;
+    view = MOO_TEXT_VIEW (text_view);
+
+    /* Block all fold-signal handlers on the view to prevent a cascade of
+     * per-fold redraws (hundreds of gtk_widget_queue_draw calls) during the
+     * clear + rebuild cycle.  A single queue_draw at the end is enough. */
+    g_signal_handlers_block_by_func (buffer, (gpointer) fold_added,   view);
+    g_signal_handlers_block_by_func (buffer, (gpointer) fold_deleted, view);
+    g_signal_handlers_block_by_func (buffer, (gpointer) fold_toggled, view);
+    g_signal_handlers_block_by_func (buffer, (gpointer) _moo_text_view_on_fold_toggled, view);
 
     /* Save collapsed fold lines using fold range query (not per-line) */
     line_count = gtk_text_buffer_get_line_count (buffer);
@@ -1389,7 +1487,13 @@ moo_fold_scan_braces (GtkTextView *text_view)
     }
 
     if (line_count < 2)
+    {
+        g_signal_handlers_unblock_by_func (buffer, (gpointer) _moo_text_view_on_fold_toggled, view);
+        g_signal_handlers_unblock_by_func (buffer, (gpointer) fold_added,   view);
+        g_signal_handlers_unblock_by_func (buffer, (gpointer) fold_deleted, view);
+        g_signal_handlers_unblock_by_func (buffer, (gpointer) fold_toggled, view);
         return;
+    }
 
     /* Get entire buffer as raw C string — orders of magnitude faster
      * than per-character GtkTextIter walking */
@@ -1484,7 +1588,11 @@ moo_fold_scan_braces (GtkTextView *text_view)
     g_free (stack);
     g_free (text);
 
-    /* Restore collapsed state */
+    /* Restore collapsed state.
+     * Unblock _moo_text_view_on_fold_toggled first so it correctly applies
+     * the fold-header highlight tag and manages long-line markers for each
+     * fold being collapsed.  The other redraw handlers stay blocked. */
+    g_signal_handlers_unblock_by_func (buffer, (gpointer) _moo_text_view_on_fold_toggled, view);
     {
         GArray *collapsed_lines = (GArray *) g_object_get_data (
             G_OBJECT (buffer), "moo-fold-collapsed-lines");
@@ -1502,75 +1610,58 @@ moo_fold_scan_braces (GtkTextView *text_view)
         }
     }
 
+    /* Unblock the remaining redraw handlers and do a single full repaint */
+    g_signal_handlers_unblock_by_func (buffer, (gpointer) fold_added,   view);
+    g_signal_handlers_unblock_by_func (buffer, (gpointer) fold_deleted, view);
+    g_signal_handlers_unblock_by_func (buffer, (gpointer) fold_toggled, view);
+    gtk_widget_queue_draw (GTK_WIDGET (view));
 }
 
-/* Debounced fold update: schedule via idle */
+/* Debounced fold update: simple reset-timer debounce.
+ * Each buffer change resets a single timer; the rescan only fires
+ * after 400 ms of inactivity, preventing rapid-typing rescans. */
 
-/* TYPING_DEBOUNCE_FIX — actual rescan runs after 2s of no changes */
 static gboolean
-moo_fold_debounce_timer_cb (gpointer data)
+moo_fold_timer_cb (gpointer data)
 {
     MooTextView *view = MOO_TEXT_VIEW (data);
-    guint *tid = (guint *) g_object_get_data (G_OBJECT (view), "moo-fold-debounce-tid");
-    if (tid) *tid = 0;
+    guint *timer_id = (guint *) g_object_get_data (G_OBJECT (view), "moo-fold-timer-id");
+    if (timer_id) *timer_id = 0;
     if (view->priv->enable_folding)
         moo_fold_scan_braces (GTK_TEXT_VIEW (view));
     return G_SOURCE_REMOVE;
 }
 
-static gboolean
-moo_fold_update_idle (gpointer data)
+static void
+fold_timer_id_free (guint *timer_id)
 {
-    /* TYPING_DEBOUNCE_FIX — don't rescan immediately, start a 2s timer.
-     * Each new idle call resets the timer, so rescan only happens
-     * after 2 seconds of no buffer changes. */
-    MooTextView *view = MOO_TEXT_VIEW (data);
-    guint *idle_id;
-    guint *debounce_tid;
-
-    idle_id = (guint *) g_object_get_data (G_OBJECT (view), "moo-fold-update-idle");
-    if (idle_id)
-        *idle_id = 0;
-
-    /* Cancel any pending debounce timer */
-    debounce_tid = (guint *) g_object_get_data (G_OBJECT (view), "moo-fold-debounce-tid");
-    if (!debounce_tid)
-    {
-        debounce_tid = g_new0 (guint, 1);
-        g_object_set_data_full (G_OBJECT (view), "moo-fold-debounce-tid",
-                                debounce_tid, g_free);
-    }
-    if (*debounce_tid != 0)
-        g_source_remove (*debounce_tid);
-
-    /* Start 2-second timer */
-    *debounce_tid = g_timeout_add (200, moo_fold_debounce_timer_cb, view);
-
-    return G_SOURCE_REMOVE;
-
+    /* Cancel the pending timeout before freeing so the callback never
+     * fires on a destroyed view (use-after-free / segfault). */
+    if (timer_id && *timer_id != 0)
+        g_source_remove (*timer_id);
+    g_free (timer_id);
 }
 
 static void
 moo_fold_schedule_update (MooTextView *view)
 {
-    guint *idle_id;
+    guint *timer_id;
 
     if (!view->priv->enable_folding)
         return;
 
-    idle_id = (guint *) g_object_get_data (G_OBJECT (view), "moo-fold-update-idle");
-    if (!idle_id)
+    timer_id = (guint *) g_object_get_data (G_OBJECT (view), "moo-fold-timer-id");
+    if (!timer_id)
     {
-        idle_id = g_new0 (guint, 1);
-        g_object_set_data_full (G_OBJECT (view), "moo-fold-update-idle",
-                                idle_id, g_free);
+        timer_id = g_new0 (guint, 1);
+        g_object_set_data_full (G_OBJECT (view), "moo-fold-timer-id",
+                                timer_id, (GDestroyNotify) fold_timer_id_free);
     }
 
-    if (*idle_id == 0)
-    {
-        *idle_id = g_idle_add_full (G_PRIORITY_LOW,
-                                    moo_fold_update_idle, view, NULL);
-    }
+    /* Cancel the old timer and restart — rescan only after 400 ms of no edits */
+    if (*timer_id != 0)
+        g_source_remove (*timer_id);
+    *timer_id = g_timeout_add (400, moo_fold_timer_cb, view);
 }
 
 /* Called after buffer text changes */
@@ -1667,15 +1758,15 @@ disconnect_buffer (MooTextView *view)
     g_signal_handlers_disconnect_by_func (view->priv->buffer,
                                           (gpointer) moo_ll_after_insert, NULL);
 
-    /* Disconnect fold update handler */
+    /* Disconnect fold update handler and cancel any pending rescan timer */
     g_signal_handlers_disconnect_by_func (view->priv->buffer,
                                           (gpointer) moo_fold_after_buffer_changed, view);
     {
-        guint *idle_id = (guint *) g_object_get_data (G_OBJECT (view), "moo-fold-update-idle");
-        if (idle_id && *idle_id)
+        guint *timer_id = (guint *) g_object_get_data (G_OBJECT (view), "moo-fold-timer-id");
+        if (timer_id && *timer_id)
         {
-            g_source_remove (*idle_id);
-            *idle_id = 0;
+            g_source_remove (*timer_id);
+            *timer_id = 0;
         }
     }
     g_signal_handlers_disconnect_matched (view->priv->buffer,
