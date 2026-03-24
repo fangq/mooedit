@@ -853,6 +853,40 @@ on_terminal_draw (GtkWidget *widget, cairo_t *cr, gpointer data)
     return FALSE;  /* propagate to let VTE draw its content */
 }
 
+/*
+ * Queue a redraw on both the newly focused terminal and all siblings
+ * so the highlight bar appears/disappears promptly on focus change.
+ */
+static void
+redraw_all_terminals_in_frame (GtkWidget *w)
+{
+    if (VTE_IS_TERMINAL (w)) {
+        gtk_widget_queue_draw (w);
+    } else if (GTK_IS_CONTAINER (w)) {
+        GList *children = gtk_container_get_children (GTK_CONTAINER (w));
+        GList *l;
+        for (l = children; l; l = l->next)
+            redraw_all_terminals_in_frame (GTK_WIDGET (l->data));
+        g_list_free (children);
+    }
+}
+
+static gboolean
+on_terminal_focus_change (GtkWidget *widget, GdkEventFocus *event, gpointer data)
+{
+    GtkWidget *root;
+    (void)event;
+    (void)data;
+
+    root = find_root_frame (widget);
+    if (root)
+        redraw_all_terminals_in_frame (root);
+    else
+        gtk_widget_queue_draw (widget);
+
+    return FALSE;
+}
+
 /* ================================================================ */
 /* Context menu                                                     */
 /* ================================================================ */
@@ -1000,6 +1034,10 @@ create_terminal_box (void)
                       G_CALLBACK (on_scroll_event), NULL);
     g_signal_connect_after (term, "draw",
                             G_CALLBACK (on_terminal_draw), NULL);
+    g_signal_connect (term, "focus-in-event",
+                      G_CALLBACK (on_terminal_focus_change), NULL);
+    g_signal_connect (term, "focus-out-event",
+                      G_CALLBACK (on_terminal_focus_change), NULL);
 
     terminal_spawn (term);
 

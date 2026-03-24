@@ -1234,7 +1234,7 @@ init_actions (MooFileView *fileview)
     moo_action_group_add_action (group, "BookmarksMenu",
                                  "label", _("Bookmarks"),
                                  "tooltip", _("Bookmarks"),
-                                 "icon-name", MOO_STOCK_FILE_BOOKMARK,
+                                 "icon-name", "user-bookmarks",
                                  "closure-object", fileview,
                                  "closure-callback", view_bookmarks,
                                  "has-submenu", TRUE,
@@ -1251,7 +1251,7 @@ init_actions (MooFileView *fileview)
     moo_action_group_add_action (group, "EditBookmarks",
                                  "label", _("Edit Bookmarks"),
                                  "tooltip", _("Edit Bookmarks"),
-                                 "icon-name", "gtk-edit",
+                                 "icon-name", "document-edit",
                                  "closure-object", fileview,
                                  "closure-callback", edit_bookmarks,
                                  NULL);

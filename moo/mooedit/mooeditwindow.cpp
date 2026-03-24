@@ -120,6 +120,9 @@ struct MooEditWindowPrivate {
     GList *history;
     gboolean enable_history : 1;
     guint history_blocked : 1;
+
+    /* Cached reference to the Window menu item for eager repopulation */
+    GtkWidget *win_menu_item;
 };
 
 MOO_DEFINE_OBJECT_ARRAY (MooEditWindow, moo_edit_window)
@@ -236,6 +239,9 @@ static void          moo_edit_window_connect_menubar    (MooWindow          *win
 static void          moo_edit_window_update_doc_list    (MooEditWindow      *window);
 static void          window_menu_item_selected          (MooWindow          *window,
                                                          GtkMenuItem        *item);
+static void          window_submenu_mapped              (GtkWidget          *menu,
+                                                         gpointer            data);
+static void          refresh_window_menu                (MooEditWindow      *window);
 
 static void          notebook_drag_data_recv            (GtkWidget          *widget,
                                                          GdkDragContext     *context,
@@ -876,6 +882,7 @@ moo_edit_window_init (MooEditWindow *window)
     window->priv->history = nullptr;
     window->priv->history_blocked = FALSE;
     window->priv->enable_history = TRUE;
+    window->priv->win_menu_item = nullptr;
 
     g_object_set (G_OBJECT (window),
                   "menubar-ui-name", "Editor/Menubar",
@@ -2076,9 +2083,24 @@ moo_edit_window_connect_menubar (MooWindow *window)
                                       window->menubar,
                                       "Editor/Menubar/Window");
     g_return_if_fail (win_item != nullptr);
+    MOO_EDIT_WINDOW (window)->priv->win_menu_item = win_item;
     g_signal_connect_swapped (win_item, "select",
                               G_CALLBACK (window_menu_item_selected),
                               window);
+
+    {
+        GtkWidget *win_menu = gtk_menu_item_get_submenu (GTK_MENU_ITEM (win_item));
+        if (win_menu)
+            g_signal_connect (win_menu, "map",
+                              G_CALLBACK (window_submenu_mapped), nullptr);
+    }
+
+    {
+        GtkWidget *doc_menu = gtk_menu_item_get_submenu (GTK_MENU_ITEM (doc_item));
+        if (doc_menu)
+            g_signal_connect (doc_menu, "map",
+                              G_CALLBACK (window_submenu_mapped), nullptr);
+    }
 }
 
 
@@ -3309,6 +3331,12 @@ _moo_edit_window_remove_doc (MooEditWindow *window,
     }
 
     moo_edit_window_update_doc_list (window);
+
+    /* refresh_window_menu (called from update_doc_list) invokes ACTIVE_DOC which may
+     * re-cache the closing tab back into active_tab.  Clear it again so we don't
+     * hold a dangling pointer once the page is removed and the tab GObject is freed. */
+    if (window->priv->active_tab == tab)
+        window->priv->active_tab = nullptr;
 
     moo_notebook_remove_page (notebook, page);
 
@@ -4749,6 +4777,20 @@ populate_window_menu (MooEditWindow *window,
     }
 
     moo_edit_array_free (docs);
+
+    /* Force the menu to remeasure itself so all new items are visible
+     * without scroll arrows on first open. */
+    gtk_widget_queue_resize (menu);
+}
+
+static void
+window_submenu_mapped (GtkWidget *menu, gpointer data)
+{
+    (void)data;
+    /* The submenu has just been mapped (made visible on screen).
+     * Force a reposition so GTK recalculates the required height
+     * to accommodate all dynamically added document items. */
+    gtk_menu_reposition (GTK_MENU (menu));
 }
 
 static void
@@ -4767,6 +4809,24 @@ window_menu_item_selected (MooWindow   *window,
     populate_window_menu (MOO_EDIT_WINDOW (window), menu, no_docs_item);
 }
 
+
+static void
+refresh_window_menu (MooEditWindow *window)
+{
+    GtkWidget *win_item = window->priv->win_menu_item;
+    GtkWidget *menu;
+    GtkWidget *no_docs_item;
+
+    if (!win_item)
+        return;
+
+    menu = gtk_menu_item_get_submenu (GTK_MENU_ITEM (win_item));
+    no_docs_item = moo_ui_xml_get_widget (moo_window_get_ui_xml (MOO_WINDOW (window)),
+                                          MOO_WINDOW (window)->menubar,
+                                          "Editor/Menubar/Window/NoDocuments");
+    if (menu && no_docs_item)
+        populate_window_menu (window, menu, no_docs_item);
+}
 
 static void
 moo_edit_window_update_doc_list (MooEditWindow *window)
@@ -4792,6 +4852,10 @@ moo_edit_window_update_doc_list (MooEditWindow *window)
                                                             g_list_last (window->priv->history));
         }
     }
+
+    /* Keep the Window menu doc list in sync so the first open always
+     * shows all items without scroll arrows. */
+    refresh_window_menu (window);
 }
 
 

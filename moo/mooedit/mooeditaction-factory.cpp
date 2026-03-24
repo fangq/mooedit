@@ -673,6 +673,8 @@ _moo_edit_class_init_actions (MooEditClass *klass)
 
     moo_edit_class_new_action (klass, "Cut",
                                "display-name", "Cut",
+                               "label", "Cu_t",
+                               "tooltip", "Cut",
                                "icon-name", "edit-cut",
                                "closure-signal", "cut-clipboard",
                                "closure-proxy-func", moo_edit_get_view,
@@ -681,6 +683,8 @@ _moo_edit_class_init_actions (MooEditClass *klass)
 
     moo_edit_class_new_action (klass, "Copy",
                                "display-name", "Copy",
+                               "label", "_Copy",
+                               "tooltip", "Copy",
                                "icon-name", "edit-copy",
                                "closure-signal", "copy-clipboard",
                                "closure-proxy-func", moo_edit_get_view,
@@ -689,6 +693,8 @@ _moo_edit_class_init_actions (MooEditClass *klass)
 
     moo_edit_class_new_action (klass, "Paste",
                                "display-name", "Paste",
+                               "label", "_Paste",
+                               "tooltip", "Paste",
                                "icon-name", "edit-paste",
                                "closure-signal", "paste-clipboard",
                                "closure-proxy-func", moo_edit_get_view,

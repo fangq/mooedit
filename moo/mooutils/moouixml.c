@@ -2226,6 +2226,16 @@ create_tool_item (MooUiXml       *xml,
         gtk_toolbar_insert (toolbar, GTK_TOOL_ITEM (tool_item), index);
         _moo_action_ring_the_bells_it_has_tooltip (action);
 
+        /* In GTK3 the deprecated GtkAction proxy sync may not set the tooltip on
+         * GtkToolItem widgets.  Force it directly. */
+        {
+            char *tip = NULL;
+            g_object_get (action, "tooltip", &tip, NULL);
+            if (tip)
+                gtk_tool_item_set_tooltip_text (GTK_TOOL_ITEM (tool_item), tip);
+            g_free (tip);
+        }
+
         if (node->children)
         {
             if (!IS_MENU_TOOL_BUTTON (tool_item))
