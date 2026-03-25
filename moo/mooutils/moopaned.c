@@ -556,8 +556,42 @@ moo_paned_destroy (GtkWidget *object)
     GSList *l;
     MooPaned *paned = MOO_PANED (object);
 
+    /* MooPane is a GObject (GInitiallyUnowned), NOT a GtkWidget, so
+     * gtk_widget_destroy() must not be called on it.  Instead disconnect
+     * every signal handler that points back at the paned so nothing fires
+     * on dangling data once the widget hierarchy is torn down below. */
     for (l = paned->priv->panes; l != NULL; l = l->next)
-        gtk_widget_destroy (l->data);
+    {
+        MooPane *pane = l->data;
+        GtkWidget *button = _moo_pane_get_button (pane);
+        GtkWidget *handle = NULL, *small_handle = NULL;
+
+        if (button)
+            g_signal_handlers_disconnect_by_func (button,
+                                                  (gpointer) pane_button_toggled,
+                                                  paned);
+
+        _moo_pane_get_handle (pane, &handle, &small_handle);
+        if (handle)
+        {
+            g_signal_handlers_disconnect_by_func (handle,
+                                                  (gpointer) handle_button_press,
+                                                  paned);
+            g_signal_handlers_disconnect_by_func (handle,
+                                                  (gpointer) handle_button_release,
+                                                  paned);
+            g_signal_handlers_disconnect_by_func (handle,
+                                                  (gpointer) handle_motion,
+                                                  paned);
+            g_signal_handlers_disconnect_by_func (handle,
+                                                  (gpointer) handle_realize,
+                                                  paned);
+        }
+        if (small_handle)
+            g_signal_handlers_disconnect_by_func (small_handle,
+                                                  (gpointer) handle_expose,
+                                                  paned);
+    }
 
     GTK_WIDGET_CLASS(moo_paned_parent_class)->destroy (object);
 
