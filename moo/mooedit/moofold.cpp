@@ -346,13 +346,18 @@ insert_fold (MooFoldTree *tree,
         if (!fold->next)
             last = fold;
 
-        if (end < first_line)
+        /* Adjacent folds that share only a boundary line are allowed:
+         * e.g. "} else {" has one fold ending on line N and another
+         * starting on the same line N.  Use <= / >= so those cases
+         * fall through as non-overlapping rather than being rejected. */
+        if (end <= first_line)
             continue;
 
-        if (start > last_line)
+        if (start >= last_line)
             break;
 
-        if (start == first_line || end == first_line || start == last_line)
+        /* Only reject when two folds would share the same START line. */
+        if (start == first_line)
             return NULL;
 
         if (start < first_line)

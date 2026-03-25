@@ -41,6 +41,7 @@ extern void moo_ll_apply_range (GtkTextBuffer *buffer, int first_line, int last_
 #include "mooutils/mooatom.h"
 #include "mooutils/mootype-macros.h"
 #include "mooutils/moocompat.h"
+#include <math.h>
 #include "mooutils/mooutils-gobject.h"
 #include "mooedit/mooquicksearch-gxml.h"
 #include <gtk/gtk.h>
@@ -1500,7 +1501,9 @@ moo_fold_scan_braces (GtkTextView *text_view)
     {
         GtkTextIter start, end;
         gtk_text_buffer_get_bounds (buffer, &start, &end);
-        text = gtk_text_buffer_get_text (buffer, &start, &end, FALSE);
+        /* Use TRUE to include "invisible" (long-line-truncated) characters so
+         * that braces hidden by the rendering optimisation are still counted. */
+        text = gtk_text_buffer_get_text (buffer, &start, &end, TRUE);
     }
 
     stack = (int *) g_malloc (stack_cap * sizeof (int));
@@ -4825,47 +4828,50 @@ draw_fold_mark (MooTextView    *view,
                 int             height,
                 int             window_width)
 {
-    /* VS Code-style rotating triangle:
-     * ▼ (pointing down) when expanded, ▶ (pointing right) when collapsed */
-    int cx, cy, sz;
+    /* Use ❯ (U+276F) glyph: pointing right when collapsed, rotated 90°
+     * clockwise (pointing down) when expanded. */
+    int cx, cy;
     GtkStyleContext *ctx;
     GdkRGBA fg = {0.6, 0.6, 0.6, 1.0};
+    PangoLayout *layout;
+    PangoRectangle ink;
 
-    sz = view->priv->lm.fold_width - 4;
-    if (sz < 6) sz = 6;
     cx = window_width - view->priv->lm.fold_width / 2;
     cy = y + height / 2;
 
-    /* Get foreground color from theme */
+    /* Get foreground color from theme and dim it slightly */
     ctx = gtk_widget_get_style_context (GTK_WIDGET (view));
     gtk_style_context_save (ctx);
     gtk_style_context_get_color (ctx, gtk_style_context_get_state (ctx), &fg);
     gtk_style_context_restore (ctx);
-    /* Dim the color a bit for the fold markers */
     fg.alpha = 0.55;
+
+    layout = gtk_widget_create_pango_layout (GTK_WIDGET (view), "\xe2\x9d\xaf"); /* UTF-8 for U+276F ❯ */
+    pango_layout_get_pixel_extents (layout, &ink, NULL);
 
     cairo_save (cr_param);
     cairo_set_source_rgba (cr_param, fg.red, fg.green, fg.blue, fg.alpha);
 
     if (fold->collapsed)
     {
-        /* ▶ Right-pointing triangle */
-        cairo_move_to (cr_param, cx - sz/4, cy - sz/2);
-        cairo_line_to (cr_param, cx + sz/2, cy);
-        cairo_line_to (cr_param, cx - sz/4, cy + sz/2);
-        cairo_close_path (cr_param);
-        cairo_fill (cr_param);
+        /* ❯ pointing right — content is hidden */
+        cairo_move_to (cr_param,
+                       cx - (ink.x + ink.width)  / 2.0,
+                       cy - (ink.y + ink.height) / 2.0);
+        pango_cairo_show_layout (cr_param, layout);
     }
     else
     {
-        /* ▼ Down-pointing triangle */
-        cairo_move_to (cr_param, cx - sz/2, cy - sz/4);
-        cairo_line_to (cr_param, cx + sz/2, cy - sz/4);
-        cairo_line_to (cr_param, cx, cy + sz/2);
-        cairo_close_path (cr_param);
-        cairo_fill (cr_param);
+        /* ❯ rotated 90° clockwise → pointing downward — block is open */
+        cairo_translate (cr_param, cx, cy);
+        cairo_rotate (cr_param, M_PI / 2.0);
+        cairo_move_to (cr_param,
+                       -(ink.x + ink.width)  / 2.0,
+                       -(ink.y + ink.height) / 2.0);
+        pango_cairo_show_layout (cr_param, layout);
     }
 
+    g_object_unref (layout);
     cairo_restore (cr_param);
 }
 
