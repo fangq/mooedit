@@ -4847,6 +4847,22 @@ draw_fold_mark (MooTextView    *view,
     fg.alpha = 0.55;
 
     layout = gtk_widget_create_pango_layout (GTK_WIDGET (view), "\xe2\x9d\xaf"); /* UTF-8 for U+276F ❯ */
+
+    /* Scale the glyph down so it fits inside the fold-margin column.
+     * Target: occupy at most (fold_width - 4) pixels. */
+    {
+        PangoFontDescription *fd;
+        int target_px = view->priv->lm.fold_width - 4;
+        if (target_px < 6) target_px = 6;
+        fd = pango_font_description_copy (pango_layout_get_font_description (layout));
+        if (!fd)
+            fd = pango_font_description_copy (
+                    pango_context_get_font_description (pango_layout_get_context (layout)));
+        pango_font_description_set_absolute_size (fd, target_px * PANGO_SCALE);
+        pango_layout_set_font_description (layout, fd);
+        pango_font_description_free (fd);
+    }
+
     pango_layout_get_pixel_extents (layout, &ink, NULL);
 
     cairo_save (cr_param);

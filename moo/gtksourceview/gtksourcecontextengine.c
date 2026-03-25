@@ -2337,25 +2337,6 @@ gtk_source_context_engine_attach_buffer (GtkSourceEngine *engine,
 	}
 }
 
-/**
- * disable_highlighting:
- *
- * @ce: #GtkSourceContextEngine.
- *
- * Dsiables highlighting in case of errors (currently if highlighting
- * a single line took too long, so that highlighting doesn't freeze
- * text editor).
- */
-static void
-disable_highlighting (GtkSourceContextEngine *ce)
-{
-	if (!ce->priv->disabled)
-	{
-		ce->priv->disabled = TRUE;
-		gtk_source_context_engine_attach_buffer (GTK_SOURCE_ENGINE (ce), NULL);
-		/* FIXME maybe emit some signal here? */
-	}
-}
 
 static void
 set_tag_style_hash_cb (const char             *style,
@@ -4569,9 +4550,11 @@ analyze_line (GtkSourceContextEngine *ce,
 
 		if (g_timer_elapsed (timer, NULL) * 1000 > MAX_TIME_FOR_ONE_LINE)
 		{
-			g_critical (_("Highlighting a single line took too much time, "
-				      "syntax highlighting will be disabled"));
-			disable_highlighting (ce);
+			/* Line is too complex (e.g. extremely long) — skip the
+			 * remainder of this line's scan but keep highlighting
+			 * enabled for the rest of the file. */
+			g_warning (_("Highlighting a single line took too much time, "
+				     "skipping remainder of line"));
 			break;
 		}
 
