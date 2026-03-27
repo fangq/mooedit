@@ -4013,26 +4013,40 @@ moo_text_view_draw_box_selection (GtkTextView *text_view, cairo_t *cr)
 
         if (col_left < line_len)
         {
-            GdkRectangle first_rect, last_rect;
-            GtkTextIter first_char, last_char;
+            GdkRectangle rl, rr;
+            GtkTextIter draw_l, draw_r;
             int wx1, wx2, hx, hw, dummy;
-            int clamp_right = (col_right > line_len) ? line_len : col_right;
 
-            first_char = ls;
-            gtk_text_iter_set_line_offset (&first_char, col_left);
-            gtk_text_view_get_iter_location (text_view, &first_char, &first_rect);
+            /* Use containing-character snap for drawing so the highlight
+             * covers the full character under each drag endpoint, rather
+             * than the midpoint-snapped col that can place the left edge
+             * up to half a character before the actual drag position. */
+            gtk_text_view_get_iter_at_location (text_view, &draw_l, left_bx, ly);
+            if (gtk_text_iter_get_line (&draw_l) != line)
+                draw_l = ls;
 
-            last_char = ls;
-            gtk_text_iter_set_line_offset (&last_char,
-                clamp_right > 0 ? clamp_right - 1 : 0);
-            gtk_text_view_get_iter_location (text_view, &last_char, &last_rect);
+            if (col_right <= line_len)
+            {
+                gtk_text_view_get_iter_at_location (text_view, &draw_r, right_bx, ly);
+                if (gtk_text_iter_get_line (&draw_r) != line)
+                    draw_r = le;
+            }
+            else
+            {
+                /* right_bx past end of text — back up to last real char */
+                draw_r = le;
+                if (!gtk_text_iter_starts_line (&draw_r))
+                    gtk_text_iter_backward_char (&draw_r);
+            }
 
+            gtk_text_view_get_iter_location (text_view, &draw_l, &rl);
+            gtk_text_view_get_iter_location (text_view, &draw_r, &rr);
             gtk_text_view_buffer_to_window_coords (text_view,
                 GTK_TEXT_WINDOW_TEXT,
-                first_rect.x, 0, &wx1, &dummy);
+                rl.x, 0, &wx1, &dummy);
             gtk_text_view_buffer_to_window_coords (text_view,
                 GTK_TEXT_WINDOW_TEXT,
-                last_rect.x + last_rect.width, 0, &wx2, &dummy);
+                rr.x + rr.width, 0, &wx2, &dummy);
             hx = wx1;
             hw = wx2 - wx1;
 
