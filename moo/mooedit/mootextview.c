@@ -4326,11 +4326,15 @@ moo_text_view_expose (GtkWidget      *widget,
             if (view->priv->draw_whitespace != 0)
                 moo_text_view_draw_whitespace (text_view, cr, &start, &end);
 
-    /* Draw "..." on truncated long lines */
-    moo_text_view_draw_long_line_markers (text_view, cr);
-
-    /* Draw box/column selection overlay */
-    moo_text_view_draw_box_selection (text_view, cr);
+    {
+        cairo_save (cr);
+        gtk_cairo_transform_to_window (cr, widget, text_window);
+        /* Draw "..." on truncated long lines */
+        moo_text_view_draw_long_line_markers (text_view, cr);
+        /* Draw box/column selection overlay */
+        moo_text_view_draw_box_selection (text_view, cr);
+        cairo_restore (cr);
+    }
 
         }
     }
