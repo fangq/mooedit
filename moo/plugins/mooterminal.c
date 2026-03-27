@@ -1041,52 +1041,6 @@ create_terminal_box (void)
 
     terminal_spawn (term);
 
-    /* ── Shell-side PS1 rewrap mitigation for VTE >= 0.60 ───────────
-     *
-     * On modern VTE (>= 0.60) the rewrap-on-resize API is a no-op,
-     * so VTE always reflows content.  Bash cannot handle this and
-     * reprints PS1 incorrectly (prompt duplication/growth).
-     *
-     * Fix: Send an escape sequence that disables DEC autowrap mode
-     * right before the shell prompt is printed.  We install a tiny
-     * PROMPT_COMMAND that:
-     *   1) Disables autowrap  (\e[?7l)  — so the prompt line is NOT
-     *      subject to VTE reflow on resize.
-     *   2) Arranges for autowrap to be re-enabled (\e[?7h) after
-     *      PS1 is displayed, so normal command output wraps fine.
-     *
-     * We bracket this in a function with a guard variable so it
-     * only installs once, and chains any pre-existing PROMPT_COMMAND.
-     */
-#if VTE_CHECK_VERSION(0, 58, 0)
-    {
-        /*
-         * The leading space prevents this from appearing in bash history.
-         * We use a function + guard to be safe against re-entry.
-         *
-         * __moo_fix_ps1 runs as PROMPT_COMMAND:
-         *   - Disables autowrap so the prompt line won't be reflowed
-         *   - Wraps the *current* PS1 (whatever the user has set) with
-         *     the escape sequences inside \[...\] so bash doesn't count
-         *     them as visible characters.
-         *   - Re-enables autowrap in PS1's trailing escape, so it takes
-         *     effect right after the prompt is drawn.
-         */
-        const char *init_cmd =
-            " if [ -z \"$__moo_ps1_fix\" ]; then"
-            "   __moo_ps1_fix=1;"
-            "   __moo_orig_prompt_command=\"$PROMPT_COMMAND\";"
-            "   __moo_fix_ps1() {"
-            "     local bare=\"$PS1\";"
-            "     PS1='\\[\\e[?7l\\]'\"$bare\"'\\[\\e[?7h\\]';"
-            "     eval \"$__moo_orig_prompt_command\";"
-            "   };"
-            "   PROMPT_COMMAND=__moo_fix_ps1;"
-            " fi\n";
-        vte_terminal_feed_child (term, init_cmd, -1);
-    }
-#endif
-
     hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
     gtk_box_pack_start (GTK_BOX (hbox), GTK_WIDGET (term), TRUE, TRUE, 0);
 

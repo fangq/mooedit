@@ -4655,13 +4655,15 @@ moo_file_view_key_press (MooFileView    *fileview,
         GtkWidget *entry = GTK_WIDGET (fileview->priv->entry);
 
         g_return_val_if_fail (event != NULL, FALSE);
-        g_return_val_if_fail (gtk_widget_get_realized (GTK_WIDGET (entry)), FALSE);
+
+        path_entry_show_entry (fileview);
+        if (!gtk_widget_get_realized (entry))
+            gtk_widget_realize (entry);
 
         copy = gdk_event_copy ((GdkEvent*) event);
         g_object_unref (copy->key.window);
         copy->key.window = g_object_ref (gtk_widget_get_window (entry));
 
-        path_entry_show_entry (fileview);
         path_entry_set_text (fileview, "");
         gtk_widget_event (entry, copy);
 

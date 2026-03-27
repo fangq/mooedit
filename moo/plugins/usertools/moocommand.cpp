@@ -964,8 +964,8 @@ _moo_command_parse_item (MooMarkupNode      *elm,
 
     if (!factory)
     {
-        g_warning ("unknown command type '%s' in tool '%s' in file '%s'",
-                   factory_name, name, filename);
+        g_message ("skipping tool '%s' in file '%s': unknown command type '%s' (feature not compiled in?)",
+                   name, filename, factory_name);
         goto error;
     }
 
