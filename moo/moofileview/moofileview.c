@@ -134,6 +134,8 @@ struct MooFileViewPrivate {
     gboolean         use_current_filter;
 
     GtkEntry        *entry;
+    GtkWidget       *breadcrumb_bar;   /* HBox with clickable path segment buttons */
+    GtkWidget       *breadcrumb_event; /* EventBox wrapping breadcrumb_bar */
     int              entry_state;   /* it can be one of three: nothing, typeahead, or completion,
                                        depending on text entered into the entry */
     Typeahead       *typeahead;
@@ -1363,11 +1365,29 @@ init_gui (MooFileView *fileview)
         g_critical ("oops");
     }
 
-    entry = _moo_file_entry_new ();
-    g_object_set_data (G_OBJECT (entry), "moo-file-view", fileview);
-    gtk_widget_show (entry);
-    gtk_box_pack_start (box, entry, FALSE, FALSE, 0);
-    fileview->priv->entry = GTK_ENTRY (entry);
+    {
+        /* Path bar: breadcrumb buttons (normal mode) + text entry (edit mode) */
+        GtkWidget *path_hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+
+        GtkWidget *crumb_event = gtk_event_box_new ();
+        GtkWidget *crumb_bar = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 2);
+        gtk_container_add (GTK_CONTAINER (crumb_event), crumb_bar);
+        gtk_widget_show (crumb_bar);
+        gtk_widget_show (crumb_event);
+        gtk_box_pack_start (GTK_BOX (path_hbox), crumb_event, TRUE, TRUE, 0);
+        fileview->priv->breadcrumb_bar = crumb_bar;
+        fileview->priv->breadcrumb_event = crumb_event;
+
+        entry = _moo_file_entry_new ();
+        g_object_set_data (G_OBJECT (entry), "moo-file-view", fileview);
+        gtk_widget_set_no_show_all (entry, TRUE);
+        gtk_widget_hide (entry);
+        gtk_box_pack_start (GTK_BOX (path_hbox), entry, TRUE, TRUE, 0);
+        fileview->priv->entry = GTK_ENTRY (entry);
+
+        gtk_widget_show (path_hbox);
+        gtk_box_pack_start (box, path_hbox, FALSE, FALSE, 0);
+    }
 
     notebook = create_notebook (fileview);
     gtk_widget_show (notebook);
@@ -4003,10 +4023,115 @@ static gboolean entry_tab_key           (GtkEntry       *entry,
 static gboolean looks_like_path         (const char     *text);
 
 
+/* ---- breadcrumb path bar ---- */
+
+static void
+path_entry_show_entry (MooFileView *fileview)
+{
+    gtk_widget_hide (fileview->priv->breadcrumb_event);
+    gtk_widget_show (GTK_WIDGET (fileview->priv->entry));
+    gtk_widget_grab_focus (GTK_WIDGET (fileview->priv->entry));
+}
+
+static void
+path_entry_show_breadcrumbs (MooFileView *fileview)
+{
+    gtk_widget_hide (GTK_WIDGET (fileview->priv->entry));
+    gtk_widget_show (fileview->priv->breadcrumb_event);
+}
+
+static void
+breadcrumb_button_clicked (GtkButton *button, MooFileView *fileview)
+{
+    const char *path = g_object_get_data (G_OBJECT (button), "breadcrumb-path");
+    if (path)
+        moo_file_view_chdir_path (fileview, path, NULL);
+}
+
+static gboolean
+breadcrumb_bar_button_press (GtkWidget      *widget,
+                             GdkEventButton *event,
+                             MooFileView    *fileview)
+{
+    (void) widget;
+    if (event->type == GDK_BUTTON_PRESS && event->button == 1)
+        path_entry_show_entry (fileview);
+    return FALSE;
+}
+
+static void
+breadcrumb_update (MooFileView *fileview, const char *path)
+{
+    GtkWidget *bar = fileview->priv->breadcrumb_bar;
+    GList *children, *l;
+    char **parts;
+    guint i;
+    GString *cur;
+
+    /* Remove existing buttons */
+    children = gtk_container_get_children (GTK_CONTAINER (bar));
+    for (l = children; l; l = l->next)
+        gtk_widget_destroy (GTK_WIDGET (l->data));
+    g_list_free (children);
+
+    if (!path || !path[0])
+        return;
+
+    parts = g_strsplit (path, G_DIR_SEPARATOR_S, -1);
+    cur = g_string_new ("");
+
+    for (i = 0; parts[i] != NULL; i++)
+    {
+        GtkWidget *btn;
+        const char *seg = parts[i];
+
+        if (seg[0] == '\0')
+        {
+            /* Leading separator on Unix → root "/" segment */
+            if (i == 0)
+            {
+                g_string_assign (cur, G_DIR_SEPARATOR_S);
+                btn = gtk_button_new_with_label (G_DIR_SEPARATOR_S);
+            }
+            else
+                continue;
+        }
+        else
+        {
+            if (cur->len > 0 && cur->str[cur->len - 1] != G_DIR_SEPARATOR)
+                g_string_append_c (cur, G_DIR_SEPARATOR);
+            g_string_append (cur, seg);
+            btn = gtk_button_new_with_label (seg);
+        }
+
+        gtk_button_set_relief (GTK_BUTTON (btn), GTK_RELIEF_NONE);
+        g_object_set_data_full (G_OBJECT (btn), "breadcrumb-path",
+                                g_strdup (cur->str), g_free);
+        g_signal_connect (btn, "clicked",
+                          G_CALLBACK (breadcrumb_button_clicked), fileview);
+        gtk_widget_show (btn);
+        gtk_box_pack_start (GTK_BOX (bar), btn, FALSE, FALSE, 0);
+
+        /* Separator between segments */
+        if (parts[i + 1] != NULL && parts[i + 1][0] != '\0')
+        {
+            GtkWidget *sep = gtk_label_new ("›");
+            gtk_widget_show (sep);
+            gtk_box_pack_start (GTK_BOX (bar), sep, FALSE, FALSE, 0);
+        }
+    }
+
+    g_strfreev (parts);
+    g_string_free (cur, TRUE);
+}
+
 static void
 path_entry_init (MooFileView *fileview)
 {
     GtkEntry *entry = fileview->priv->entry;
+
+    g_signal_connect (fileview->priv->breadcrumb_event, "button-press-event",
+                      G_CALLBACK (breadcrumb_bar_button_press), fileview);
 
     /* XXX after? */
     g_signal_connect (entry, "changed",
@@ -4197,6 +4322,7 @@ path_entry_set_text (MooFileView    *fileview,
     gtk_editable_set_position (GTK_EDITABLE (entry), -1);
     g_signal_handlers_unblock_by_func (entry, (gpointer) entry_changed,
                                        fileview);
+    breadcrumb_update (fileview, text);
 }
 
 
@@ -4265,6 +4391,13 @@ moo_file_view_key_press (MooFileView    *fileview,
         g_warning ("oops");
         stop_path_entry (fileview, FALSE);
         return FALSE;
+    }
+
+    /* Ctrl+L: focus path entry for editing */
+    if (event->keyval == GDK_KEY_l && (event->state & GDK_CONTROL_MASK))
+    {
+        path_entry_show_entry (fileview);
+        return TRUE;
     }
 
     /* return immediately if event doesn't look like text typed in */
@@ -4528,8 +4661,7 @@ moo_file_view_key_press (MooFileView    *fileview,
         g_object_unref (copy->key.window);
         copy->key.window = g_object_ref (gtk_widget_get_window (entry));
 
-        gtk_widget_grab_focus (entry);
-
+        path_entry_show_entry (fileview);
         path_entry_set_text (fileview, "");
         gtk_widget_event (entry, copy);
 
@@ -4569,6 +4701,7 @@ stop_path_entry (MooFileView    *fileview,
         text = g_strdup ("");
 
     path_entry_set_text (fileview, text);
+    path_entry_show_breadcrumbs (fileview);
 
     if (focus_file_list)
         moo_file_view_focus_files (fileview);
