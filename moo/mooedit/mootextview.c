@@ -1580,13 +1580,16 @@ moo_fold_scan_braces (GtkTextView *text_view)
                     }
                     else if (indent < prev_indent)
                     {
-                        /* Dedent: close all blocks opened at a deeper level */
+                        /* Dedent: close all blocks opened at a deeper level.
+                         * Use the current line (dedent trigger) as fold_end so
+                         * that _moo_fold_tree_collapse (which hides start+1 ..
+                         * end_line-1) covers through prev_nonempty. */
                         while (stack_size > 0 && istack[stack_size - 1] > indent)
                         {
                             stack_size--;
                             int open_line = stack[stack_size];
-                            if (prev_nonempty > open_line)
-                                moo_text_buffer_add_fold (mbuf, open_line, prev_nonempty);
+                            if (line > open_line)
+                                moo_text_buffer_add_fold (mbuf, open_line, line);
                         }
                     }
                 }
@@ -1604,13 +1607,19 @@ moo_fold_scan_braces (GtkTextView *text_view)
             line++;
         }
 
-        /* End of buffer: close any still-open blocks */
-        while (stack_size > 0)
+        /* End of buffer: close any still-open blocks.
+         * Use prev_nonempty+1 as fold_end so collapse hides through
+         * prev_nonempty (collapse hides start+1 .. end_line-1). */
         {
-            stack_size--;
-            int open_line = stack[stack_size];
-            if (prev_nonempty > open_line)
-                moo_text_buffer_add_fold (mbuf, open_line, prev_nonempty);
+            int line_count = gtk_text_buffer_get_line_count ((GtkTextBuffer *) mbuf);
+            int eof_end = (prev_nonempty + 1 < line_count) ? prev_nonempty + 1 : prev_nonempty;
+            while (stack_size > 0)
+            {
+                stack_size--;
+                int open_line = stack[stack_size];
+                if (eof_end > open_line)
+                    moo_text_buffer_add_fold (mbuf, open_line, eof_end);
+            }
         }
 
         g_free (istack);
@@ -4743,6 +4752,7 @@ moo_text_view_set_lang (MooTextView    *view,
 {
     g_return_if_fail (MOO_IS_TEXT_VIEW (view));
     moo_text_buffer_set_lang (get_moo_buffer (view), lang);
+    moo_fold_schedule_update (view);
     gtk_widget_queue_draw (GTK_WIDGET (view));
 }
 
