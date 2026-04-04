@@ -666,10 +666,20 @@ set(_eggsmclient_sources
 )
 if(MOO_OS_WIN32)
     list(APPEND _eggsmclient_sources eggsmclient/eggsmclient-win32.c)
-elseif(MOO_OS_DARWIN)
-    list(APPEND _eggsmclient_sources eggsmclient/eggsmclient-dummy.c)
+elseif(MOO_OS_DARWIN AND GDK_QUARTZ)
+    # Native Quartz backend: provide the egg_sm_client_osx_new() symbol that
+    # eggsmclient.c calls when GDK_WINDOWING_QUARTZ is defined.
+    list(APPEND _eggsmclient_sources eggsmclient/eggsmclient-osx.c)
+elseif(MOO_OS_DARWIN AND GDK_X11)
+    # macOS + XQuartz: use the same XSMP backend as Linux.
+    list(APPEND _eggsmclient_sources
+        eggsmclient/eggsmclient-xsmp.c
+        eggsmclient/eggdesktopfile.h
+        eggsmclient/eggdesktopfile.c
+    )
 else()
-    # XSMP backend — add -DEGG_SM_CLIENT_BACKEND_XSMP via compile definitions below
+    # Linux / other Unix — XSMP backend.
+    # Add -DEGG_SM_CLIENT_BACKEND_XSMP via compile definitions below.
     list(APPEND _eggsmclient_sources
         eggsmclient/eggsmclient-xsmp.c
         eggsmclient/eggdesktopfile.h
@@ -986,6 +996,17 @@ if(MOO_BUILD_APP)
     add_executable(medit ${_medit_app_sources})
     add_dependencies(medit moo_codegen)
 
+    # mooutils-misc.cpp and mooapp.cpp use Objective-C++ syntax
+    # ([[NSApplication ...]]]) when MOO_USE_QUARTZ is enabled.
+    # Tell CMake to compile them as Objective-C++ on macOS Quartz builds.
+    if(MOO_USE_QUARTZ)
+        set_source_files_properties(
+            "${_src}/mooutils/mooutils-misc.cpp"
+            "${_src}/mooapp/mooapp.cpp"
+            PROPERTIES COMPILE_FLAGS "-x objective-c++"
+        )
+    endif()
+
     target_include_directories(medit PRIVATE
         "${_src}"
         "${_bin}"
@@ -1038,9 +1059,14 @@ if(MOO_BUILD_APP)
         target_compile_definitions(medit PRIVATE
             "MOO_UNIT_TEST_DATA_DIR=\"${_top}/moo/medit-app/data\"")
     endif()
-    if(NOT MOO_OS_DARWIN AND NOT MOO_OS_WIN32)
-        # XSMP backend
+    # Enable XSMP for Linux and for macOS+XQuartz (both use the XSMP sources).
+    # Do NOT enable for macOS+Quartz (uses eggsmclient-osx.c) or Win32.
+    if(NOT MOO_OS_WIN32 AND NOT (MOO_OS_DARWIN AND GDK_QUARTZ))
         target_compile_definitions(medit PRIVATE EGG_SM_CLIENT_BACKEND_XSMP)
+    endif()
+    if(MOO_USE_QUARTZ)
+        target_compile_definitions(medit PRIVATE MOO_USE_QUARTZ)
+        target_link_libraries(medit PRIVATE PkgConfig::IGE_MAC)
     endif()
 
     target_compile_definitions(medit PRIVATE LUA_USE_APICHECK)

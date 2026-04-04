@@ -79,6 +79,11 @@ if(UNIX)
     add_compile_definitions(_GNU_SOURCE)
 endif()
 
+# ── macOS Homebrew prefix + optional ige-mac-integration ─────────────────────
+if(MOO_OS_DARWIN)
+    include(MooMacOS)   # sets MOO_HOMEBREW_PREFIX, MOO_USE_QUARTZ
+endif()
+
 # ── GTK / GLib / libxml2 ─────────────────────────────────────────────────────
 include(MooGtk)
 
