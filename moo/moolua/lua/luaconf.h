@@ -656,6 +656,19 @@ union luai_Cast { double l_d; long l_l; };
 	if (e != -1) close(e); \
 	e = (e == -1); }
 
+#elif defined(_WIN32)
+/* On Windows use GetTempPath() + a unique filename instead of /tmp */
+#include <windows.h>
+#define LUA_TMPNAMBUFSIZE	MAX_PATH
+#define lua_tmpnam(b,e) { \
+	char _tmpdir[MAX_PATH]; \
+	DWORD _r = GetTempPathA(MAX_PATH, _tmpdir); \
+	if (_r == 0 || _r > MAX_PATH) { e = 1; } \
+	else { \
+	    snprintf(b, MAX_PATH, "%slua_XXXXXX", _tmpdir); \
+	    e = (_mktemp(b) == NULL); \
+	} }
+
 #else
 #define LUA_TMPNAMBUFSIZE	L_tmpnam
 #define lua_tmpnam(b,e)		{ e = (tmpnam(b) == NULL); }

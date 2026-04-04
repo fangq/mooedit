@@ -24,8 +24,10 @@
 #include <vte/vte.h>
 #include <string.h>
 #include <stdlib.h>
+#ifndef G_OS_WIN32
 #include <pwd.h>
 #include <unistd.h>
+#endif
 
 #include "mooedit/mooplugin.h"
 #include "mooedit/mooplugin-macro.h"

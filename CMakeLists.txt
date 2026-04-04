@@ -85,6 +85,9 @@ include(MooGtk)
 # ── NLS / intltool / gettext ─────────────────────────────────────────────────
 include(MooNLS)
 
+# ── VTE terminal library ──────────────────────────────────────────────────────
+include(MooVTE)   # sets MOO_BUILD_TERMINAL and PkgConfig::VTE
+
 # ── Header / function checks (replaces autoconf AC_CHECK_HEADERS) ─────────────
 include(CheckIncludeFile)
 include(CheckFunctionExists)

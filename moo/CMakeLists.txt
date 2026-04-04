@@ -935,6 +935,9 @@ if(MOO_BUILD_CTAGS)
         plugins/ctags/ctags-view.c      plugins/ctags/ctags-view.h
     )
 endif()
+if(MOO_BUILD_TERMINAL)
+    list(APPEND _plugins_sources plugins/mooterminal.c)
+endif()
 
 # ════════════════════════════════════════════════════════════════════════════
 # Aggregate all moo_sources (prefix with ${_src}/ for absolute paths)
@@ -996,9 +999,13 @@ if(MOO_BUILD_APP)
         target_include_directories(medit PRIVATE ${Python3_INCLUDE_DIRS})
     endif()
 
-    find_package(X11 REQUIRED)
+    if(NOT MOO_OS_WIN32)
+        find_package(X11 REQUIRED)
+    endif()
     find_package(Threads REQUIRED)
-    find_package(Python3 COMPONENTS Development REQUIRED)
+    if(MOO_ENABLE_PYTHON)
+        find_package(Python3 COMPONENTS Development REQUIRED)
+    endif()
 
     # Expand library variables explicitly so that INTERFACE compile options
     # from moo_build_settings are NOT passed through to the linker step.
@@ -1009,15 +1016,20 @@ if(MOO_BUILD_APP)
         PkgConfig::GMODULE
         PkgConfig::XML
         ${MOO_X_LIBS}
-        X11::X11                   # modern imported target
-        X11::SM
-        X11::ICE
-        Python3::Python
         Threads::Threads
         ${MOO_LIBM}
         $<$<BOOL:${MOO_ENABLE_PYTHON}>:PkgConfig::PYGTK>
         $<$<BOOL:${MOO_OS_WIN32}>:-lmooglib>
     )
+    if(NOT MOO_OS_WIN32)
+        target_link_libraries(medit PRIVATE X11::X11 X11::SM X11::ICE)
+    endif()
+    if(MOO_ENABLE_PYTHON)
+        target_link_libraries(medit PRIVATE Python3::Python)
+    endif()
+    if(MOO_BUILD_TERMINAL)
+        target_link_libraries(medit PRIVATE PkgConfig::VTE)
+    endif()
 
     if(MOO_OS_WIN32)
         target_link_options(medit PRIVATE -mwindows)
