@@ -109,6 +109,7 @@ extern void moo_ll_apply (GtkTextBuffer *buffer);
 extern char *box_sel_get_text (GtkTextView *tv, int ax, int ay, int bx, int by);
 extern int box_sel_visual_col_at_x (GtkTextView *tv, int line, int buf_x);
 extern void box_sel_clear (MooTextView *view);
+extern void box_sel_delete (MooTextView *view);
 extern void moo_ll_remove_all (GtkTextBuffer *buffer);
 extern void moo_ll_reveal_line (GtkTextBuffer *buffer, int line);
 extern void moo_ll_apply_range (GtkTextBuffer *buffer, int first_line, int last_line);
@@ -3315,8 +3316,18 @@ moo_text_view_copy_clipboard (GtkTextView *text_view)
 static void
 moo_text_view_cut_clipboard (GtkTextView *text_view)
 {
-    MOO_TEXT_VIEW (text_view)->priv->box_sel.box_copied = FALSE;
+    MooTextView *view = MOO_TEXT_VIEW (text_view);
 
+    /* If box selection is active, copy then delete the selected rectangle */
+    if (view->priv->box_sel.active)
+    {
+        moo_text_view_box_copy (view);
+        box_sel_delete (view);
+        box_sel_clear (view);
+        return;
+    }
+
+    view->priv->box_sel.box_copied = FALSE;
     moo_text_view_cut_or_copy (text_view, TRUE, GDK_SELECTION_CLIPBOARD);
 }
 

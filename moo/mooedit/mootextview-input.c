@@ -446,6 +446,99 @@ box_sel_update (MooTextView *view, int buf_x, int buf_y)
     gtk_widget_queue_draw (GTK_WIDGET (view));
 }
 
+/* Delete the text within the box selection on each selected line.
+ * Processes lines bottom-to-top to avoid iterator invalidation.
+ * Places the cursor at the top-left corner of the former selection.
+ * Does NOT clear the box_sel state — callers must call box_sel_clear(). */
+void
+box_sel_delete (MooTextView *view)
+{
+    GtkTextView   *tv     = GTK_TEXT_VIEW (view);
+    GtkTextBuffer *buffer = gtk_text_view_get_buffer (tv);
+    int ax, ay, bx, by;
+    int first_line, last_line, n_lines, i;
+    int left_bx, right_bx;
+    int *col_lefts, *col_rights;
+    GtkTextIter ia, ib;
+
+    if (!view->priv->box_sel.active)
+        return;
+
+    ax = view->priv->box_sel.anchor_x;
+    ay = view->priv->box_sel.anchor_y;
+    bx = view->priv->box_sel.current_x;
+    by = view->priv->box_sel.current_y;
+
+    gtk_text_view_get_iter_at_location (tv, &ia, ax, ay);
+    gtk_text_view_get_iter_at_location (tv, &ib, bx, by);
+    first_line = gtk_text_iter_get_line (&ia);
+    last_line  = gtk_text_iter_get_line (&ib);
+    if (first_line > last_line) { int t = first_line; first_line = last_line; last_line = t; }
+
+    left_bx  = (ax < bx) ? ax : bx;
+    right_bx = (ax > bx) ? ax : bx;
+    n_lines  = last_line - first_line + 1;
+
+    /* Pre-compute column offsets before any buffer modifications,
+     * because pixel→column mapping changes after inserts/deletes. */
+    col_lefts  = g_new0 (int, n_lines);
+    col_rights = g_new0 (int, n_lines);
+    for (i = 0; i < n_lines; i++)
+    {
+        col_lefts[i]  = box_sel_visual_col_at_x (tv, first_line + i, left_bx);
+        col_rights[i] = box_sel_visual_col_at_x (tv, first_line + i, right_bx);
+    }
+
+    gtk_text_buffer_begin_user_action (buffer);
+
+    for (i = n_lines - 1; i >= 0; i--)
+    {
+        int line = first_line + i;
+        GtkTextIter ls, cs, ce;
+        int line_len, end_col;
+
+        gtk_text_buffer_get_iter_at_line (buffer, &ls, line);
+        ce = ls;
+        if (!gtk_text_iter_ends_line (&ce))
+            gtk_text_iter_forward_to_line_end (&ce);
+        line_len = gtk_text_iter_get_line_offset (&ce);
+
+        if (col_lefts[i] >= line_len)
+            continue;   /* selection is past end of this line — nothing to delete */
+
+        cs = ls;
+        gtk_text_iter_set_line_offset (&cs, col_lefts[i]);
+
+        end_col = (col_rights[i] < line_len) ? col_rights[i] : line_len;
+        ce = ls;
+        gtk_text_iter_set_line_offset (&ce, end_col);
+
+        if (!gtk_text_iter_equal (&cs, &ce))
+            gtk_text_buffer_delete (buffer, &cs, &ce);
+    }
+
+    gtk_text_buffer_end_user_action (buffer);
+
+    /* Place cursor at the top-left corner of the former selection */
+    {
+        GtkTextIter cursor, le;
+        int line_len_after, col;
+        gtk_text_buffer_get_iter_at_line (buffer, &cursor, first_line);
+        le = cursor;
+        if (!gtk_text_iter_ends_line (&le))
+            gtk_text_iter_forward_to_line_end (&le);
+        line_len_after = gtk_text_iter_get_line_offset (&le);
+        col = (col_lefts[0] < line_len_after) ? col_lefts[0] : line_len_after;
+        gtk_text_iter_set_line_offset (&cursor, col);
+        gtk_text_buffer_place_cursor (buffer, &cursor);
+        gtk_text_view_scroll_mark_onscreen (tv,
+                                            gtk_text_buffer_get_insert (buffer));
+    }
+
+    g_free (col_lefts);
+    g_free (col_rights);
+}
+
 /* Get the visual column at a given buffer x coordinate on a line */
 int
 box_sel_visual_col_at_x (GtkTextView *tv, int line, int buf_x)
@@ -1441,6 +1534,34 @@ _moo_text_view_key_press_event (GtkWidget          *widget,
         return FALSE;
 
     moo_accel_translate_event (widget, event, &keyval, &mods);
+
+    /* ── Box/column selection: intercept editing keys ───────────────────────
+     * Delete / BackSpace  → delete selected columns, consume event.
+     * Printable char      → delete selected columns, place cursor at top-left,
+     *                       then fall through so the default GTK handler
+     *                       inserts the character at the new cursor position.
+     * Ctrl+X (cut)        → handled via the cut-clipboard signal (see
+     *                       moo_text_view_cut_clipboard in mootextview.c).     */
+    if (view->priv->box_sel.active)
+    {
+        gboolean is_delete = (keyval == GDK_KEY_Delete    ||
+                              keyval == GDK_KEY_KP_Delete ||
+                              keyval == GDK_KEY_BackSpace);
+        /* A plain printable ASCII character with no modifier keys */
+        gboolean is_printable = (!is_delete        &&
+                                 keyval >= 0x20    &&
+                                 keyval <  0x7f    &&
+                                 mods == 0);
+        if (is_delete || is_printable)
+        {
+            box_sel_delete (view);
+            box_sel_clear (view);
+            if (is_delete)
+                return TRUE;
+            /* For printable chars fall through: cursor is now at the top-left
+             * of the former selection; the default handler will insert the char. */
+        }
+    }
 
     if (keyval == GDK_KEY_KP_Enter || keyval == GDK_KEY_Return)
     {
