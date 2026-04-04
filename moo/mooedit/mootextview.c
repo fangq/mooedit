@@ -1446,6 +1446,9 @@ moo_fold_scan_braces (GtkTextView *text_view)
     char *text;
     const char *p;
     int line;
+    gboolean is_end_lang   = FALSE;  /* Matlab/Octave: keyword...end blocks */
+    gboolean is_pascal     = FALSE;  /* Pascal: begin...end blocks */
+    gboolean is_indent_lang = FALSE; /* Python/YAML: indentation-based blocks */
 
     buffer = gtk_text_view_get_buffer (text_view);
     if (!MOO_IS_TEXT_BUFFER (buffer))
@@ -1509,84 +1512,343 @@ moo_fold_scan_braces (GtkTextView *text_view)
     stack = (int *) g_malloc (stack_cap * sizeof (int));
     line = 0;
 
-    for (p = text; *p; p++)
+    /* Detect language to choose folding strategy */
     {
-        char ch = *p;
-
-        if (ch == '\n')
-        {
-            line++;
-            in_line_comment = FALSE;
-            prev_ch = ch;
-            continue;
-        }
-        if (ch == '\r')
-        {
-            if (*(p + 1) == '\n') p++;
-            line++;
-            in_line_comment = FALSE;
-            prev_ch = '\n';
-            continue;
-        }
-
-        if (in_block_comment)
-        {
-            if (ch == '/' && prev_ch == '*')
-                in_block_comment = FALSE;
-        }
-        else if (in_line_comment)
-        {
-            /* skip until newline */
-        }
-        else if (in_string)
-        {
-            if (ch == '"' && prev_ch != '\\')
-                in_string = FALSE;
-            else if (ch == '\\' && prev_ch == '\\')
-            {
-                prev_ch = 0;
-                continue;
-            }
-        }
-        else if (in_char)
-        {
-            if (ch == '\'' && prev_ch != '\\')
-                in_char = FALSE;
-            else if (ch == '\\' && prev_ch == '\\')
-            {
-                prev_ch = 0;
-                continue;
-            }
-        }
-        else
-        {
-            if (ch == '"')
-                in_string = TRUE;
-            else if (ch == '\'')
-                in_char = TRUE;
-            else if (ch == '/' && *(p + 1) == '/')
-                in_line_comment = TRUE;
-            else if (ch == '/' && *(p + 1) == '*')
-                in_block_comment = TRUE;
-            else if (ch == '{')
-            {
-                if (stack_size >= stack_cap)
-                {
-                    stack_cap *= 2;
-                    stack = (int *) g_realloc (stack, stack_cap * sizeof (int));
-                }
-                stack[stack_size++] = line;
-            }
-            else if (ch == '}' && stack_size > 0)
-            {
-                int open_line = stack[--stack_size];
-                if (line > open_line)
-                    moo_text_buffer_add_fold (mbuf, open_line, line);
-            }
-        }
-
-        prev_ch = ch;
+        MooLang   *lang    = moo_text_buffer_get_lang (mbuf);
+        const char *lang_id = _moo_lang_id (lang);
+        is_end_lang   = (strcmp (lang_id, "matlab") == 0 ||
+                         strcmp (lang_id, "octave") == 0);
+        is_pascal     =  strcmp (lang_id, "pascal") == 0;
+        is_indent_lang = (strcmp (lang_id, "python")  == 0 ||
+                          strcmp (lang_id, "python3") == 0 ||
+                          strcmp (lang_id, "yaml")    == 0);
     }
+
+    if (is_indent_lang)
+    {
+        /* ── Indentation-based fold scanner (Python, YAML) ───────────
+         * A fold opens when a non-blank/non-comment line is followed by
+         * a line with strictly greater indentation; the opener is the
+         * line BEFORE the indent increase.  A fold closes when
+         * indentation drops back below the level at which it opened.
+         * Blank lines and comment-only lines are skipped so they do not
+         * interrupt a block.
+         *
+         * Two parallel arrays track open blocks:
+         *   stack[i]  — start line of block i
+         *   istack[i] — indent level that opened block i
+         */
+        int *istack = (int *) g_malloc (stack_cap * sizeof (int));
+        int prev_indent    = -1;
+        int prev_nonempty  = -1;
+        const char *ls = text;
+
+        while (*ls)
+        {
+            /* Find end of line */
+            const char *le = ls;
+            while (*le && *le != '\n' && *le != '\r')
+                le++;
+
+            /* Measure indentation and detect blank/comment lines */
+            const char *pw = ls;
+            int indent = 0;
+            while (pw < le && (*pw == ' ' || *pw == '\t'))
+            {
+                indent++;
+                pw++;
+            }
+            gboolean blank   = (pw == le);
+            gboolean comment = (!blank && *pw == '#');  /* # for Python/YAML */
+
+            if (!blank && !comment)
+            {
+                if (prev_indent >= 0)
+                {
+                    if (indent > prev_indent)
+                    {
+                        /* Indentation increased: prev_nonempty line opens a block */
+                        if (stack_size >= stack_cap)
+                        {
+                            stack_cap *= 2;
+                            stack  = (int *) g_realloc (stack,  stack_cap * sizeof (int));
+                            istack = (int *) g_realloc (istack, stack_cap * sizeof (int));
+                        }
+                        istack[stack_size] = indent;
+                        stack [stack_size] = prev_nonempty;
+                        stack_size++;
+                    }
+                    else if (indent < prev_indent)
+                    {
+                        /* Dedent: close all blocks opened at a deeper level */
+                        while (stack_size > 0 && istack[stack_size - 1] > indent)
+                        {
+                            stack_size--;
+                            int open_line = stack[stack_size];
+                            if (prev_nonempty > open_line)
+                                moo_text_buffer_add_fold (mbuf, open_line, prev_nonempty);
+                        }
+                    }
+                }
+                prev_indent   = indent;
+                prev_nonempty = line;
+            }
+
+            /* Advance past line ending */
+            if (*le == '\r' && *(le + 1) == '\n')
+                ls = le + 2;
+            else if (*le == '\n' || *le == '\r')
+                ls = le + 1;
+            else
+                break;
+            line++;
+        }
+
+        /* End of buffer: close any still-open blocks */
+        while (stack_size > 0)
+        {
+            stack_size--;
+            int open_line = stack[stack_size];
+            if (prev_nonempty > open_line)
+                moo_text_buffer_add_fold (mbuf, open_line, prev_nonempty);
+        }
+
+        g_free (istack);
+    }
+    else if (is_end_lang || is_pascal)
+    {
+        /* ── Line-by-line keyword/end block scanner ──────────────────
+         * Matlab/Octave: block openers are keywords like function/if/for/…
+         * followed by a matching "end" (or endfor/endif/… in Octave).
+         * Pascal: "begin"/"record"/"object"/"try" matched with "end".
+         * Only the first word on a line (after whitespace) is examined;
+         * this avoids misidentifying "end" inside index expressions like
+         * A(1:end) which never appears as the first token of a statement.
+         */
+        static const char *matlab_openers[] = {
+            "function", "if", "for", "while", "switch",
+            "try", "classdef", "methods", "properties",
+            "events", "enumeration", "parfor", NULL
+        };
+        static const char *octave_end_compounds[] = {
+            "if", "for", "while", "function", "switch",
+            "try", "classdef", "methods", "properties",
+            "events", "enumeration", NULL
+        };
+        static const char *pascal_openers[] = {
+            "begin", "record", "object", "try", NULL
+        };
+
+        const char *ls = text;   /* line start */
+        while (*ls)
+        {
+            /* Find end of line */
+            const char *le = ls;
+            while (*le && *le != '\n' && *le != '\r')
+                le++;
+
+            /* Skip leading whitespace */
+            const char *w = ls;
+            while (w < le && (*w == ' ' || *w == '\t'))
+                w++;
+
+            if (w < le)
+            {
+                gboolean is_opener = FALSE;
+                gboolean is_closer = FALSE;
+                size_t remaining = (size_t)(le - w);
+
+                if (is_end_lang)
+                {
+                    /* Skip comment lines */
+                    if (*w != '%' && *w != '#')
+                    {
+                        int ki;
+                        for (ki = 0; matlab_openers[ki] && !is_opener; ki++)
+                        {
+                            size_t klen = strlen (matlab_openers[ki]);
+                            if (remaining >= klen &&
+                                strncmp (w, matlab_openers[ki], klen) == 0)
+                            {
+                                char nx = w[klen];
+                                if (nx == ' ' || nx == '\t' || nx == '(' ||
+                                    nx == '%' || nx == '#'  || nx == '\0' ||
+                                    nx == '\n' || nx == '\r')
+                                    is_opener = TRUE;
+                            }
+                        }
+                        if (!is_opener && remaining >= 3 &&
+                            strncmp (w, "end", 3) == 0)
+                        {
+                            char nx = w[3];
+                            if (nx == '\0' || nx == ' '  || nx == '\t' ||
+                                nx == ';'  || nx == '%'  || nx == '#'  ||
+                                nx == '\n' || nx == '\r')
+                            {
+                                is_closer = TRUE;
+                            }
+                            else
+                            {
+                                /* Octave compound: endfor, endif, endwhile … */
+                                int ki;
+                                for (ki = 0; octave_end_compounds[ki] && !is_closer; ki++)
+                                {
+                                    size_t klen = strlen (octave_end_compounds[ki]);
+                                    if (remaining >= 3 + klen &&
+                                        strncmp (w + 3, octave_end_compounds[ki], klen) == 0)
+                                    {
+                                        char after = w[3 + klen];
+                                        if (after == '\0' || after == ' '  ||
+                                            after == '\t'  || after == ';' ||
+                                            after == '%'   || after == '#' ||
+                                            after == '\n'  || after == '\r')
+                                            is_closer = TRUE;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                else /* is_pascal */
+                {
+                    /* Skip // line comments */
+                    if (!(w[0] == '/' && w[1] == '/'))
+                    {
+                        int ki;
+                        for (ki = 0; pascal_openers[ki] && !is_opener; ki++)
+                        {
+                            size_t klen = strlen (pascal_openers[ki]);
+                            if (remaining >= klen &&
+                                g_ascii_strncasecmp (w, pascal_openers[ki], klen) == 0)
+                            {
+                                char nx = w[klen];
+                                if (nx == '\0' || nx == ' '  || nx == '\t' ||
+                                    nx == ';'  || nx == '/'  ||
+                                    nx == '\n' || nx == '\r')
+                                    is_opener = TRUE;
+                            }
+                        }
+                        if (!is_opener && remaining >= 3 &&
+                            g_ascii_strncasecmp (w, "end", 3) == 0)
+                        {
+                            char nx = w[3];
+                            if (nx == '\0' || nx == ' '  || nx == '\t' ||
+                                nx == ';'  || nx == '.'  || nx == '/'  ||
+                                nx == '\n' || nx == '\r')
+                                is_closer = TRUE;
+                        }
+                    }
+                }
+
+                if (is_opener)
+                {
+                    if (stack_size >= stack_cap)
+                    {
+                        stack_cap *= 2;
+                        stack = (int *) g_realloc (stack, stack_cap * sizeof (int));
+                    }
+                    stack[stack_size++] = line;
+                }
+                else if (is_closer && stack_size > 0)
+                {
+                    int open_line = stack[--stack_size];
+                    if (line > open_line)
+                        moo_text_buffer_add_fold (mbuf, open_line, line);
+                }
+            }
+
+            /* Advance past line ending */
+            if (*le == '\r' && *(le + 1) == '\n')
+                ls = le + 2;
+            else if (*le == '\n' || *le == '\r')
+                ls = le + 1;
+            else
+                break;
+            line++;
+        }
+    }
+    else
+    {
+        /* ── Character-by-character brace scanner ({/}) ────────────── */
+        for (p = text; *p; p++)
+        {
+            char ch = *p;
+
+            if (ch == '\n')
+            {
+                line++;
+                in_line_comment = FALSE;
+                prev_ch = ch;
+                continue;
+            }
+            if (ch == '\r')
+            {
+                if (*(p + 1) == '\n') p++;
+                line++;
+                in_line_comment = FALSE;
+                prev_ch = '\n';
+                continue;
+            }
+
+            if (in_block_comment)
+            {
+                if (ch == '/' && prev_ch == '*')
+                    in_block_comment = FALSE;
+            }
+            else if (in_line_comment)
+            {
+                /* skip until newline */
+            }
+            else if (in_string)
+            {
+                if (ch == '"' && prev_ch != '\\')
+                    in_string = FALSE;
+                else if (ch == '\\' && prev_ch == '\\')
+                {
+                    prev_ch = 0;
+                    continue;
+                }
+            }
+            else if (in_char)
+            {
+                if (ch == '\'' && prev_ch != '\\')
+                    in_char = FALSE;
+                else if (ch == '\\' && prev_ch == '\\')
+                {
+                    prev_ch = 0;
+                    continue;
+                }
+            }
+            else
+            {
+                if (ch == '"')
+                    in_string = TRUE;
+                else if (ch == '\'')
+                    in_char = TRUE;
+                else if (ch == '/' && *(p + 1) == '/')
+                    in_line_comment = TRUE;
+                else if (ch == '/' && *(p + 1) == '*')
+                    in_block_comment = TRUE;
+                else if (ch == '{')
+                {
+                    if (stack_size >= stack_cap)
+                    {
+                        stack_cap *= 2;
+                        stack = (int *) g_realloc (stack, stack_cap * sizeof (int));
+                    }
+                    stack[stack_size++] = line;
+                }
+                else if (ch == '}' && stack_size > 0)
+                {
+                    int open_line = stack[--stack_size];
+                    if (line > open_line)
+                        moo_text_buffer_add_fold (mbuf, open_line, line);
+                }
+            }
+
+            prev_ch = ch;
+        }
+    } /* end brace scanner */
 
     g_free (stack);
     g_free (text);
