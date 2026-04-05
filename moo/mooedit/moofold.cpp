@@ -220,6 +220,9 @@ _moo_fold_get_start (MooFold *fold)
 {
     g_return_val_if_fail (MOO_IS_FOLD (fold), -1);
     g_return_val_if_fail (!_moo_fold_is_deleted (fold), -1);
+    /* Guard: the mark's line may have been deleted before the fold rescan runs */
+    if (!fold->start || moo_line_mark_get_deleted (fold->start))
+        return -1;
     return moo_line_mark_get_line (fold->start);
 }
 
@@ -229,6 +232,9 @@ _moo_fold_get_end (MooFold *fold) /* FOLD_GET_END de-staticified */
 {
     g_return_val_if_fail (MOO_IS_FOLD (fold), -1);
     g_return_val_if_fail (!_moo_fold_is_deleted (fold), -1);
+    /* Guard: the mark's line may have been deleted before the fold rescan runs */
+    if (!fold->end || moo_line_mark_get_deleted (fold->end))
+        return -1;
     return moo_line_mark_get_line (fold->end);
 }
 
@@ -511,6 +517,53 @@ fold_free (MooFold *fold)
 }
 
 
+/* Recursively free a fold and all its descendants.  Properly removes the
+ * fold's line marks from the buffer (or skips marks already deleted).
+ * The extra g_object_unref balances the ref added by moo_text_buffer_add_fold. */
+static void
+fold_free_subtree (MooFold *fold)
+{
+    MooFold *child, *next_child;
+
+    g_return_if_fail (MOO_IS_FOLD (fold));
+
+    child = fold->children;
+    fold->children = NULL;
+
+    while (child)
+    {
+        next_child = child->next;
+        fold_free_subtree (child);
+        child = next_child;
+    }
+
+    fold_free (fold);
+    g_object_unref (fold);  /* balance the ref added in moo_text_buffer_add_fold */
+}
+
+
+/* Remove every fold from the tree, including stale folds whose marks have
+ * been deleted.  This is safe to call even when marks are partially gone. */
+void
+_moo_fold_tree_clear (MooFoldTree *tree)
+{
+    MooFold *fold, *next;
+
+    g_return_if_fail (tree != NULL);
+
+    fold = tree->folds;
+    tree->folds = NULL;
+    tree->n_folds = 0;
+
+    while (fold)
+    {
+        next = fold->next;
+        fold_free_subtree (fold);
+        fold = next;
+    }
+}
+
+
 void
 _moo_fold_tree_remove (MooFoldTree *tree,
                        MooFold     *fold)
@@ -575,6 +628,12 @@ expand_check_visible (MooFoldTree *tree,
     MooFold *child;
 
     CHECK_FOLD (tree, fold);
+
+    /* If this fold's marks were deleted (e.g. the closing } line was removed
+     * before the rescan timer fired), skip the visual update.  The entire fold
+     * tree will be rebuilt by the next moo_fold_scan_braces() call. */
+    if (_moo_fold_get_start (fold) < 0 || _moo_fold_get_end (fold) < 0)
+        return;
 
     buffer = GTK_TEXT_BUFFER (tree->buffer);
     gtk_text_buffer_get_iter_at_line (buffer, &start,
@@ -837,14 +896,31 @@ get_folds_in_range (MooFoldTree    *tree,
 {
     MooFold *child;
 
-    if (parent && first_line <= _moo_fold_get_start (parent) && last_line >= _moo_fold_get_start (parent))
-        list = g_slist_prepend (list, parent);
+    if (parent)
+    {
+        int ps = _moo_fold_get_start (parent);
+        if (ps >= 0 && first_line <= ps && last_line >= ps)
+            list = g_slist_prepend (list, parent);
+    }
 
     for (child = parent ? parent->children : tree->folds; child != NULL; child = child->next)
     {
-        if (last_line < _moo_fold_get_start (child))
+        int cs, ce;
+
+        if (_moo_fold_is_deleted (child))
+            continue;
+
+        cs = _moo_fold_get_start (child);
+        ce = _moo_fold_get_end (child);
+
+        /* Fold marks were deleted (their line was removed before the rescan
+         * timer fired).  Skip silently — the tree will be rebuilt shortly. */
+        if (cs < 0 || ce < 0)
+            continue;
+
+        if (last_line < cs)
             break;
-        if (first_line >= _moo_fold_get_end (child))
+        if (first_line >= ce)
             continue;
         list = get_folds_in_range (tree, child, first_line, last_line, list);
     }

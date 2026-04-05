@@ -123,6 +123,7 @@ GSList     *moo_text_buffer_get_folds_in_range          (MooTextBuffer      *buf
 void        moo_text_buffer_toggle_fold                 (MooTextBuffer      *buffer,
                                                          MooFold            *fold);
 void        moo_text_buffer_toggle_folds                (MooTextBuffer      *buffer);
+void        moo_text_buffer_clear_all_folds             (MooTextBuffer      *buffer);
 
 
 G_END_DECLS

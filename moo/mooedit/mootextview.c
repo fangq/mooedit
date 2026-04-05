@@ -1400,35 +1400,17 @@ moo_text_view_set_buffer_type (MooTextView *view,
 static void
 moo_fold_clear_all (MooTextBuffer *mbuf)
 {
-    /* Fast O(F) clear: remove the invisible tag from the entire buffer in
-     * one shot, then collect and delete all folds from the fold tree in a
-     * single pass.  Marking each fold as expanded before deletion prevents
-     * _moo_fold_tree_remove from doing redundant per-fold tag work. */
-    int line_count = gtk_text_buffer_get_line_count (GTK_TEXT_BUFFER (mbuf));
+    /* Remove the invisible tag from the entire buffer in one shot, then
+     * discard every fold (including stale folds whose line marks were
+     * already deleted because the line was removed before the rescan timer
+     * fired).  moo_text_buffer_clear_all_folds() traverses the fold tree
+     * directly so it is not confused by marks with priv->line == NULL. */
     GtkTextIter ts, te;
-    GSList *folds, *l;
 
-    if (line_count < 2)
-        return;
-
-    /* Remove ALL invisible tags at once — O(text_length) but only one call */
     gtk_text_buffer_get_bounds (GTK_TEXT_BUFFER (mbuf), &ts, &te);
     gtk_text_buffer_remove_tag_by_name (GTK_TEXT_BUFFER (mbuf), MOO_FOLD_TAG, &ts, &te);
 
-    /* get_folds_in_range returns parent and child folds alike.
-     * After deleting a parent its children are promoted but remain in
-     * our snapshot list and are processed in the same pass. */
-    folds = moo_text_buffer_get_folds_in_range (mbuf, 0, line_count - 1);
-    for (l = folds; l != NULL; l = l->next)
-    {
-        MooFold *fold = (MooFold *) l->data;
-        if (!_moo_fold_is_deleted (fold))
-        {
-            fold->collapsed = FALSE;  /* tag already cleared above; skip expand */
-            moo_text_buffer_delete_fold (mbuf, fold);
-        }
-    }
-    g_slist_free (folds);
+    moo_text_buffer_clear_all_folds (mbuf);
 }
 
 static void
@@ -1481,7 +1463,8 @@ moo_fold_scan_braces (GtkTextView *text_view)
                 if (_f && !_moo_fold_is_deleted (_f) && _f->collapsed)
                 {
                     int cline = _moo_fold_get_start (_f);
-                    g_array_append_val (collapsed_lines, cline);
+                    if (cline >= 0)  /* skip stale folds with deleted marks */
+                        g_array_append_val (collapsed_lines, cline);
                 }
             }
             g_slist_free (all_folds);
@@ -5842,7 +5825,8 @@ static void
 line_mark_moved (MooTextView *view,
                  MooLineMark *mark)
 {
-    /* XXX */
+    invalidate_line (view, moo_line_mark_get_line (mark), TRUE, TRUE);
+
     if (_moo_line_mark_get_pretty (mark))
         gtk_widget_queue_draw (GTK_WIDGET (view));
 }
@@ -5892,7 +5876,11 @@ fold_toggled (MooTextView        *view,
     if (view->priv->enable_folding)
     {
         if (fold)
-            invalidate_line (view, _moo_fold_get_start (fold), TRUE, TRUE);
+        {
+            int fold_start = _moo_fold_get_start (fold);
+            if (fold_start >= 0)
+                invalidate_line (view, fold_start, TRUE, TRUE);
+        }
         else
             gtk_widget_queue_draw (GTK_WIDGET (view));
     }

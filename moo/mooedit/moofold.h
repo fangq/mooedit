@@ -63,6 +63,7 @@ gboolean     _moo_fold_is_deleted   (MooFold        *fold);
 
 MooFoldTree *_moo_fold_tree_new     (MooTextBuffer  *buffer);
 void         _moo_fold_tree_free    (MooFoldTree    *tree);
+void         _moo_fold_tree_clear   (MooFoldTree    *tree);
 
 MooFold     *_moo_fold_tree_add     (MooFoldTree    *tree,
                                      int             first_line,
