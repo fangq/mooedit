@@ -1413,6 +1413,12 @@ moo_fold_clear_all (MooTextBuffer *mbuf)
     moo_text_buffer_clear_all_folds (mbuf);
 }
 
+/* Files larger than this line count skip fold scanning to keep editing
+ * responsive.  The full-file text copy + walk done by moo_fold_scan_braces
+ * is O(n) and fires every 400 ms after each edit, which makes typing in a
+ * 25 k-line YAML (or any large) file unbearably slow. */
+#define MOO_FOLD_LINE_LIMIT 5000
+
 static void
 /* FAST_FOLD_SCAN — replacement using raw text scanning */
 moo_fold_scan_braces (GtkTextView *text_view)
@@ -1886,7 +1892,14 @@ moo_fold_timer_cb (gpointer data)
     guint *timer_id = (guint *) g_object_get_data (G_OBJECT (view), "moo-fold-timer-id");
     if (timer_id) *timer_id = 0;
     if (view->priv->enable_folding)
-        moo_fold_scan_braces (GTK_TEXT_VIEW (view));
+    {
+        /* Skip edit-triggered rescans for large files — the initial scan at
+         * file-open still runs once (to create fold markers), but repeated
+         * O(n) rescans while typing would freeze the UI on large files. */
+        GtkTextBuffer *_buf = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
+        if (gtk_text_buffer_get_line_count (_buf) <= MOO_FOLD_LINE_LIMIT)
+            moo_fold_scan_braces (GTK_TEXT_VIEW (view));
+    }
     return G_SOURCE_REMOVE;
 }
 
@@ -1926,7 +1939,26 @@ moo_fold_schedule_update (MooTextView *view)
 static void
 moo_fold_after_buffer_changed (MooTextView *view)
 {
+    /* Don't bother scheduling a rescan for large files — moo_fold_scan_braces
+     * would bail out immediately anyway, but this avoids the repeated
+     * g_source_remove / g_timeout_add churn on every single keystroke. */
+    if (gtk_text_buffer_get_line_count (
+            gtk_text_view_get_buffer (GTK_TEXT_VIEW (view))) > MOO_FOLD_LINE_LIMIT)
+        return;
+
     moo_fold_schedule_update (view);
+}
+
+/* Called when the buffer's language property changes (e.g. after deferred
+ * language detection at file-open).  We always run a fresh fold scan so
+ * that YAML/Python indent folds (which require knowing the language) are
+ * created even for large files.  This runs at most once per language change,
+ * not on every edit, so the one-time cost is acceptable. */
+static void
+moo_fold_on_lang_changed (MooTextView *view)
+{
+    if (view->priv->enable_folding)
+        moo_fold_scan_braces (GTK_TEXT_VIEW (view));
 }
 
 
@@ -1983,6 +2015,11 @@ connect_buffer (MooTextView *view)
     moo_fold_scan_braces (GTK_TEXT_VIEW (view));
     g_signal_connect_swapped (buffer, "changed",
                               G_CALLBACK (moo_fold_after_buffer_changed), view);
+    /* Re-scan folds when language changes (e.g. after deferred language detection).
+     * Uses moo_fold_on_lang_changed (not the debounced timer path) so that
+     * large YAML/Python files still get their indent folds on open. */
+    g_signal_connect_swapped (buffer, "notify::lang",
+                              G_CALLBACK (moo_fold_on_lang_changed), view);
 
 
     g_signal_connect_swapped (buffer, "line-mark-added",
@@ -3716,6 +3753,16 @@ moo_text_view_paste_clipboard (GtkTextView *text_view)
     buffer = gtk_text_view_get_buffer (text_view);
     clipboard = gtk_widget_get_clipboard (GTK_WIDGET (text_view), GDK_SELECTION_CLIPBOARD);
 
+    /* Record the cursor line before the paste so we can limit the LL
+     * rescan to only the inserted lines rather than the whole buffer. */
+    int paste_first_line = 0;
+    {
+        GtkTextIter pre_iter;
+        gtk_text_buffer_get_iter_at_mark (buffer, &pre_iter,
+                                          gtk_text_buffer_get_insert (buffer));
+        paste_first_line = gtk_text_iter_get_line (&pre_iter);
+    }
+
     gtk_text_buffer_begin_user_action (buffer);
 
     if ((text = gtk_clipboard_wait_for_text (clipboard)))
@@ -3726,11 +3773,12 @@ moo_text_view_paste_clipboard (GtkTextView *text_view)
 
     gtk_text_buffer_end_user_action (buffer);
 
-    /* Apply long-line truncation to any pasted long lines */
+    /* Apply long-line truncation only to the pasted region.
+     * The old code used moo_ll_apply_range(buffer, 0, _n-1) which rescanned
+     * the ENTIRE buffer on every paste — O(n) for a 25 k-line file. */
     {
         extern void moo_ll_apply_range (GtkTextBuffer *buf, int first, int last);
-        int _n = gtk_text_buffer_get_line_count (buffer);
-        /* Ensure nowrap flag is set for new documents */
+        /* Ensure nowrap flag is set for new documents opened via paste */
         if (!GPOINTER_TO_INT (g_object_get_data (G_OBJECT (buffer), "moo-nowrap-mode")))
         {
             GtkWrapMode wm = gtk_text_view_get_wrap_mode (text_view);
@@ -3739,7 +3787,14 @@ moo_text_view_paste_clipboard (GtkTextView *text_view)
                                    GINT_TO_POINTER (1));
         }
         if (GPOINTER_TO_INT (g_object_get_data (G_OBJECT (buffer), "moo-nowrap-mode")))
-            moo_ll_apply_range (buffer, 0, _n - 1);
+        {
+            GtkTextIter post_iter;
+            int paste_last_line;
+            gtk_text_buffer_get_iter_at_mark (buffer, &post_iter,
+                                              gtk_text_buffer_get_insert (buffer));
+            paste_last_line = gtk_text_iter_get_line (&post_iter);
+            moo_ll_apply_range (buffer, paste_first_line, paste_last_line);
+        }
     }
 
 

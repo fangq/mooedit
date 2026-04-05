@@ -856,6 +856,7 @@ moo_text_buffer_set_lang (MooTextBuffer  *buffer,
     }
 
     moo_text_buffer_set_brackets (buffer, lang ? _moo_lang_get_brackets (lang) : NULL);
+    g_object_notify (G_OBJECT (buffer), "lang");
 }
 
 
