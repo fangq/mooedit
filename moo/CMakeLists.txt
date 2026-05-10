@@ -594,14 +594,16 @@ add_custom_target(moo_codegen ALL
 # ════════════════════════════════════════════════════════════════════════════
 
 # ── mooglib ──────────────────────────────────────────────────────────────────
+# moo-glib.cpp builds on every platform (its Win32 specifics are guarded
+# inside the file with #ifdef __WIN32__).  The autotools build adds it
+# unconditionally; mirror that here.  There's no separately-built
+# libmooglib library — the source is compiled into medit.exe directly.
 set(_mooglib_sources
     mooglib/moo-glib.h
     mooglib/moo-stat.h
     mooglib/moo-time.h
+    mooglib/moo-glib.cpp
 )
-if(NOT MOO_OS_WIN32)
-    list(APPEND _mooglib_sources mooglib/moo-glib.cpp)
-endif()
 
 # ── xdgmime ──────────────────────────────────────────────────────────────────
 set(_xdgmime_sources
@@ -1063,7 +1065,6 @@ if(MOO_BUILD_APP)
         Threads::Threads
         ${MOO_LIBM}
         $<$<BOOL:${MOO_ENABLE_PYTHON}>:PkgConfig::PYGTK>
-        $<$<BOOL:${MOO_OS_WIN32}>:-lmooglib>
     )
     if(GDK_X11)
         target_link_libraries(medit PRIVATE X11::X11 X11::SM X11::ICE)
@@ -1177,7 +1178,6 @@ if(MOO_BUILD_MODULE AND MOO_ENABLE_PYTHON)
         ${Python3_LIBRARIES}
         ${MOO_LIBM}
         $<$<BOOL:${MOO_ENABLE_PYTHON}>:${PYGTK_LIBRARIES}>
-        $<$<BOOL:${MOO_OS_WIN32}>:-lmooglib>
     )
 
     install(TARGETS _moo

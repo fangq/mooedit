@@ -301,7 +301,6 @@ target_link_libraries(moo_build_settings INTERFACE
     ${MOO_X_LIBS}
     ${MOO_LIBM}
     $<$<BOOL:${MOO_ENABLE_PYTHON}>:${PYGTK_LIBRARIES}>
-    $<$<BOOL:${MOO_OS_WIN32}>:-lmooglib>
 )
 
 # pkg_check_modules' *_LIBRARIES are bare names (gtk-3, glib-2.0, ...).
