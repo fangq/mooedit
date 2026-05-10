@@ -197,28 +197,36 @@ static void moo_prefs_dialog_destroy (GtkWidget *object)
 {
     MooPrefsDialog *dialog = MOO_PREFS_DIALOG (object);
 
-    /* The tree-view child may already have been destroyed by GtkContainer's
-     * destroy chain (children destroyed before subclass destroy handlers run).
-     * The weak pointer registered in setup_pages_list NULLs pages_list in
-     * that case, so we only touch it when it's still live. */
+    /* destroy may be re-entered (e.g. dispose called again after the first
+     * destroy chain ran), and the tree-view / store may have been finalized
+     * out from under us via destroy_with_parent or a child-destruction path.
+     * The weak pointer on pages_list NULLs it on tree-view finalize, but
+     * we still GTK_IS_*-check both fields defensively before touching them. */
     if (dialog->pages_list)
     {
-        GtkTreeSelection *selection =
-            gtk_tree_view_get_selection (dialog->pages_list);
-        g_signal_handlers_disconnect_by_func (selection,
-                                              (gpointer) pages_list_selection_changed,
-                                              dialog);
-        gtk_tree_view_set_model (dialog->pages_list, NULL);
-        g_object_remove_weak_pointer (G_OBJECT (dialog->pages_list),
-                                      (gpointer *) &dialog->pages_list);
+        if (GTK_IS_TREE_VIEW (dialog->pages_list))
+        {
+            GtkTreeSelection *selection =
+                gtk_tree_view_get_selection (dialog->pages_list);
+            if (GTK_IS_TREE_SELECTION (selection))
+                g_signal_handlers_disconnect_by_func (selection,
+                                                      (gpointer) pages_list_selection_changed,
+                                                      dialog);
+            gtk_tree_view_set_model (dialog->pages_list, NULL);
+            g_object_remove_weak_pointer (G_OBJECT (dialog->pages_list),
+                                          (gpointer *) &dialog->pages_list);
+        }
         dialog->pages_list = NULL;
     }
 
     if (dialog->store)
     {
-        gtk_tree_model_foreach (GTK_TREE_MODEL (dialog->store),
-                                destroy_page, NULL);
-        g_object_unref (dialog->store);
+        if (GTK_IS_LIST_STORE (dialog->store))
+        {
+            gtk_tree_model_foreach (GTK_TREE_MODEL (dialog->store),
+                                    destroy_page, NULL);
+            g_object_unref (dialog->store);
+        }
         dialog->store = NULL;
     }
 

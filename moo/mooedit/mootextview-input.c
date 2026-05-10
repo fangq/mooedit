@@ -23,6 +23,7 @@
 #include <gdk/gdkkeysyms.h>
 
 extern void moo_text_view_reset_font_size (MooTextView *view);
+int box_sel_visual_col_at_x (GtkTextView *tv, int line, int buf_x);
 
 
 static gboolean

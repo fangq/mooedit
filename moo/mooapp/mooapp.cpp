@@ -378,7 +378,17 @@ moo_app_constructor (GType           type,
 static void
 moo_app_finalize (GObject *object)
 {
-    if (_prefs_dialog_instance) { gtk_widget_destroy (_prefs_dialog_instance); _prefs_dialog_instance = NULL; }
+    /* The dialog has destroy_with_parent=TRUE and may have already been
+     * finalized when its parent main window was destroyed. The weak pointer
+     * registered in moo_app_prefs_dialog NULLs _prefs_dialog_instance in
+     * that case, so we only destroy when it's still live. */
+    if (_prefs_dialog_instance && GTK_IS_WIDGET (_prefs_dialog_instance))
+    {
+        g_object_remove_weak_pointer (G_OBJECT (_prefs_dialog_instance),
+                                      (gpointer *) &_prefs_dialog_instance);
+        gtk_widget_destroy (_prefs_dialog_instance);
+        _prefs_dialog_instance = NULL;
+    }
     MooApp *app = MOO_APP(object);
 
     moo_app_do_quit (app);
@@ -1387,7 +1397,16 @@ moo_app_report_bug (GtkWidget *window)
 void
 moo_app_prefs_dialog (GtkWidget *parent)
 {
-    if (!_prefs_dialog_instance) _prefs_dialog_instance = moo_app_create_prefs_dialog (moo_app_instance ());
+    if (!_prefs_dialog_instance)
+    {
+        _prefs_dialog_instance = moo_app_create_prefs_dialog (moo_app_instance ());
+        /* The dialog inherits destroy_with_parent=TRUE from MooPrefsDialog,
+         * so it may be finalized when its transient_for parent is destroyed.
+         * The weak pointer NULLs _prefs_dialog_instance on finalize, so the
+         * (!_prefs_dialog_instance) check above re-creates it next time. */
+        g_object_add_weak_pointer (G_OBJECT (_prefs_dialog_instance),
+                                   (gpointer *) &_prefs_dialog_instance);
+    }
     GtkWidget *dialog = _prefs_dialog_instance;
     g_return_if_fail (MOO_IS_PREFS_DIALOG (dialog));
     moo_prefs_dialog_run (MOO_PREFS_DIALOG (dialog), parent);
