@@ -215,6 +215,16 @@ jobs:
           done
           echo "Bundled ${#copied[@]} DLLs."
 
+          # Strip debug symbols from the bundled DLLs and medit.exe.
+          # MSYS2 ships its DLLs with non-trivial symbol tables; stripping
+          # typically halves their size with zero runtime impact.
+          before=$(du -sb "$stage" | cut -f1)
+          find "$stage/bin" "$stage/lib/gdk-pixbuf-2.0" "$stage/lib/gio" \
+               \( -name '*.dll' -o -name '*.exe' \) -print0 \
+              | xargs -0 -r strip --strip-unneeded || true
+          after=$(du -sb "$stage" | cut -f1)
+          echo "Strip saved $(( (before - after) / 1024 )) KB"
+
           # ─── 2.  GTK / GLib runtime data ───────────────────────────────
           mkdir -p "$stage/share/glib-2.0/schemas" \
                    "$stage/share/icons" \

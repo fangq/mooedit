@@ -1089,6 +1089,17 @@ if(MOO_BUILD_APP)
 
     if(MOO_OS_WIN32)
         target_link_options(medit PRIVATE -mwindows)
+        # Statically link the MinGW C/C++ runtime + winpthread so the
+        # installer doesn't need to ship libgcc_s_seh-1.dll, libstdc++-6.dll,
+        # or libwinpthread-1.dll — three DLLs that exist purely to support
+        # the compiler-emitted code, not GTK itself.  Saves ~1.7 MB and
+        # removes three failure modes for users with mismatched MSYS2
+        # runtimes already on PATH.
+        target_link_options(medit PRIVATE
+            -static-libgcc
+            -static-libstdc++
+            "LINKER:-Bstatic,--whole-archive,-lwinpthread,--no-whole-archive,-Bdynamic"
+        )
         # shlwapi: PathMatchSpecA used by the fnmatch() shim in
         # mooutils/moowin32/mingw/fnmatch.h.
         # ole32:   CoInitializeEx / CoUninitialize used in medit-app/main.cpp.
