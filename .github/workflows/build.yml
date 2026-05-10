@@ -146,6 +146,7 @@ jobs:
             mingw-w64-x86_64-glib2
             mingw-w64-x86_64-adwaita-icon-theme
             mingw-w64-x86_64-hicolor-icon-theme
+            mingw-w64-x86_64-upx
             intltool
 
       - name: Install Inno Setup
@@ -224,6 +225,24 @@ jobs:
               | xargs -0 -r strip --strip-unneeded || true
           after=$(du -sb "$stage" | cut -f1)
           echo "Strip saved $(( (before - after) / 1024 )) KB"
+
+          # UPX-compress the stripped DLLs/exes for a further ~50 % size
+          # reduction.  The heavyweights (librsvg ~14 MB Rust runtime,
+          # libgtk-3 ~6 MB) are the biggest beneficiaries.  Trade-offs:
+          #   * Some Windows AV/EDR engines flag UPX-packed binaries as
+          #     "suspicious"; if that matters, drop this step.
+          #   * Compressed binaries take ~50–200 ms longer to start (LZMA
+          #     decompression happens on first load).
+          # We use --best --lzma for max ratio, and || true per file so
+          # one occasional UPX-incompatible binary doesn't fail the whole
+          # job — UPX refuses to pack already-packed or unusual formats.
+          before=$(du -sb "$stage" | cut -f1)
+          find "$stage/bin" "$stage/lib/gdk-pixbuf-2.0" "$stage/lib/gio" \
+               \( -name '*.dll' -o -name '*.exe' \) -print | while read -r f; do
+              upx --best --lzma -q "$f" >/dev/null 2>&1 || true
+          done
+          after=$(du -sb "$stage" | cut -f1)
+          echo "UPX saved $(( (before - after) / 1024 )) KB"
 
           # ─── 2.  GTK / GLib runtime data ───────────────────────────────
           mkdir -p "$stage/share/glib-2.0/schemas" \
