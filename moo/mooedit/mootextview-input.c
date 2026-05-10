@@ -23,7 +23,8 @@
 #include <gdk/gdkkeysyms.h>
 
 extern void moo_text_view_reset_font_size (MooTextView *view);
-int box_sel_visual_col_at_x (GtkTextView *tv, int line, int buf_x);
+int box_sel_visual_col_at_x (GtkTextView *tv, int line, int buf_x,
+                             gboolean right_bound);
 
 
 static gboolean
@@ -481,13 +482,16 @@ box_sel_delete (MooTextView *view)
     n_lines  = last_line - first_line + 1;
 
     /* Pre-compute column offsets before any buffer modifications,
-     * because pixel→column mapping changes after inserts/deletes. */
+     * because pixel→column mapping changes after inserts/deletes.
+     * Use right_bound=TRUE for col_rights so the rightmost character
+     * under the drag is treated as included — matching the visual
+     * highlight, which uses containing-character snap. */
     col_lefts  = g_new0 (int, n_lines);
     col_rights = g_new0 (int, n_lines);
     for (i = 0; i < n_lines; i++)
     {
-        col_lefts[i]  = box_sel_visual_col_at_x (tv, first_line + i, left_bx);
-        col_rights[i] = box_sel_visual_col_at_x (tv, first_line + i, right_bx);
+        col_lefts[i]  = box_sel_visual_col_at_x (tv, first_line + i, left_bx,  FALSE);
+        col_rights[i] = box_sel_visual_col_at_x (tv, first_line + i, right_bx, TRUE);
     }
 
     gtk_text_buffer_begin_user_action (buffer);
@@ -540,9 +544,26 @@ box_sel_delete (MooTextView *view)
     g_free (col_rights);
 }
 
-/* Get the visual column at a given buffer x coordinate on a line */
+/* Map a buffer x coordinate on `line` to a visual column.
+ *
+ * `right_bound`:
+ *   FALSE — left/anchor side of a box selection: return the column of
+ *           the character *containing* buf_x (the first col whose right
+ *           edge is past buf_x).  Matches gtk_text_view_get_iter_at_location.
+ *   TRUE  — right/cursor side of a box selection: return the column
+ *           *after* the character containing buf_x (the first col whose
+ *           left edge is at or past buf_x).  This is the exclusive end
+ *           of the deletion / copy range and ensures the rightmost
+ *           character under the drag gets included — matching the
+ *           visual highlight.
+ *
+ * Without the split, both sides used midpoint snap and the right edge
+ * could be one column short of what the highlight showed, so pressing
+ * Delete on a box selection failed to remove the rightmost character.
+ */
 int
-box_sel_visual_col_at_x (GtkTextView *tv, int line, int buf_x)
+box_sel_visual_col_at_x (GtkTextView *tv, int line, int buf_x,
+                         gboolean right_bound)
 {
     GtkTextIter iter;
     GtkTextBuffer *buf = gtk_text_view_get_buffer (tv);
@@ -554,7 +575,6 @@ box_sel_visual_col_at_x (GtkTextView *tv, int line, int buf_x)
 
     gtk_text_buffer_get_iter_at_line (buf, &iter, line);
 
-    /* Binary search: find the character whose x position is closest to buf_x */
     {
         GtkTextIter line_end = iter;
         int line_offset_max;
@@ -566,15 +586,28 @@ box_sel_visual_col_at_x (GtkTextView *tv, int line, int buf_x)
         if (line_offset_max == 0)
             return 0;
 
-        /* Walk forward char by char (simple, reliable with Unicode + tabs) */
         {
             int col = 0;
             GtkTextIter cur = iter;
             while (col < line_offset_max)
             {
                 gtk_text_view_get_iter_location (tv, &cur, &loc);
-                if (loc.x + loc.width / 2 > buf_x)
-                    return col;
+                if (right_bound)
+                {
+                    /* Stop at the first col whose left edge is >= buf_x.
+                     * Any char whose left edge is < buf_x is "under" the
+                     * drag and gets included via col++ below. */
+                    if (loc.x >= buf_x)
+                        return col;
+                }
+                else
+                {
+                    /* Stop at the first col whose right edge is > buf_x.
+                     * That char contains buf_x and is the leftmost
+                     * included column. */
+                    if (loc.x + loc.width > buf_x)
+                        return col;
+                }
                 col++;
                 if (!gtk_text_iter_forward_char (&cur))
                     break;
@@ -608,8 +641,8 @@ box_sel_get_text (GtkTextView *tv, int ax, int ay, int bx, int by)
 
     for (line = first_line; line <= last_line; line++)
     {
-        int col_left = box_sel_visual_col_at_x (tv, line, left_x);
-        int col_right = box_sel_visual_col_at_x (tv, line, right_x);
+        int col_left  = box_sel_visual_col_at_x (tv, line, left_x,  FALSE);
+        int col_right = box_sel_visual_col_at_x (tv, line, right_x, TRUE);
         GtkTextIter ls, le, cs, ce;
         int line_len;
         char *slice;

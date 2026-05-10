@@ -113,7 +113,8 @@ static void     moo_text_view_remove        (GtkContainer       *container,
 extern void moo_ll_apply (GtkTextBuffer *buffer);
 /* Box selection text extraction (defined in mootextview-input.c) */
 extern char *box_sel_get_text (GtkTextView *tv, int ax, int ay, int bx, int by);
-extern int box_sel_visual_col_at_x (GtkTextView *tv, int line, int buf_x);
+extern int box_sel_visual_col_at_x (GtkTextView *tv, int line, int buf_x,
+                                    gboolean right_bound);
 extern void box_sel_clear (MooTextView *view);
 extern void box_sel_delete (MooTextView *view);
 extern void moo_ll_remove_all (GtkTextBuffer *buffer);
@@ -3594,8 +3595,8 @@ moo_text_view_box_paste_into_selection (MooTextView *view,
     col_rights = g_new0 (int, sel_lines);
     for (i = 0; i < sel_lines; i++)
     {
-        col_lefts[i] = box_sel_visual_col_at_x (text_view, first_line + i, left_bx);
-        col_rights[i] = box_sel_visual_col_at_x (text_view, first_line + i, right_bx);
+        col_lefts[i]  = box_sel_visual_col_at_x (text_view, first_line + i, left_bx,  FALSE);
+        col_rights[i] = box_sel_visual_col_at_x (text_view, first_line + i, right_bx, TRUE);
     }
 
     gtk_text_buffer_begin_user_action (buffer);
@@ -4347,8 +4348,8 @@ moo_text_view_draw_box_selection (GtkTextView *text_view, cairo_t *cr)
         gtk_text_view_buffer_to_window_coords (text_view, GTK_TEXT_WINDOW_TEXT,
             0, ly, NULL, &wy);
 
-        col_left = box_sel_visual_col_at_x (text_view, line, left_bx);
-        col_right = box_sel_visual_col_at_x (text_view, line, right_bx);
+        col_left  = box_sel_visual_col_at_x (text_view, line, left_bx,  FALSE);
+        col_right = box_sel_visual_col_at_x (text_view, line, right_bx, TRUE);
 
         if (col_left >= col_right)
             continue;
