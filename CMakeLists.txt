@@ -356,10 +356,15 @@ if(MOO_OS_WIN32)
             "echo 'This file enables portable mode for medit' > medit-win-dist-tmp/medit-${MOO_DISPLAY_VERSION}/bin/${MEDIT_PORTABLE_MAGIC_FILE_NAME}"
         COMMAND bash -c
             "cd medit-win-dist-tmp && zip -r9 medit-portable-${MOO_DISPLAY_VERSION}.zip medit-${MOO_DISPLAY_VERSION}"
+        # cmake -E rename needs a full destination filename, not a directory
+        # — passing "." here used to silently fall through under autotools'
+        # `mv X .` semantics but fails outright with the CMake driver.
         COMMAND ${CMAKE_COMMAND} -E rename
-                "medit-win-dist-tmp/medit-portable-${MOO_DISPLAY_VERSION}.zip" "."
+                "medit-win-dist-tmp/medit-portable-${MOO_DISPLAY_VERSION}.zip"
+                "medit-portable-${MOO_DISPLAY_VERSION}.zip"
         COMMAND ${CMAKE_COMMAND} -E rename
-                "medit-win-dist-tmp/medit-${MOO_DISPLAY_VERSION}.zip" "."
+                "medit-win-dist-tmp/medit-${MOO_DISPLAY_VERSION}.zip"
+                "medit-${MOO_DISPLAY_VERSION}.zip"
         COMMAND ${CMAKE_COMMAND} -E remove_directory medit-win-dist-tmp
         COMMENT "Building Win32 portable zip"
     )
