@@ -34,6 +34,9 @@
 #include <gdk/gdkwin32.h>
 #include <windows.h>
 #include <windowsx.h>
+/* Project-wide WIN32_LEAN_AND_MEAN excludes <objbase.h> from <windows.h>;
+ * pull it in explicitly for CoInitializeEx / CoUninitialize / COINIT_*. */
+#include <objbase.h>
 #endif
 
 struct MeditOpts 
