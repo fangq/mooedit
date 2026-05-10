@@ -33,7 +33,7 @@ jobs:
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
-            -DMOO_ENABLE_PYTHON=OFF \
+            -DMOO_WITH_PYTHON=no \
             -DMOO_ENABLE_INSTALL_HOOKS=OFF
 
       - name: Build
@@ -77,7 +77,7 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$PWD/cmake/macos-arm64.cmake" \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$PWD/build/install" \
-            -DMOO_ENABLE_PYTHON=OFF \
+            -DMOO_WITH_PYTHON=no \
             -DMOO_ENABLE_INSTALL_HOOKS=OFF
 
       - name: Build
@@ -162,7 +162,7 @@ jobs:
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$(cygpath -m "$PWD/build/install")" \
-            -DMOO_ENABLE_PYTHON=OFF \
+            -DMOO_WITH_PYTHON=no \
             -DMOO_ENABLE_INSTALL_HOOKS=OFF
 
       - name: Build

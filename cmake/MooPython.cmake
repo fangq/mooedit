@@ -73,12 +73,15 @@ else()
 endif()
 
 # ── Check for pygobject-3.0 ≥ 3.0 (replaces PKG_CHECK_MODULES PYGTK) ─────────
-# On Win32 cross-compile, pygobject may not be present in the sysroot; treat it
-# as optional so the build degrades gracefully to no-Python rather than failing.
-if(CMAKE_CROSSCOMPILING AND MOO_OS_WIN32)
-    pkg_check_modules(PYGTK IMPORTED_TARGET pygobject-3.0>=3.0)
-else()
+# Only mark the dependency REQUIRED when the user explicitly asked for Python
+# (MOO_WITH_PYTHON=yes).  In "auto" mode (the default) and on Win32 cross-
+# compile, treat pygobject as optional so the build degrades gracefully to
+# no-Python instead of failing the whole configure step.
+if(_moo_want_python STREQUAL "yes" AND
+   NOT (CMAKE_CROSSCOMPILING AND MOO_OS_WIN32))
     pkg_check_modules(PYGTK REQUIRED IMPORTED_TARGET pygobject-3.0>=3.0)
+else()
+    pkg_check_modules(PYGTK IMPORTED_TARGET pygobject-3.0>=3.0)
 endif()
 
 if(NOT PYGTK_FOUND)
