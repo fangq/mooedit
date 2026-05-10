@@ -406,8 +406,10 @@ _moo_window_is_hidden (GtkWindow  *window)
 #include <gdk/gdkwin32.h>
 
 
+/* gdk_win32_drawable_get_handle was a GTK2 API removed in GTK3.  The
+   GTK3 replacement on the GdkWindow object is gdk_win32_window_get_handle. */
 #define get_handle(w) \
-    ((HWND) gdk_win32_drawable_get_handle (gtk_widget_get_window (GTK_WIDGET(w))))
+    ((HWND) gdk_win32_window_get_handle (gtk_widget_get_window (GTK_WIDGET(w))))
 
 static gboolean
 _moo_window_is_hidden (GtkWindow  *window)
