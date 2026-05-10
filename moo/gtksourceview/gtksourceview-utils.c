@@ -103,5 +103,10 @@ _gtk_source_view_get_file_list (gchar       **path,
 	for ( ; path && *path; ++path)
 		files = build_file_listing (*path, files, suffix, only_dirs);
 
-	return g_slist_reverse (files);
+	/* Sort alphabetically so language-id disambiguation is deterministic
+	 * across filesystems: when two language specs claim the same glob
+	 * (e.g. *.m → matlab vs. objc), the lower id consistently wins. */
+	files = g_slist_sort (files, (GCompareFunc) g_strcmp0);
+
+	return files;
 }

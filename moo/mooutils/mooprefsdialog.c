@@ -197,23 +197,31 @@ static void moo_prefs_dialog_destroy (GtkWidget *object)
 {
     MooPrefsDialog *dialog = MOO_PREFS_DIALOG (object);
 
-    if (dialog->store)
+    /* The tree-view child may already have been destroyed by GtkContainer's
+     * destroy chain (children destroyed before subclass destroy handlers run).
+     * The weak pointer registered in setup_pages_list NULLs pages_list in
+     * that case, so we only touch it when it's still live. */
+    if (dialog->pages_list)
     {
-        if (!GTK_IS_TREE_VIEW (dialog->pages_list)) { g_object_unref (dialog->store); dialog->store = NULL;
-        dialog->pages_list = NULL; goto skip_destroy; }
-        GtkTreeSelection *selection = gtk_tree_view_get_selection (dialog->pages_list);
+        GtkTreeSelection *selection =
+            gtk_tree_view_get_selection (dialog->pages_list);
         g_signal_handlers_disconnect_by_func (selection,
                                               (gpointer) pages_list_selection_changed,
                                               dialog);
         gtk_tree_view_set_model (dialog->pages_list, NULL);
+        g_object_remove_weak_pointer (G_OBJECT (dialog->pages_list),
+                                      (gpointer *) &dialog->pages_list);
+        dialog->pages_list = NULL;
+    }
+
+    if (dialog->store)
+    {
         gtk_tree_model_foreach (GTK_TREE_MODEL (dialog->store),
                                 destroy_page, NULL);
         g_object_unref (dialog->store);
         dialog->store = NULL;
-        dialog->pages_list = NULL;
     }
 
-skip_destroy:
     GTK_WIDGET_CLASS(moo_prefs_dialog_parent_class)->destroy (object);
 }
 
@@ -259,6 +267,11 @@ setup_pages_list (MooPrefsDialog *dialog)
                               dialog);
 
     dialog->pages_list = GTK_TREE_VIEW (tree);
+    /* When GtkContainer's destroy chain destroys the tree-view child, this
+     * weak ref nulls dialog->pages_list automatically. The destroy handler
+     * below relies on (pages_list == NULL) to detect the already-gone case. */
+    g_object_add_weak_pointer (G_OBJECT (tree),
+                               (gpointer *) &dialog->pages_list);
 }
 
 
