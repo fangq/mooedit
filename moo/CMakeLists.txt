@@ -1079,8 +1079,10 @@ if(MOO_BUILD_APP)
         target_link_options(medit PRIVATE -mwindows)
         # shlwapi: PathMatchSpecA used by the fnmatch() shim in
         # mooutils/moowin32/mingw/fnmatch.h.
-        # ole32: CoInitializeEx / CoUninitialize used in medit-app/main.cpp.
-        target_link_libraries(medit PRIVATE shlwapi ole32)
+        # ole32:   CoInitializeEx / CoUninitialize used in medit-app/main.cpp.
+        # ws2_32:  ntohl/ntohs reached via the netinet/in.h shim that pulls
+        #          in <winsock2.h> for xdgmime cache parsing.
+        target_link_libraries(medit PRIVATE shlwapi ole32 ws2_32)
     endif()
     if(NOT MOO_OS_WIN32 AND MOO_OS_UNIX)
         target_compile_definitions(medit PRIVATE
