@@ -64,7 +64,11 @@ struct _MooCmdClass
                              const char *line);
 };
 
-#ifdef __WIN32__
+/* G_SPAWN_WIN32_HIDDEN_CONSOLE was added in GLib 2.74; older runtimes
+   (e.g. the GLib 2.72 currently shipped by MSYS2 MINGW64) don't have it.
+   Fall back to 0 so the build still produces a working binary that just
+   doesn't hide the console window. */
+#if defined(__WIN32__) && GLIB_CHECK_VERSION (2, 74, 0)
 #define MOO_SPAWN_WIN32_HIDDEN_CONSOLE G_SPAWN_WIN32_HIDDEN_CONSOLE
 #else
 #define MOO_SPAWN_WIN32_HIDDEN_CONSOLE 0
