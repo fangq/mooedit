@@ -419,12 +419,80 @@ xdg_mime_get_mime_type_for_data (const void *data,
   return XDG_MIME_TYPE_UNKNOWN;
 }
 
+#ifdef __WIN32__
+/* Built-in fallback table for common file extensions on Windows where
+ * shared-mime-info isn't installed.  This lets the file-view show a
+ * type-specific icon (text-x-generic vs image-x-generic vs ...) even
+ * without the freedesktop.org MIME database.  Match is case-insensitive. */
+static const char *
+win32_mime_for_extension (const char *file_name)
+{
+  static const struct { const char *ext; const char *mime; } table[] = {
+    {".txt",  "text/plain"},        {".log", "text/plain"},
+    {".md",   "text/markdown"},     {".rst", "text/x-rst"},
+    {".c",    "text/x-csrc"},       {".h",   "text/x-chdr"},
+    {".cpp",  "text/x-c++src"},     {".cc",  "text/x-c++src"},
+    {".hpp",  "text/x-c++hdr"},     {".cxx", "text/x-c++src"},
+    {".py",   "text/x-python"},     {".pl",  "text/x-perl"},
+    {".rb",   "application/x-ruby"}, {".sh",  "application/x-shellscript"},
+    {".js",   "application/javascript"}, {".ts", "application/typescript"},
+    {".html", "text/html"},         {".htm", "text/html"},
+    {".css",  "text/css"},          {".xml", "application/xml"},
+    {".json", "application/json"},  {".yaml","application/x-yaml"},
+    {".yml",  "application/x-yaml"},
+    {".m",    "text/x-matlab"},     {".mat", "application/octet-stream"},
+    {".tex",  "text/x-tex"},        {".bib", "text/x-bibtex"},
+    {".pdf",  "application/pdf"},
+    {".png",  "image/png"},         {".jpg", "image/jpeg"},
+    {".jpeg", "image/jpeg"},        {".gif", "image/gif"},
+    {".bmp",  "image/bmp"},         {".svg", "image/svg+xml"},
+    {".ico",  "image/vnd.microsoft.icon"},
+    {".tiff", "image/tiff"},        {".tif", "image/tiff"},
+    {".webp", "image/webp"},
+    {".mp3",  "audio/mpeg"},        {".wav", "audio/wav"},
+    {".ogg",  "audio/ogg"},         {".flac","audio/flac"},
+    {".mp4",  "video/mp4"},         {".mkv", "video/x-matroska"},
+    {".avi",  "video/x-msvideo"},   {".webm","video/webm"},
+    {".zip",  "application/zip"},   {".tar", "application/x-tar"},
+    {".gz",   "application/gzip"},  {".7z",  "application/x-7z-compressed"},
+    {".rar",  "application/vnd.rar"},
+    {".exe",  "application/x-msdownload"},
+    {".dll",  "application/x-msdownload"},
+    {".doc",  "application/msword"},
+    {".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+    {".xls",  "application/vnd.ms-excel"},
+    {".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+    {".ppt",  "application/vnd.ms-powerpoint"},
+    {".pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"},
+    {NULL, NULL}
+  };
+  const char *dot = strrchr (file_name, '.');
+  if (!dot) return NULL;
+  for (int i = 0; table[i].ext; i++)
+    if (_stricmp (dot, table[i].ext) == 0)
+      return table[i].mime;
+  return NULL;
+}
+#endif
+
 const char *
 xdg_mime_get_mime_type_for_file (const char  *file_name,
                                  int         *is_regular)
 {
 #ifdef __WIN32__
-  return XDG_MIME_TYPE_UNKNOWN;
+  /* MSYS2/MinGW typically doesn't ship the freedesktop.org MIME globs
+   * database, so we can't use the full xdg_mime path.  Try the bundled
+   * glob hash first (in case shared-mime-info IS installed alongside),
+   * then fall back to the built-in extension table. */
+  const char *base, *mime;
+  if (!file_name) return XDG_MIME_TYPE_UNKNOWN;
+  base = _xdg_get_base_name (file_name);
+  if (!base) base = file_name;
+  mime = xdg_mime_get_mime_type_from_file_name (base);
+  if (mime && strcmp (mime, XDG_MIME_TYPE_UNKNOWN) != 0)
+    return mime;
+  mime = win32_mime_for_extension (base);
+  return mime ? mime : XDG_MIME_TYPE_UNKNOWN;
 #else
   const char *mime_type;
   /* currently, only a few globs occur twice, and none

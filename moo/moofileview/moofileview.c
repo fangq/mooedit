@@ -1670,6 +1670,10 @@ static GtkWidget   *create_treeview     (MooFileView    *fileview)
     fileview->priv->tree_name_column = column;
 
     cell = gtk_cell_renderer_pixbuf_new ();
+    /* Right-pad the icon cell so the name doesn't sit flush against the
+     * icon — without this the "icon→text" gutter is 0 px on Windows, so
+     * the icon and the first character of the file name visibly overlap. */
+    g_object_set (cell, "xpad", 4, NULL);
     gtk_tree_view_column_pack_start (column, cell, FALSE);
     gtk_tree_view_column_set_cell_data_func (column, cell,
                                              (GtkTreeCellDataFunc)(void(*)(void)) icon_data_func,
