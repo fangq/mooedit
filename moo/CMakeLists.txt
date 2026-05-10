@@ -377,28 +377,36 @@ endif()
 set(_medit_res "")
 set(_moo_module_res "")
 if(MOO_OS_WIN32 AND WINDRES)
-    configure_file("${_src}/medit-app/medit.rc.in"    "${_bin}/medit-app/medit.rc"      @ONLY)
-    configure_file("${_src}/medit-module/moo.rc.in"   "${_bin}/medit-module/moo.rc"     @ONLY)
+    if(MOO_BUILD_APP)
+        configure_file("${_src}/medit-app/medit.rc.in"
+                       "${_bin}/medit-app/medit.rc" @ONLY)
+        add_custom_command(
+            OUTPUT  "${_bin}/medit-app/medit.res"
+            COMMAND "${WINDRES}" -i "${_bin}/medit-app/medit.rc"
+                    --input-format=rc -o "${_bin}/medit-app/medit.res" -O coff
+            DEPENDS "${_bin}/medit-app/medit.rc"
+            COMMENT "windres: medit-app/medit.res"
+            VERBATIM
+        )
+        set(_medit_res "${_bin}/medit-app/medit.res")
+    endif()
 
-    add_custom_command(
-        OUTPUT  "${_bin}/medit-app/medit.res"
-        COMMAND "${WINDRES}" -i "${_bin}/medit-app/medit.rc"
-                --input-format=rc -o "${_bin}/medit-app/medit.res" -O coff
-        DEPENDS "${_bin}/medit-app/medit.rc"
-        COMMENT "windres: medit-app/medit.res"
-        VERBATIM
-    )
-    set(_medit_res "${_bin}/medit-app/medit.res")
-
-    add_custom_command(
-        OUTPUT  "${_bin}/medit-module/moo.res"
-        COMMAND "${WINDRES}" -i "${_bin}/medit-module/moo.rc"
-                --input-format=rc -o "${_bin}/medit-module/moo.res" -O coff
-        DEPENDS "${_bin}/medit-module/moo.rc"
-        COMMENT "windres: medit-module/moo.res"
-        VERBATIM
-    )
-    set(_moo_module_res "${_bin}/medit-module/moo.res")
+    # medit-module/moo.rc.in only ships in builds that include the standalone
+    # Python module.  Skip it otherwise (the file isn't in the source tree).
+    if(MOO_BUILD_MODULE AND MOO_ENABLE_PYTHON AND
+       EXISTS "${_src}/medit-module/moo.rc.in")
+        configure_file("${_src}/medit-module/moo.rc.in"
+                       "${_bin}/medit-module/moo.rc" @ONLY)
+        add_custom_command(
+            OUTPUT  "${_bin}/medit-module/moo.res"
+            COMMAND "${WINDRES}" -i "${_bin}/medit-module/moo.rc"
+                    --input-format=rc -o "${_bin}/medit-module/moo.res" -O coff
+            DEPENDS "${_bin}/medit-module/moo.rc"
+            COMMENT "windres: medit-module/moo.res"
+            VERBATIM
+        )
+        set(_moo_module_res "${_bin}/medit-module/moo.res")
+    endif()
 endif()
 
 # ════════════════════════════════════════════════════════════════════════════
