@@ -64,15 +64,14 @@ struct _MooCmdClass
                              const char *line);
 };
 
-/* G_SPAWN_WIN32_HIDDEN_CONSOLE was added in GLib 2.74; older runtimes
-   (e.g. the GLib 2.72 currently shipped by MSYS2 MINGW64) don't have it.
-   Fall back to 0 so the build still produces a working binary that just
-   doesn't hide the console window. */
-#if defined(__WIN32__) && GLIB_CHECK_VERSION (2, 74, 0)
-#define MOO_SPAWN_WIN32_HIDDEN_CONSOLE G_SPAWN_WIN32_HIDDEN_CONSOLE
-#else
+/* G_SPAWN_WIN32_HIDDEN_CONSOLE was a custom flag from the legacy
+   GTK-for-Windows GLib fork that the original mooedit shipped against;
+   it never made it into upstream GLib, so MSYS2 / MinGW64 don't have it.
+   Define MOO_SPAWN_WIN32_HIDDEN_CONSOLE to 0 unconditionally — spawned
+   subprocesses may briefly show a console window on Windows, which is
+   a cosmetic regression we can fix later by passing STARTUPINFO with
+   SW_HIDE around g_spawn_async if it becomes a problem. */
 #define MOO_SPAWN_WIN32_HIDDEN_CONSOLE 0
-#endif
 
 GType       _moo_cmd_get_type       (void) G_GNUC_CONST;
 
