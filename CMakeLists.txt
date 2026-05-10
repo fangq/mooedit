@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.16)
 
 # ── Version metadata ──────────────────────────────────────────────────────────
 set(MOO_MAJOR_VERSION  1)
-set(MOO_MINOR_VERSION  2)
-set(MOO_MICRO_VERSION  92)
+set(MOO_MINOR_VERSION  8)
+set(MOO_MICRO_VERSION  0)
 set(MOO_VERSION_SUFFIX "devel")          # set to "" for a release build
 set(MOO_MODULE_MAJOR_VERSION 2)
 set(MOO_MODULE_MINOR_VERSION 0)
