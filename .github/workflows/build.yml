@@ -1,0 +1,251 @@
+name: build
+
+on:
+  push:
+    branches: [main, gtk3]
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+# When a tag build runs, attach the artifacts to a GitHub Release.
+permissions:
+  contents: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Linux: native build with apt-installed GTK3 + libvte; produce .deb + .tar.gz
+  # ─────────────────────────────────────────────────────────────────────────
+  build-linux:
+    name: Linux (Ubuntu 22.04)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake pkg-config intltool \
+            libgtk-3-dev libxml2-dev libglib2.0-dev libvte-2.91-dev \
+            file fakeroot
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DMOO_ENABLE_PYTHON=OFF \
+            -DMOO_ENABLE_INSTALL_HOOKS=OFF
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Package (.deb + .tar.gz)
+        working-directory: build
+        run: cpack
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          cp build/medit-*.deb    dist/ 2>/dev/null || true
+          cp build/medit-*.tar.gz dist/ 2>/dev/null || true
+          ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: medit-linux
+          path: dist/*
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # macOS: native arm64 Apple Silicon build with Homebrew GTK3 + libvte
+  # ─────────────────────────────────────────────────────────────────────────
+  build-macos:
+    name: macOS (Apple Silicon)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies (Homebrew)
+        run: |
+          brew update
+          brew install \
+            cmake pkg-config intltool gettext \
+            gtk+3 libxml2 vte3 adwaita-icon-theme
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/cmake/macos-arm64.cmake" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$PWD/build/install" \
+            -DMOO_ENABLE_PYTHON=OFF \
+            -DMOO_ENABLE_INSTALL_HOOKS=OFF
+
+      - name: Build
+        run: cmake --build build -j"$(sysctl -n hw.logicalcpu)"
+
+      - name: Install into staging tree
+        run: cmake --install build
+
+      - name: Create .dmg
+        run: |
+          set -eux
+          version=$(grep -E '^set\(MOO_MAJOR_VERSION'  CMakeLists.txt | grep -oE '[0-9]+').$(grep -E '^set\(MOO_MINOR_VERSION'  CMakeLists.txt | grep -oE '[0-9]+').$(grep -E '^set\(MOO_MICRO_VERSION'  CMakeLists.txt | grep -oE '[0-9]+')
+          stage="dmg-stage/medit-${version}-macos-arm64"
+          mkdir -p "$stage"
+          # Copy the install tree as a relocatable bundle.  This DMG requires
+          # the user to have GTK3 + vte3 installed via Homebrew (brew install
+          # gtk+3 vte3); a fully-bundled .app with dylibbundler can be added
+          # later if users ask for it.
+          cp -R build/install/* "$stage/"
+          cat > "$stage/README.txt" <<'EOF'
+          medit (macOS, arm64) — install Homebrew runtime first:
+
+              brew install gtk+3 vte3 adwaita-icon-theme
+
+          Then run ./bin/medit
+          EOF
+          hdiutil create -volname "medit-${version}" \
+                         -srcfolder dmg-stage \
+                         -ov -format UDZO \
+                         "medit-${version}-macos-arm64.dmg"
+          ls -lh medit-*.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: medit-macos
+          path: medit-*.dmg
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Windows: native MSYS2 MINGW64 build; produce Inno Setup .exe + portable .zip
+  # VTE / terminal plugin is not available on Windows (auto-disabled).
+  # ─────────────────────────────────────────────────────────────────────────
+  build-windows:
+    name: Windows (MSYS2 MINGW64)
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSYS2 (MINGW64)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            base-devel
+            git
+            zip
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-gtk3
+            mingw-w64-x86_64-libxml2
+            mingw-w64-x86_64-glib2
+            mingw-w64-x86_64-adwaita-icon-theme
+            mingw-w64-x86_64-hicolor-icon-theme
+            intltool
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install --no-progress -y innosetup
+
+      - name: Configure
+        env:
+          # Make sure cmake.exe finds the MinGW gcc/g++ from MSYS2.
+          CC: gcc
+          CXX: g++
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$(cygpath -m "$PWD/build/install")" \
+            -DMOO_ENABLE_PYTHON=OFF \
+            -DMOO_ENABLE_INSTALL_HOOKS=OFF
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Install into staging tree
+        run: cmake --install build
+
+      - name: Bundle MinGW runtime DLLs and GTK data
+        run: |
+          set -eux
+          stage=build/install
+          # Copy DLLs the medit.exe links against, recursively, plus GTK loaders.
+          mingw_bin=/mingw64/bin
+          mingw_share=/mingw64/share
+          mingw_lib=/mingw64/lib
+
+          # Walk dependencies of medit.exe and copy MinGW DLLs into bin/.
+          missing=$(ldd "$stage/bin/medit.exe" \
+              | awk '/=> \/mingw64\// {print $3}')
+          for dll in $missing; do
+              cp -u "$dll" "$stage/bin/"
+          done
+
+          # GTK runtime data: pixbuf loaders, icons, themes, settings, locales.
+          mkdir -p "$stage/lib/gdk-pixbuf-2.0" \
+                   "$stage/share/glib-2.0/schemas" \
+                   "$stage/share/icons" \
+                   "$stage/share/themes"
+          cp -R "$mingw_lib/gdk-pixbuf-2.0"           "$stage/lib/"            || true
+          cp -R "$mingw_share/glib-2.0/schemas"       "$stage/share/glib-2.0/" || true
+          cp -R "$mingw_share/icons/hicolor"          "$stage/share/icons/"    || true
+          cp -R "$mingw_share/icons/Adwaita"          "$stage/share/icons/"    || true
+          cp -R "$mingw_share/themes/Default"         "$stage/share/themes/"   || true
+          cp -R "$mingw_share/themes/Emacs"           "$stage/share/themes/"   || true
+
+          # Compile the GSettings schemas so GTK doesn't complain at startup.
+          glib-compile-schemas "$stage/share/glib-2.0/schemas" || true
+
+      - name: Build Inno Setup installer + portable zip
+        run: |
+          set -eux
+          cmake --build build --target installer
+          cmake --build build --target portable
+          ls -lh build/medit-*.exe build/medit-*.zip || true
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          cp build/medit-*.exe dist/ 2>/dev/null || true
+          cp build/medit-*.zip dist/ 2>/dev/null || true
+          ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: medit-windows
+          path: dist/*
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Tag pushes: gather every platform's artifacts and attach to a Release.
+  # ─────────────────────────────────────────────────────────────────────────
+  release:
+    name: Publish GitHub Release
+    needs: [build-linux, build-macos, build-windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten downloaded artifacts
+        run: |
+          mkdir release
+          find artifacts -type f \( -name 'medit-*.deb' \
+                                  -o -name 'medit-*.tar.gz' \
+                                  -o -name 'medit-*.dmg' \
+                                  -o -name 'medit-*.exe' \
+                                  -o -name 'medit-*.zip' \) \
+              -exec cp {} release/ \;
+          ls -lh release/
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true

@@ -157,7 +157,27 @@ endif()
 if(MOO_OS_WIN32)
     set(MEDIT_WIN32_APP_UID "7F9F899F-EE8A-47F0-9981-8C525AF78E4D")
 
-    if(CYGWIN)
+    if(CMAKE_HOST_WIN32)
+        # Native Windows build (MSYS2 / MinGW with cmake.exe).  Look for
+        # ISCC.exe in the standard Inno Setup install locations.
+        find_program(MEDIT_ISCC
+            NAMES ISCC.exe iscc
+            PATHS "C:/Program Files (x86)/Inno Setup 6"
+                  "C:/Program Files/Inno Setup 6"
+                  "C:/Program Files (x86)/Inno Setup 5"
+                  "C:/Program Files/Inno Setup 5"
+                  "$ENV{ProgramFiles}/Inno Setup 6"
+                  "$ENV{ProgramFiles(x86)}/Inno Setup 6"
+        )
+        if(MEDIT_ISCC)
+            set(MEDIT_INNO_COMPILER "\"${MEDIT_ISCC}\"")
+        else()
+            set(MEDIT_INNO_COMPILER "ISCC.exe")
+        endif()
+        set(MEDIT_INNO_TOP_SRCDIR   "${CMAKE_SOURCE_DIR}")
+        set(MEDIT_INNO_TOP_BUILDDIR "${CMAKE_BINARY_DIR}")
+        set(MEDIT_INNO_INSTDIR      "${CMAKE_INSTALL_PREFIX}")
+    elseif(CYGWIN)
         set(MEDIT_INNO_COMPILER
             "\"/cygdrive/c/Program Files (x86)/Inno Setup 5/ISCC.exe\"")
         set(MEDIT_INNO_TOP_SRCDIR   "$(shell cygpath -m ${CMAKE_SOURCE_DIR})")
@@ -329,3 +349,32 @@ add_custom_target(fullcheck
     COMMAND ${CMAKE_CTEST_COMMAND}
     COMMENT "Full check: build + test"
 )
+
+# ── CPack: source/binary packaging (used by GitHub Actions for .deb/.tar.gz) ─
+set(CPACK_PACKAGE_NAME              "medit")
+set(CPACK_PACKAGE_VERSION           "${MOO_VERSION}")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+    "GTK3 text editor with syntax highlighting and embedded terminal")
+set(CPACK_PACKAGE_VENDOR            "medit project")
+set(CPACK_PACKAGE_CONTACT           "${MOO_EMAIL}")
+set(CPACK_PACKAGE_HOMEPAGE_URL      "${MOO_WEBSITE}")
+set(CPACK_RESOURCE_FILE_LICENSE     "${CMAKE_SOURCE_DIR}/COPYING")
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "medit")
+
+if(MOO_OS_LINUX)
+    set(CPACK_GENERATOR                 "DEB;TGZ")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${MOO_EMAIL}")
+    set(CPACK_DEBIAN_PACKAGE_SECTION    "editors")
+    set(CPACK_DEBIAN_PACKAGE_PRIORITY   "optional")
+    # Auto-detect shared-library deps (libgtk-3, libvte, libxml2, ...).
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS  ON)
+    set(CPACK_DEBIAN_FILE_NAME          DEB-DEFAULT)
+    # The project's install() rules use CMAKE_INSTALL_FULL_DATADIR (absolute)
+    # for some destinations, so CPack must use DESTDIR to redirect them into
+    # the staging tree.  Without this it tries to write to /usr/... directly.
+    set(CPACK_SET_DESTDIR               ON)
+elseif(MOO_OS_DARWIN)
+    set(CPACK_GENERATOR                 "TGZ")
+endif()
+
+include(CPack)

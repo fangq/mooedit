@@ -409,6 +409,12 @@ if(MOO_OS_UNIX AND MOO_BUILD_APP)
         INPUT  "${_src}/medit-app/medit.desktop.in"
         OUTPUT "${_bin}/medit-app/medit.desktop"
     )
+    # Make the .desktop file part of the default build so install() / cpack
+    # find it.  add_custom_command(OUTPUT ...) only fires when a target lists
+    # the output as a dependency; without this ALL-target it is never built.
+    add_custom_target(medit-desktop ALL
+        DEPENDS "${_bin}/medit-app/medit.desktop"
+    )
     install(
         FILES       "${_bin}/medit-app/medit.desktop"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"

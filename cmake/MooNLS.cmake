@@ -42,9 +42,15 @@ endif()
 # Usage: moo_intltool_merge(INPUT foo.ini.in OUTPUT foo.ini)
 function(moo_intltool_merge)
     cmake_parse_arguments(_a "" "INPUT;OUTPUT" "" ${ARGN})
+    # intltool-merge does not create the output directory; CMake source-tree
+    # subdirs (e.g. moo/medit-app/) only exist in the build tree if a target
+    # has already produced something there, which isn't the case for files
+    # consumed solely by install().
+    get_filename_component(_a_OUTDIR "${_a_OUTPUT}" DIRECTORY)
     if(ENABLE_NLS)
         add_custom_command(
             OUTPUT  "${_a_OUTPUT}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${_a_OUTDIR}"
             COMMAND LC_ALL=C ${INTLTOOL_MERGE}
                         -d -u
                         -c "${CMAKE_BINARY_DIR}/po/.intltool-merge-cache"
@@ -57,6 +63,7 @@ function(moo_intltool_merge)
     else()
         add_custom_command(
             OUTPUT  "${_a_OUTPUT}"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${_a_OUTDIR}"
             COMMAND sed -e "s/^_//g" "${_a_INPUT}" > "${_a_OUTPUT}.tmp"
             COMMAND ${CMAKE_COMMAND} -E rename "${_a_OUTPUT}.tmp" "${_a_OUTPUT}"
             DEPENDS "${_a_INPUT}"
