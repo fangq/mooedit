@@ -78,23 +78,28 @@
 #endif
 
 /* ── Header availability (replaces autoconf AC_CHECK_HEADERS) ───────────── */
-#cmakedefine01 HAVE_DLFCN_H
-#cmakedefine01 HAVE_INTTYPES_H
-#cmakedefine01 HAVE_LOCALE_H
-#cmakedefine01 HAVE_SIGNAL_H
-#cmakedefine01 HAVE_STDINT_H
-#cmakedefine01 HAVE_STDIO_H
-#cmakedefine01 HAVE_STDLIB_H
-#cmakedefine01 HAVE_STRINGS_H
-#cmakedefine01 HAVE_STRING_H
-#cmakedefine01 HAVE_SYS_STAT_H
-#cmakedefine01 HAVE_SYS_TYPES_H
-#cmakedefine01 HAVE_SYS_UTSNAME_H
-#cmakedefine01 HAVE_SYS_WAIT_H
-#cmakedefine01 HAVE_UNISTD_H
-#cmakedefine01 HAVE_WCHAR_H
-#cmakedefine01 HAVE_GETC_UNLOCKED
-#cmakedefine01 HAVE_MMAP
+/* Sources test these with #ifdef HAVE_*, so emit "#define X 1" / undef
+   instead of "#define X 0".  #ifdef on a defined-but-zero macro evaluates
+   true and would pull in headers that aren't actually present (e.g.
+   <sys/mman.h> on MinGW where mmap symbols look detectable but the POSIX
+   header is missing). */
+#cmakedefine HAVE_DLFCN_H        1
+#cmakedefine HAVE_INTTYPES_H     1
+#cmakedefine HAVE_LOCALE_H       1
+#cmakedefine HAVE_SIGNAL_H       1
+#cmakedefine HAVE_STDINT_H       1
+#cmakedefine HAVE_STDIO_H        1
+#cmakedefine HAVE_STDLIB_H       1
+#cmakedefine HAVE_STRINGS_H      1
+#cmakedefine HAVE_STRING_H       1
+#cmakedefine HAVE_SYS_STAT_H     1
+#cmakedefine HAVE_SYS_TYPES_H    1
+#cmakedefine HAVE_SYS_UTSNAME_H  1
+#cmakedefine HAVE_SYS_WAIT_H     1
+#cmakedefine HAVE_UNISTD_H       1
+#cmakedefine HAVE_WCHAR_H        1
+#cmakedefine HAVE_GETC_UNLOCKED  1
+#cmakedefine HAVE_MMAP           1
 
 #include <moo-config.h>
 #endif /* __CONFIG_H__ */

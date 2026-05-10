@@ -114,7 +114,15 @@ check_include_file("unistd.h" HAVE_UNISTD_H)
 check_include_file("wchar.h" HAVE_WCHAR_H)
 
 check_function_exists(getc_unlocked HAVE_GETC_UNLOCKED)
-check_function_exists(mmap HAVE_MMAP)
+
+# HAVE_MMAP must require BOTH the function and <sys/mman.h>: MinGW exposes
+# an mmap symbol via the runtime but doesn't ship the POSIX header that the
+# xdgmime cache code unconditionally #include's behind #ifdef HAVE_MMAP.
+check_function_exists(mmap _have_mmap_func)
+check_include_file("sys/mman.h" _have_sys_mman_h)
+if(_have_mmap_func AND _have_sys_mman_h)
+    set(HAVE_MMAP 1)
+endif()
 
 # ── Python bindings ───────────────────────────────────────────────────────────
 include(MooPython)  # sets MOO_ENABLE_PYTHON, PYTHON_INCLUDES, PYTHON_LIBS, PYGTK_*
