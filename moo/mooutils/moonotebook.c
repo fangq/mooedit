@@ -728,7 +728,22 @@ moo_notebook_finalize (GObject *object)
 
     g_object_unref (notebook->priv->arrows);
 
-    /* XXX */
+    /* If destroyed mid-drag, drag-end never ran — release its resources. */
+    if (notebook->priv->drag_scroll_id)
+    {
+        g_source_remove (notebook->priv->drag_scroll_id);
+        notebook->priv->drag_scroll_id = 0;
+    }
+    if (notebook->priv->snapshot_pixbuf)
+    {
+        g_object_unref (notebook->priv->snapshot_pixbuf);
+        notebook->priv->snapshot_pixbuf = NULL;
+    }
+    if (notebook->priv->snapshot_pixmap)
+    {
+        cairo_surface_destroy (notebook->priv->snapshot_pixmap);
+        notebook->priv->snapshot_pixmap = NULL;
+    }
 
     g_free (notebook->priv);
     G_OBJECT_CLASS (moo_notebook_parent_class)->finalize (object);
@@ -2227,36 +2242,36 @@ moo_notebook_draw_label (MooNotebook    *nb,
     if (!page || !page->label || page->label->width <= 0)
         return;
     GtkWidget *widget = GTK_WIDGET (nb);
-    /* GTK3: use cr parameter instead of window */
+    GtkStyleContext *context;
     int x, y, height;
-    GtkStateType state;
+    GtkStateFlags state_flags;
 
     if (page == nb->priv->current_page)
     {
         y = 0;
-        state = GTK_STATE_NORMAL;
+        state_flags = GTK_STATE_FLAG_NORMAL;
     }
     else
     {
         y = LABEL_FOCUS_HEIGHT;
-        state = GTK_STATE_ACTIVE;
+        state_flags = GTK_STATE_FLAG_ACTIVE;
     }
 
     x = page->label->offset - nb->priv->labels_offset;
     height = nb->priv->tabs_height - y;
 
-    gtk_paint_extension (gtk_widget_get_style (widget),
-                         cr,
-                         state,
-                         GTK_SHADOW_OUT,
-                         widget,
-                         DETAIL_TAB,
-                         x, y,
-                         page->label->width,
-                         height,
-                         GTK_POS_BOTTOM);
+    context = gtk_widget_get_style_context (widget);
+    gtk_style_context_save (context);
+    gtk_style_context_add_class (context, GTK_STYLE_CLASS_NOTEBOOK);
+    gtk_style_context_set_state (context, state_flags);
 
-    /* Draw active tab highlight bar — cairo_guard_draw_label */
+    gtk_render_extension (context, cr,
+                          x, y,
+                          page->label->width,
+                          height,
+                          GTK_POS_BOTTOM);
+
+    /* Active tab highlight bar */
     if (page == nb->priv->current_page &&
         page->label->width > 0 && height > 0)
     {
@@ -2270,23 +2285,21 @@ moo_notebook_draw_label (MooNotebook    *nb,
         cairo_restore (cr);
     }
 
-    if (gtk_widget_has_focus (GTK_WIDGET(GTK_WIDGET (nb))) &&
+    if (gtk_widget_has_focus (widget) &&
         page == nb->priv->focus_page)
     {
         int focus_width;
 
         gtk_widget_style_get (widget, "focus-line-width", &focus_width, NULL);
 
-        gtk_paint_focus (gtk_widget_get_style (widget),
-                         cr,
-                         state,
-                         widget,
-                         DETAIL_TAB,
-                         moo_widget_get_alloc(page->label->widget).x - focus_width,
-                         moo_widget_get_alloc(page->label->widget).y - focus_width,
-                         moo_widget_get_alloc(page->label->widget).width + 2 * focus_width,
-                         moo_widget_get_alloc(page->label->widget).height + 2 * focus_width);
+        gtk_render_focus (context, cr,
+                          moo_widget_get_alloc(page->label->widget).x - focus_width,
+                          moo_widget_get_alloc(page->label->widget).y - focus_width,
+                          moo_widget_get_alloc(page->label->widget).width + 2 * focus_width,
+                          moo_widget_get_alloc(page->label->widget).height + 2 * focus_width);
     }
+
+    gtk_style_context_restore (context);
 }
 
 static void

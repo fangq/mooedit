@@ -168,8 +168,7 @@ static void     moo_paned_remove            (GtkContainer   *container,
 
 static void     realize_handle              (MooPaned       *paned);
 static void     realize_pane                (MooPaned       *paned);
-static void     draw_handle                 (MooPaned       *paned, cairo_t *cr G_GNUC_UNUSED);
-static void     draw_border                 (MooPaned       *paned, cairo_t *cr G_GNUC_UNUSED);
+static void     draw_handle                 (MooPaned       *paned, cairo_t *cr);
 static void     button_box_visible_notify   (MooPaned     *paned);
 
 static void     pane_button_toggled         (GtkToggleButton *button,
@@ -1492,9 +1491,9 @@ moo_paned_expose (GtkWidget      *widget, cairo_t *cr)
     if (paned->priv->handle_visible && paned->priv->handle_window && GDK_IS_WINDOW(paned->priv->handle_window) && gtk_cairo_should_draw_window (cr, paned->priv->handle_window))
         draw_handle (paned, cr);
 
-    if (paned->priv->button_box_visible && !paned->priv->pane_widget_visible &&
-        paned->priv->border_size && paned->priv->bin_window && GDK_IS_WINDOW(paned->priv->bin_window) && gtk_cairo_should_draw_window (cr, paned->priv->bin_window))
-            draw_border (paned, cr);
+    /* Manual button-strip / notebook separator removed: GTK3 themes already
+     * draw their own borders on the adjacent widgets, so this would render
+     * as a stray 1px line. */
 
     return TRUE;
 }
@@ -1561,37 +1560,35 @@ moo_paned_remove (GtkContainer   *container,
 
 
 static void
-draw_handle (MooPaned       *paned, cairo_t *cr G_GNUC_UNUSED)
+draw_handle (MooPaned *paned, cairo_t *cr)
 {
     GtkWidget *widget = GTK_WIDGET (paned);
+    GtkStyleContext *context;
     GtkStateFlags state_flags;
     GdkRectangle area = {0, 0, 0, 0};
-    GtkOrientation orientation = GTK_ORIENTATION_VERTICAL;
     int shadow_size = 0;
 
     switch (paned->priv->pane_position)
     {
         case MOO_PANE_POS_LEFT:
         case MOO_PANE_POS_RIGHT:
-            shadow_size = 1 /* GTK3: use CSS padding instead */;
+            shadow_size = 1;
             area.width = paned->priv->handle_size;
             area.height = moo_widget_get_alloc(widget).height;
             if (area.width <= 3*shadow_size)
                 shadow_size = 0;
             area.x += shadow_size;
             area.width -= shadow_size;
-            orientation = GTK_ORIENTATION_VERTICAL;
             break;
         case MOO_PANE_POS_TOP:
         case MOO_PANE_POS_BOTTOM:
-            shadow_size = 1 /* GTK3: use CSS padding instead */;
+            shadow_size = 1;
             area.width = moo_widget_get_alloc(widget).width;
             area.height = paned->priv->handle_size;
             if (area.height <= 3 * shadow_size)
                 shadow_size = 0;
             area.y += shadow_size;
             area.height -= shadow_size;
-            orientation = GTK_ORIENTATION_HORIZONTAL;
             break;
     }
 
@@ -1602,122 +1599,18 @@ draw_handle (MooPaned       *paned, cairo_t *cr G_GNUC_UNUSED)
     else
         state_flags = gtk_widget_get_state_flags (widget);
 
-    gtk_paint_handle (gtk_widget_get_style (widget),
-                      (cairo_t*) paned->priv->handle_window,
-                      (GtkStateType) state_flags,
-                      GTK_SHADOW_NONE,
-                      widget,
-                      "paned",
-                      area.x, area.y, area.width, area.height,
-                      orientation);
+    context = gtk_widget_get_style_context (widget);
+    gtk_style_context_save (context);
+    gtk_style_context_add_class (context, GTK_STYLE_CLASS_PANE_SEPARATOR);
+    gtk_style_context_set_state (context, state_flags);
 
-    if (shadow_size)
-    {
-        if (orientation == GTK_ORIENTATION_VERTICAL)
-        {
-            area.x -= shadow_size;
-            area.width = shadow_size;
+    gtk_render_handle (context, cr,
+                       area.x, area.y, area.width, area.height);
 
-            gtk_paint_vline (gtk_widget_get_style (widget),
-                             (cairo_t*) paned->priv->handle_window,
-                             GTK_STATE_NORMAL,
-                             widget,
-                             "moo-paned",
-                             area.y,
-                             area.y + area.height,
-                             area.x);
+    /* Manual bevel lines around the handle removed: GTK3 themes draw their
+     * own borders on the adjacent pane and notebook widgets. */
 
-            area.x = paned->priv->handle_size - shadow_size;
-
-            gtk_paint_vline (gtk_widget_get_style (widget),
-                             (cairo_t*) paned->priv->handle_window,
-                             GTK_STATE_NORMAL,
-                             widget,
-                             "moo-paned",
-                             area.y,
-                             area.y + area.height,
-                             area.x);
-        }
-        else
-        {
-            area.y -= shadow_size;
-            area.height = shadow_size;
-
-            gtk_paint_hline (gtk_widget_get_style (widget),
-                             (cairo_t*) paned->priv->handle_window,
-                             GTK_STATE_NORMAL,
-                             widget,
-                             "moo-paned",
-                             area.x,
-                             area.x + area.width,
-                             area.y);
-
-            area.y = paned->priv->handle_size - shadow_size;
-
-            gtk_paint_hline (gtk_widget_get_style (widget),
-                             (cairo_t*) paned->priv->handle_window,
-                             GTK_STATE_NORMAL,
-                             widget,
-                             "moo-paned",
-                             area.x,
-                             area.x + area.width,
-                             area.y);
-        }
-    }
-}
-
-
-static void
-draw_border (MooPaned       *paned, cairo_t *cr G_GNUC_UNUSED)
-{
-    GdkRectangle rect;
-    GtkWidget *widget = GTK_WIDGET (paned);
-
-    rect.x = paned->priv->button_box_size;
-    rect.y = paned->priv->button_box_size;
-
-    switch (paned->priv->pane_position)
-    {
-        case MOO_PANE_POS_RIGHT:
-            rect.x = moo_widget_get_alloc(widget).width -
-                        paned->priv->button_box_size -
-                        paned->priv->border_size;
-            // fallthrough
-        case MOO_PANE_POS_LEFT:
-            rect.y = 0;
-            rect.height = moo_widget_get_alloc(widget).height;
-            rect.width = paned->priv->border_size;
-
-            gtk_paint_vline (gtk_widget_get_style (widget),
-                             (cairo_t*) paned->priv->bin_window,
-                             GTK_STATE_NORMAL,
-                             widget,
-                             "moo-paned",
-                             rect.y,
-                             rect.y + rect.height,
-                             rect.x);
-            break;
-
-        case MOO_PANE_POS_BOTTOM:
-            rect.y = moo_widget_get_alloc(widget).height -
-                    paned->priv->button_box_size -
-                    paned->priv->border_size;
-            // fallthrough
-        case MOO_PANE_POS_TOP:
-            rect.x = 0;
-            rect.width = moo_widget_get_alloc(widget).width;
-            rect.height = paned->priv->border_size;
-
-            gtk_paint_hline (gtk_widget_get_style (widget),
-                             (cairo_t*) paned->priv->bin_window,
-                             GTK_STATE_NORMAL,
-                             widget,
-                             "moo-paned",
-                             rect.x,
-                             rect.x + rect.width,
-                             rect.y);
-            break;
-    }
+    gtk_style_context_restore (context);
 }
 
 
@@ -3224,27 +3117,31 @@ handle_button_release (GtkWidget      *widget,
 
 static gboolean
 handle_expose (GtkWidget      *widget,
-               G_GNUC_UNUSED cairo_t *event,
+               cairo_t        *cr,
                MooPaned       *paned)
 {
+    GtkStyleContext *context;
+    GtkAllocation alloc;
     int height;
 
     if (!paned->priv->enable_handle_drag)
         return FALSE;
 
-    height = MIN (moo_widget_get_alloc(widget).height, HANDLE_HEIGHT);
+    alloc = moo_widget_get_alloc (widget);
+    height = MIN (alloc.height, HANDLE_HEIGHT);
 
-    gtk_paint_handle (gtk_widget_get_style (widget),
-                      (cairo_t*) gtk_widget_get_window (widget),
-                      (GtkStateType) gtk_widget_get_state_flags (widget),
-                      GTK_SHADOW_ETCHED_IN,
-                      widget,
-                      "moo-pane-handle",
-                      0,
-                      (moo_widget_get_alloc(widget).height - height) / 2,
-                      MIN (moo_widget_get_alloc(widget).width, 20),
-                      height,
-                      GTK_ORIENTATION_HORIZONTAL);
+    context = gtk_widget_get_style_context (widget);
+    gtk_style_context_save (context);
+    gtk_style_context_add_class (context, GTK_STYLE_CLASS_PANE_SEPARATOR);
+    gtk_style_context_set_state (context, gtk_widget_get_state_flags (widget));
+
+    gtk_render_handle (context, cr,
+                       0,
+                       (alloc.height - height) / 2,
+                       MIN (alloc.width, 20),
+                       height);
+
+    gtk_style_context_restore (context);
     return TRUE;
 }
 

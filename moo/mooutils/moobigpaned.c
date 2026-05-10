@@ -346,9 +346,22 @@ moo_big_paned_finalize (GObject *object)
 
     if (paned->priv->drop_outline)
     {
-        g_critical ("oops");
         gdk_window_set_user_data (paned->priv->drop_outline, NULL);
         gdk_window_destroy (paned->priv->drop_outline);
+        paned->priv->drop_outline = NULL;
+    }
+
+    if (paned->priv->dz)
+    {
+        for (i = 0; i < 4; ++i)
+        {
+            if (paned->priv->dz[i].bbox_region)
+                cairo_region_destroy (paned->priv->dz[i].bbox_region);
+            if (paned->priv->dz[i].def_region)
+                cairo_region_destroy (paned->priv->dz[i].def_region);
+        }
+        g_free (paned->priv->dz);
+        paned->priv->dz = NULL;
     }
 
     G_OBJECT_CLASS (moo_big_paned_parent_class)->finalize (object);

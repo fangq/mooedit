@@ -1720,25 +1720,26 @@ draw_pixbuf (GtkWidget      *widget,
 }
 
 static void
-draw_arrow (GtkWidget      *widget,
-            G_GNUC_UNUSED cairo_t *cr)
+draw_arrow (GtkWidget *widget,
+            cairo_t   *cr)
 {
-    GtkArrowType arrow_type;
-    int x, y, width, height;
+    GtkStyleContext *context;
+    gdouble angle = 0;
+    int x, y, width, height, size;
 
     switch (((MooIconWidget*)widget)->type)
     {
         case ICON_ARROW_UP:
-            arrow_type = GTK_ARROW_UP;
-            break;
-        case ICON_ARROW_DOWN:
-            arrow_type = GTK_ARROW_DOWN;
-            break;
-        case ICON_ARROW_LEFT:
-            arrow_type = GTK_ARROW_LEFT;
+            angle = 0;
             break;
         case ICON_ARROW_RIGHT:
-            arrow_type = GTK_ARROW_RIGHT;
+            angle = G_PI / 2;
+            break;
+        case ICON_ARROW_DOWN:
+            angle = G_PI;
+            break;
+        case ICON_ARROW_LEFT:
+            angle = 3 * G_PI / 2;
             break;
         default:
             g_return_if_reached ();
@@ -1748,18 +1749,17 @@ draw_arrow (GtkWidget      *widget,
     height = 3 * moo_widget_get_alloc(widget).height / 4;
     x = width / 6;
     y = height / 6;
+    size = MIN (width, height);
 
-    /* draw_arrow_cairo_fix: pass cr instead of GdkWindow */
-    if (width > 0 && height > 0)
-        gtk_paint_arrow (gtk_widget_get_style (widget),
-                         cr,
-                         gtk_widget_get_state (GTK_WIDGET (widget)),
-                         GTK_SHADOW_IN,
-                         widget,
-                         NULL,
-                         arrow_type,
-                         TRUE,
-                         x, y, width, height);
+    if (size > 0)
+    {
+        context = gtk_widget_get_style_context (widget);
+        gtk_style_context_save (context);
+        gtk_style_context_add_class (context, GTK_STYLE_CLASS_ARROW);
+        gtk_style_context_set_state (context, gtk_widget_get_state_flags (widget));
+        gtk_render_arrow (context, cr, angle, x, y, size);
+        gtk_style_context_restore (context);
+    }
 }
 
 static gboolean
