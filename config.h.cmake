@@ -40,7 +40,9 @@
 
 /* ── Feature flags ───────────────────────────────────────────────────────── */
 #cmakedefine01 ENABLE_NLS
-#cmakedefine01 MOO_ENABLE_PYTHON
+/* Sources test this with #ifdef, so it must be undefined (not 0) when
+   Python is disabled.  Use #cmakedefine, not #cmakedefine01. */
+#cmakedefine MOO_ENABLE_PYTHON 1
 #cmakedefine01 MOO_BUILD_CTAGS
 #cmakedefine01 MOO_ENABLE_COVERAGE
 #cmakedefine01 MOO_BROKEN_GTK_THEME

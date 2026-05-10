@@ -160,14 +160,15 @@ if(MOO_OS_WIN32)
     if(CMAKE_HOST_WIN32)
         # Native Windows build (MSYS2 / MinGW with cmake.exe).  Look for
         # ISCC.exe in the standard Inno Setup install locations.
+        # Note: $ENV{ProgramFiles(x86)} can't be expanded by CMake (the
+        # parentheses break variable-name parsing), so list the well-known
+        # absolute paths directly instead.
         find_program(MEDIT_ISCC
             NAMES ISCC.exe iscc
             PATHS "C:/Program Files (x86)/Inno Setup 6"
                   "C:/Program Files/Inno Setup 6"
                   "C:/Program Files (x86)/Inno Setup 5"
                   "C:/Program Files/Inno Setup 5"
-                  "$ENV{ProgramFiles}/Inno Setup 6"
-                  "$ENV{ProgramFiles(x86)}/Inno Setup 6"
         )
         if(MEDIT_ISCC)
             set(MEDIT_INNO_COMPILER "\"${MEDIT_ISCC}\"")

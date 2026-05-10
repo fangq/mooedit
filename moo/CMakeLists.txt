@@ -1026,7 +1026,10 @@ if(MOO_BUILD_APP)
         target_include_directories(medit PRIVATE ${Python3_INCLUDE_DIRS})
     endif()
 
-    if(NOT MOO_OS_WIN32)
+    # X11 is only needed when GTK actually uses the X11 backend.  On
+    # macOS+Quartz (Homebrew default) and Win32, X11::SM / X11::ICE don't
+    # exist as imported targets and the link below would error out.
+    if(GDK_X11)
         find_package(X11 REQUIRED)
     endif()
     find_package(Threads REQUIRED)
@@ -1048,7 +1051,7 @@ if(MOO_BUILD_APP)
         $<$<BOOL:${MOO_ENABLE_PYTHON}>:PkgConfig::PYGTK>
         $<$<BOOL:${MOO_OS_WIN32}>:-lmooglib>
     )
-    if(NOT MOO_OS_WIN32)
+    if(GDK_X11)
         target_link_libraries(medit PRIVATE X11::X11 X11::SM X11::ICE)
     endif()
     if(MOO_ENABLE_PYTHON)

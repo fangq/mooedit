@@ -30,22 +30,37 @@ else()
 endif()
 
 # ── GDK backend ──────────────────────────────────────────────────────────────
+# Modern GTK3 builds with multiple backends compiled in expose them via
+# `--variable=targets` (plural, space-separated, e.g. "x11 broadway wayland").
+# Older single-backend builds use `--variable=target`.  Probe both, then check
+# each backend independently — GDK_X11/GDK_QUARTZ/GDK_WIN32 are not mutually
+# exclusive on multi-backend distros.
 execute_process(
-    COMMAND ${PKG_CONFIG_EXECUTABLE} --variable=target gdk-3.0
-    OUTPUT_VARIABLE _gdk_target
+    COMMAND ${PKG_CONFIG_EXECUTABLE} --variable=targets gdk-3.0
+    OUTPUT_VARIABLE _gdk_targets
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
-message(STATUS "GDK target: ${_gdk_target}")
+if(NOT _gdk_targets)
+    execute_process(
+        COMMAND ${PKG_CONFIG_EXECUTABLE} --variable=target gdk-3.0
+        OUTPUT_VARIABLE _gdk_targets
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+endif()
+message(STATUS "GDK targets: ${_gdk_targets}")
 
 set(GDK_X11    FALSE)
 set(GDK_WIN32  FALSE)
 set(GDK_QUARTZ FALSE)
 
-if(_gdk_target STREQUAL "x11")
+separate_arguments(_gdk_targets_list NATIVE_COMMAND "${_gdk_targets}")
+if("x11"    IN_LIST _gdk_targets_list)
     set(GDK_X11 TRUE)
-elseif(_gdk_target STREQUAL "quartz")
+endif()
+if("quartz" IN_LIST _gdk_targets_list)
     set(GDK_QUARTZ TRUE)
-elseif(_gdk_target STREQUAL "win32")
+endif()
+if("win32"  IN_LIST _gdk_targets_list)
     set(GDK_WIN32 TRUE)
 endif()
 
