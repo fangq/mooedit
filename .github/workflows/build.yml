@@ -175,32 +175,78 @@ jobs:
         run: |
           set -eux
           stage=build/install
-          # Copy DLLs the medit.exe links against, recursively, plus GTK loaders.
           mingw_bin=/mingw64/bin
           mingw_share=/mingw64/share
           mingw_lib=/mingw64/lib
 
-          # Walk dependencies of medit.exe and copy MinGW DLLs into bin/.
-          missing=$(ldd "$stage/bin/medit.exe" \
-              | awk '/=> \/mingw64\// {print $3}')
-          for dll in $missing; do
-              cp -u "$dll" "$stage/bin/"
-          done
+          # ─── 1.  Recursive ldd walk ────────────────────────────────────
+          # MSYS2's ldd walks transitively, but only one starting binary at
+          # a time.  Seed the queue with medit.exe AND every gdk-pixbuf/gio
+          # module we plan to ship, so loaders that pull in extra libs
+          # (libsvg, libpng codecs, GnuTLS, etc.) get their DLLs copied too.
+          declare -A copied
+          queue=("$stage/bin/medit.exe")
 
-          # GTK runtime data: pixbuf loaders, icons, themes, settings, locales.
-          mkdir -p "$stage/lib/gdk-pixbuf-2.0" \
-                   "$stage/share/glib-2.0/schemas" \
+          # Pre-stage the loader / module trees so we can ldd them in place.
+          mkdir -p "$stage/lib"
+          cp -R "$mingw_lib/gdk-pixbuf-2.0" "$stage/lib/"
+          if [ -d "$mingw_lib/gio" ]; then
+              cp -R "$mingw_lib/gio" "$stage/lib/"
+          fi
+
+          # Add every loader/module DLL to the BFS queue.
+          while IFS= read -r -d '' dll; do
+              queue+=("$dll")
+          done < <(find "$stage/lib/gdk-pixbuf-2.0" "$stage/lib/gio" \
+                       -name '*.dll' -print0 2>/dev/null)
+
+          while [[ ${#queue[@]} -gt 0 ]]; do
+              f="${queue[0]}"
+              queue=("${queue[@]:1}")
+              # ldd output: "name.dll => /mingw64/bin/name.dll (0x...)"
+              while read -r dep; do
+                  base=$(basename "$dep")
+                  if [[ -z "${copied[$base]:-}" ]]; then
+                      copied[$base]=1
+                      cp -u "$dep" "$stage/bin/"
+                      queue+=("$stage/bin/$base")
+                  fi
+              done < <(ldd "$f" 2>/dev/null | awk '/=> \/mingw64\// {print $3}')
+          done
+          echo "Bundled ${#copied[@]} DLLs."
+
+          # ─── 2.  GTK / GLib runtime data ───────────────────────────────
+          mkdir -p "$stage/share/glib-2.0/schemas" \
                    "$stage/share/icons" \
-                   "$stage/share/themes"
-          cp -R "$mingw_lib/gdk-pixbuf-2.0"           "$stage/lib/"            || true
-          cp -R "$mingw_share/glib-2.0/schemas"       "$stage/share/glib-2.0/" || true
-          cp -R "$mingw_share/icons/hicolor"          "$stage/share/icons/"    || true
-          cp -R "$mingw_share/icons/Adwaita"          "$stage/share/icons/"    || true
-          cp -R "$mingw_share/themes/Default"         "$stage/share/themes/"   || true
-          cp -R "$mingw_share/themes/Emacs"           "$stage/share/themes/"   || true
+                   "$stage/share/themes" \
+                   "$stage/share/locale"
+
+          cp -R "$mingw_share/glib-2.0/schemas" "$stage/share/glib-2.0/" || true
+          cp -R "$mingw_share/icons/hicolor"    "$stage/share/icons/"    || true
+          cp -R "$mingw_share/icons/Adwaita"    "$stage/share/icons/"    || true
+          cp -R "$mingw_share/themes/Default"   "$stage/share/themes/"   || true
+          cp -R "$mingw_share/themes/Emacs"     "$stage/share/themes/"   || true
 
           # Compile the GSettings schemas so GTK doesn't complain at startup.
-          glib-compile-schemas "$stage/share/glib-2.0/schemas" || true
+          glib-compile-schemas "$stage/share/glib-2.0/schemas"
+
+          # ─── 3.  Regenerate gdk-pixbuf loaders.cache for bundled tree ──
+          # Default gdk-pixbuf-query-loaders writes absolute paths into the
+          # cache, which break after the installer relocates the tree.
+          # Run from inside the loaders dir and rewrite the absolute prefix
+          # to a path relative to libgdk_pixbuf-2.0-0.dll's runtime location.
+          loaders_dir="$stage/lib/gdk-pixbuf-2.0/2.10.0/loaders"
+          cache="$stage/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache"
+          if [ -d "$loaders_dir" ]; then
+              GDK_PIXBUF_MODULEDIR="$loaders_dir" \
+                  /mingw64/bin/gdk-pixbuf-query-loaders.exe > "$cache"
+              # Replace MSYS-style absolute paths with the on-disk install
+              # prefix so the cache resolves correctly post-install.  At
+              # install time on the user's machine the loaders all live in
+              # <install>/lib/gdk-pixbuf-2.0/2.10.0/loaders/, and gdk-pixbuf
+              # accepts a forward-slash absolute path on Windows.
+              sed -i "s|$(cygpath -m "$loaders_dir")|lib/gdk-pixbuf-2.0/2.10.0/loaders|g" "$cache"
+          fi
 
       - name: Build Inno Setup installer + portable zip
         run: |
