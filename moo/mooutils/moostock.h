@@ -22,44 +22,49 @@
 G_BEGIN_DECLS
 
 
-#define MOO_STOCK_TERMINAL              "moo-terminal"
-#define MOO_STOCK_KEYBOARD              "font-select"
-#define MOO_STOCK_MENU                  "gtk-index"
+/* GTK3 migration: every name below is a freedesktop icon-naming-spec name
+ * present in Adwaita / hicolor. The legacy "moo-*" names worked under GTK2
+ * because moostock.c registered them with a GtkIconFactory, but GTK3's
+ * "icon-name" property and gtk_image_new_from_icon_name() bypass the
+ * factory and query GtkIconTheme directly, which never knew the moo-* names. */
+#define MOO_STOCK_TERMINAL              "utilities-terminal"
+#define MOO_STOCK_KEYBOARD              "preferences-desktop-keyboard"
+#define MOO_STOCK_MENU                  "view-list"
 #define MOO_STOCK_RESTART               "view-refresh"
 
 #define MOO_STOCK_DOC_DELETED           "dialog-error"
 #define MOO_STOCK_DOC_MODIFIED_ON_DISK  "dialog-warning"
 #define MOO_STOCK_DOC_MODIFIED          "document-save"
 
-#define MOO_STOCK_NEW_WINDOW            "moo-new-window"
+#define MOO_STOCK_NEW_WINDOW            "window-new"
 
-#define MOO_STOCK_FILE_SELECTOR         "moo-file-selector"
-#define MOO_STOCK_FILE_BOOKMARK         "moo-file-bookmark"
-#define MOO_STOCK_FOLDER                "moo-folder"
-#define MOO_STOCK_FILE                  "moo-file"
-#define MOO_STOCK_NEW_FOLDER            "moo-new-folder"
+#define MOO_STOCK_FILE_SELECTOR         "system-file-manager"
+#define MOO_STOCK_FILE_BOOKMARK         "user-bookmarks"
+#define MOO_STOCK_FOLDER                "folder"
+#define MOO_STOCK_FILE                  "text-x-generic"
+#define MOO_STOCK_NEW_FOLDER            "folder-new"
 
-#define MOO_STOCK_SAVE_NONE             "moo-save-none"
-#define MOO_STOCK_SAVE_SELECTED         "moo-save-selected"
+#define MOO_STOCK_SAVE_NONE             "edit-clear-all"
+#define MOO_STOCK_SAVE_SELECTED         "document-save"
 
-#define MOO_STOCK_NEW_PROJECT           "moo-new-project"
-#define MOO_STOCK_OPEN_PROJECT          "moo-open-project"
-#define MOO_STOCK_CLOSE_PROJECT         "moo-close-project"
-#define MOO_STOCK_PROJECT_OPTIONS       "moo-project-options"
-#define MOO_STOCK_BUILD                 "moo-build"
-#define MOO_STOCK_COMPILE               "moo-compile"
-#define MOO_STOCK_EXECUTE               "moo-execute"
+#define MOO_STOCK_NEW_PROJECT           "document-new"
+#define MOO_STOCK_OPEN_PROJECT          "document-open"
+#define MOO_STOCK_CLOSE_PROJECT         "window-close"
+#define MOO_STOCK_PROJECT_OPTIONS       "preferences-system"
+#define MOO_STOCK_BUILD                 "applications-development"
+#define MOO_STOCK_COMPILE               "applications-development"
+#define MOO_STOCK_EXECUTE               "system-run"
 
-#define MOO_STOCK_FIND_IN_FILES         "moo-find-in-files"
-#define MOO_STOCK_FIND_FILE             "moo-find-file"
+#define MOO_STOCK_FIND_IN_FILES         "edit-find"
+#define MOO_STOCK_FIND_FILE             "edit-find"
 
-#define MOO_STOCK_FILE_COPY             "moo-file-copy"
-#define MOO_STOCK_FILE_MOVE             "moo-file-move"
-#define MOO_STOCK_FILE_LINK             "moo-file-link"
-#define MOO_STOCK_FILE_SAVE_AS          "moo-file-save-as"
-#define MOO_STOCK_FILE_SAVE_COPY        "moo-file-save-copy"
+#define MOO_STOCK_FILE_COPY             "edit-copy"
+#define MOO_STOCK_FILE_MOVE             "go-jump"
+#define MOO_STOCK_FILE_LINK             "insert-link"
+#define MOO_STOCK_FILE_SAVE_AS          "document-save-as"
+#define MOO_STOCK_FILE_SAVE_COPY        "document-save-as"
 
-#define MOO_STOCK_EDIT_BOOKMARK         "moo-edit-bookmark"
+#define MOO_STOCK_EDIT_BOOKMARK         "user-bookmarks"
 
 #define MOO_STOCK_PLUGINS               "preferences-system"
 
