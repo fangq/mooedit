@@ -39,13 +39,15 @@
 #cmakedefine MOO_HELP_DIR   "@MOO_HELP_DIR@"
 
 /* ── Feature flags ───────────────────────────────────────────────────────── */
-#cmakedefine01 ENABLE_NLS
-/* Sources test this with #ifdef, so it must be undefined (not 0) when
-   Python is disabled.  Use #cmakedefine, not #cmakedefine01. */
-#cmakedefine MOO_ENABLE_PYTHON 1
-#cmakedefine01 MOO_BUILD_CTAGS
-#cmakedefine01 MOO_ENABLE_COVERAGE
-#cmakedefine01 MOO_BROKEN_GTK_THEME
+/* All sources test these with #ifdef, never #if, so emit "#define X 1" /
+   undef instead of "#define X 0".  #ifdef on a defined-but-zero macro is
+   true and would activate disabled code paths (e.g. _moo_ctags_plugin_init
+   on Windows). */
+#cmakedefine ENABLE_NLS              1
+#cmakedefine MOO_ENABLE_PYTHON       1
+#cmakedefine MOO_BUILD_CTAGS         1
+#cmakedefine MOO_ENABLE_COVERAGE     1
+#cmakedefine MOO_BROKEN_GTK_THEME    1
 
 /* ── OS flags ────────────────────────────────────────────────────────────── */
 /* moo-config.h defines MOO_OS_* with value 1, so emit the same form here to
