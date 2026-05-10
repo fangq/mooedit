@@ -349,17 +349,17 @@ if(MOO_OS_WIN32)
         COMMAND ${CMAKE_COMMAND} -E make_directory   medit-win-dist-tmp
         COMMAND ${CMAKE_COMMAND} -E copy_directory
                 "${CMAKE_INSTALL_PREFIX}"
-                "medit-win-dist-tmp/${PACKAGE}-${MOO_DISPLAY_VERSION}"
+                "medit-win-dist-tmp/medit-${MOO_DISPLAY_VERSION}"
         COMMAND bash -c
-            "cd medit-win-dist-tmp && zip -r9 ${PACKAGE}-${MOO_DISPLAY_VERSION}.zip ${PACKAGE}-${MOO_DISPLAY_VERSION}"
+            "cd medit-win-dist-tmp && zip -r9 medit-${MOO_DISPLAY_VERSION}.zip medit-${MOO_DISPLAY_VERSION}"
         COMMAND bash -c
-            "echo 'This file enables portable mode for medit' > medit-win-dist-tmp/${PACKAGE}-${MOO_DISPLAY_VERSION}/bin/${MEDIT_PORTABLE_MAGIC_FILE_NAME}"
+            "echo 'This file enables portable mode for medit' > medit-win-dist-tmp/medit-${MOO_DISPLAY_VERSION}/bin/${MEDIT_PORTABLE_MAGIC_FILE_NAME}"
         COMMAND bash -c
-            "cd medit-win-dist-tmp && zip -r9 ${PACKAGE}-portable-${MOO_DISPLAY_VERSION}.zip ${PACKAGE}-${MOO_DISPLAY_VERSION}"
+            "cd medit-win-dist-tmp && zip -r9 medit-portable-${MOO_DISPLAY_VERSION}.zip medit-${MOO_DISPLAY_VERSION}"
         COMMAND ${CMAKE_COMMAND} -E rename
-                "medit-win-dist-tmp/${PACKAGE}-portable-${MOO_DISPLAY_VERSION}.zip" "."
+                "medit-win-dist-tmp/medit-portable-${MOO_DISPLAY_VERSION}.zip" "."
         COMMAND ${CMAKE_COMMAND} -E rename
-                "medit-win-dist-tmp/${PACKAGE}-${MOO_DISPLAY_VERSION}.zip" "."
+                "medit-win-dist-tmp/medit-${MOO_DISPLAY_VERSION}.zip" "."
         COMMAND ${CMAKE_COMMAND} -E remove_directory medit-win-dist-tmp
         COMMENT "Building Win32 portable zip"
     )
