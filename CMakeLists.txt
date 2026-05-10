@@ -170,8 +170,11 @@ if(MOO_OS_WIN32)
                   "C:/Program Files (x86)/Inno Setup 5"
                   "C:/Program Files/Inno Setup 5"
         )
+        # Don't wrap the path in literal " — CMake passes a single-string
+        # variable as one argv element to add_custom_target(COMMAND ...) and
+        # rejects values containing literal quote characters.
         if(MEDIT_ISCC)
-            set(MEDIT_INNO_COMPILER "\"${MEDIT_ISCC}\"")
+            set(MEDIT_INNO_COMPILER "${MEDIT_ISCC}")
         else()
             set(MEDIT_INNO_COMPILER "ISCC.exe")
         endif()
@@ -290,6 +293,18 @@ target_link_libraries(moo_build_settings INTERFACE
     ${MOO_LIBM}
     $<$<BOOL:${MOO_ENABLE_PYTHON}>:${PYGTK_LIBRARIES}>
     $<$<BOOL:${MOO_OS_WIN32}>:-lmooglib>
+)
+
+# pkg_check_modules' *_LIBRARIES are bare names (gtk-3, glib-2.0, ...).
+# Without the matching -L, macOS Homebrew (/opt/homebrew/lib) and other
+# non-default prefixes fail with "library 'gtk-3' not found".  PkgConfig::*
+# imported targets carry the -L too, but they may be evaluated after these
+# bare names in the link line, so add the dirs explicitly here.
+target_link_directories(moo_build_settings INTERFACE
+    ${GTK_LIBRARY_DIRS}
+    ${GTHREAD_LIBRARY_DIRS}
+    ${GMODULE_LIBRARY_DIRS}
+    ${XML_LIBRARY_DIRS}
 )
 
 # ── Generate config.h ─────────────────────────────────────────────────────────
