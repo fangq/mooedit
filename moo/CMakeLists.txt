@@ -679,6 +679,17 @@ if(_gsv_c_files)
     )
 endif()
 
+# moouixml.c uses a discriminated-union pattern: node_new() allocates
+# sizeof(MooUiNode) (40 B) for CONTAINER nodes and sizeof(MooUiItemNode)
+# (larger) for ITEM nodes; node_free() switches on node->type before
+# casting to (Item*).  gcc 13's interprocedural -Warray-bounds= inlines
+# item_free() into parse_widget/parse_placeholder, loses track of that
+# runtime switch, and falsely flags every g_free(item->...) as
+# out-of-bounds.  Suppress for this TU only.
+set_source_files_properties("${_src}/mooutils/moouixml.c" PROPERTIES
+    COMPILE_OPTIONS "-Wno-array-bounds"
+)
+
 # ── eggsmclient ───────────────────────────────────────────────────────────────
 set(_eggsmclient_sources
     eggsmclient/eggsmclient.c
