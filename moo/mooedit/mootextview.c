@@ -714,6 +714,7 @@ _moo_text_view_draw_fold_guides (MooTextView *view, cairo_t *cr)
     GtkTextIter vis_iter;
     int first_line, last_line, total_lines;
     GSList *folds, *l;
+    gboolean is_end_lang = FALSE;
 
     if (!MOO_IS_TEXT_BUFFER (buffer))
         return;
@@ -722,6 +723,19 @@ _moo_text_view_draw_fold_guides (MooTextView *view, cairo_t *cr)
     total_lines = gtk_text_buffer_get_line_count (buffer);
     if (total_lines < 2)
         return;
+
+    /* End-based languages (matlab/octave/pascal) write the block opener
+     * directly on start_line — there is no continuation-line story for
+     * scan-back to disentangle.  Anchoring the guide to start_line is
+     * therefore both correct and faster, and avoids the overlapping /
+     * offset guides observed on multi-block matlab classes. */
+    {
+        MooLang   *lang    = moo_text_buffer_get_lang (mbuf);
+        const char *lang_id = _moo_lang_id (lang);
+        is_end_lang = lang_id && (strcmp (lang_id, "matlab") == 0 ||
+                                  strcmp (lang_id, "octave") == 0 ||
+                                  strcmp (lang_id, "pascal") == 0);
+    }
 
     gtk_text_view_get_visible_rect (text_view, &visible_rect);
     gtk_text_view_get_line_at_y (text_view, &vis_iter, visible_rect.y, NULL);
@@ -799,10 +813,11 @@ _moo_text_view_draw_fold_guides (MooTextView *view, cairo_t *cr)
             best_ws    = start_ws;
             guide_line = start_line;
 
-            /* Scan backward for a less-indented line (max 50 lines).
-             * Stop early at blank lines to avoid crossing unrelated code. */
+            /* End-based languages don't have C-style continuation-line
+             * function signatures, so skip the scan-back and anchor the
+             * guide to start_line directly. */
             for (scan_line = start_line - 1;
-                 scan_line >= 0 && (start_line - scan_line) <= 50;
+                 !is_end_lang && scan_line >= 0 && (start_line - scan_line) <= 50;
                  scan_line--)
             {
                 int scan_ws = 0;
@@ -4628,16 +4643,47 @@ moo_text_view_expose (GtkWidget      *widget,
         }
     }
 
-    /* Fill left margin background after parent draw */
+    /* Fill left margin background after parent draw.  Tint the editor's
+     * actual text-view background (pulled from the GtkStyleContext) so
+     * the gutter matches whatever theme is in effect: slightly darker
+     * for light themes, slightly lighter for dark themes.  Hardcoding
+     * 0.22 gray made the line numbers unreadable on Windows' default
+     * (light) theme. */
     if (left_window && GDK_IS_WINDOW(left_window) && gtk_cairo_should_draw_window(cr, left_window))
     {
         int lw_w = gdk_window_get_width(left_window);
         int lw_h = gdk_window_get_height(left_window);
+        GtkStyleContext *ctx = gtk_widget_get_style_context(widget);
+        GdkRGBA bg = {0.94, 0.94, 0.94, 1.0};
+        double luma, delta;
+
+        gtk_style_context_save(ctx);
+        gtk_style_context_add_class(ctx, GTK_STYLE_CLASS_VIEW);
+        G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+        gtk_style_context_get_background_color(ctx,
+                gtk_style_context_get_state(ctx), &bg);
+        G_GNUC_END_IGNORE_DEPRECATIONS
+        gtk_style_context_restore(ctx);
+
+        /* Some themes report a fully-transparent view background; treat
+         * that as "use a sensible light gray default". */
+        if (bg.alpha < 0.1) {
+            bg.red = bg.green = bg.blue = 0.94;
+            bg.alpha = 1.0;
+        }
+
+        /* Tint slightly: darken light backgrounds, lighten dark ones. */
+        luma  = 0.299 * bg.red + 0.587 * bg.green + 0.114 * bg.blue;
+        delta = (luma > 0.5) ? -0.06 : +0.08;
+        bg.red   = CLAMP(bg.red   + delta, 0.0, 1.0);
+        bg.green = CLAMP(bg.green + delta, 0.0, 1.0);
+        bg.blue  = CLAMP(bg.blue  + delta, 0.0, 1.0);
+
         cairo_save(cr);
         gtk_cairo_transform_to_window(cr, widget, left_window);
         cairo_rectangle(cr, 0, 0, lw_w, lw_h);
         cairo_clip(cr);
-        cairo_set_source_rgb(cr, 0.22, 0.22, 0.22);
+        cairo_set_source_rgba(cr, bg.red, bg.green, bg.blue, 1.0);
         cairo_paint(cr);
         cairo_restore(cr);
         draw_left_margin(view, cr);
@@ -5174,66 +5220,54 @@ draw_fold_mark (MooTextView    *view,
                 int             height,
                 int             window_width)
 {
-    /* Use ❯ (U+276F) glyph: pointing right when collapsed, rotated 90°
-     * clockwise (pointing down) when expanded. */
+    /* Draw a small filled triangle: ▶ pointing right when collapsed,
+     * ▼ pointing down when expanded.  Use raw cairo paths instead of a
+     * Unicode glyph (U+276F / U+25B6) — the latter shows up as a tofu
+     * square on systems whose default UI font lacks the codepoint
+     * (e.g. MS-Sans on Windows MSYS2). */
     int cx, cy;
     GtkStyleContext *ctx;
     GdkRGBA fg = {0.6, 0.6, 0.6, 1.0};
-    PangoLayout *layout;
-    PangoRectangle ink;
+    double half;
+    int target_px;
 
     cx = window_width - view->priv->lm.fold_width / 2;
     cy = y + height / 2;
 
-    /* Get foreground color from theme and dim it slightly */
+    /* Foreground color from theme, slightly dimmed */
     ctx = gtk_widget_get_style_context (GTK_WIDGET (view));
     gtk_style_context_save (ctx);
     gtk_style_context_get_color (ctx, gtk_style_context_get_state (ctx), &fg);
     gtk_style_context_restore (ctx);
-    fg.alpha = 0.55;
+    fg.alpha = 0.6;
 
-    layout = gtk_widget_create_pango_layout (GTK_WIDGET (view), "\xe2\x9d\xaf"); /* UTF-8 for U+276F ❯ */
-
-    /* Scale the glyph down so it fits inside the fold-margin column.
-     * Target: occupy at most (fold_width - 4) pixels. */
-    {
-        PangoFontDescription *fd;
-        int target_px = view->priv->lm.fold_width - 4;
-        if (target_px < 6) target_px = 6;
-        fd = pango_font_description_copy (pango_layout_get_font_description (layout));
-        if (!fd)
-            fd = pango_font_description_copy (
-                    pango_context_get_font_description (pango_layout_get_context (layout)));
-        pango_font_description_set_absolute_size (fd, target_px * PANGO_SCALE);
-        pango_layout_set_font_description (layout, fd);
-        pango_font_description_free (fd);
-    }
-
-    pango_layout_get_pixel_extents (layout, &ink, NULL);
+    target_px = view->priv->lm.fold_width - 4;
+    if (target_px < 6) target_px = 6;
+    half = target_px / 2.0;
 
     cairo_save (cr_param);
     cairo_set_source_rgba (cr_param, fg.red, fg.green, fg.blue, fg.alpha);
+    cairo_translate (cr_param, cx, cy);
 
     if (fold->collapsed)
     {
-        /* ❯ pointing right — content is hidden */
-        cairo_move_to (cr_param,
-                       cx - (ink.x + ink.width)  / 2.0,
-                       cy - (ink.y + ink.height) / 2.0);
-        pango_cairo_show_layout (cr_param, layout);
+        /* ▶ pointing right — content is hidden.  Slightly narrower than
+         * tall to look balanced next to the line-number column. */
+        cairo_move_to (cr_param, -half * 0.55, -half * 0.7);
+        cairo_line_to (cr_param,  half * 0.55,  0);
+        cairo_line_to (cr_param, -half * 0.55,  half * 0.7);
+        cairo_close_path (cr_param);
     }
     else
     {
-        /* ❯ rotated 90° clockwise → pointing downward — block is open */
-        cairo_translate (cr_param, cx, cy);
-        cairo_rotate (cr_param, M_PI / 2.0);
-        cairo_move_to (cr_param,
-                       -(ink.x + ink.width)  / 2.0,
-                       -(ink.y + ink.height) / 2.0);
-        pango_cairo_show_layout (cr_param, layout);
+        /* ▼ pointing down — block is expanded */
+        cairo_move_to (cr_param, -half * 0.7, -half * 0.55);
+        cairo_line_to (cr_param,  half * 0.7, -half * 0.55);
+        cairo_line_to (cr_param,           0,  half * 0.55);
+        cairo_close_path (cr_param);
     }
 
-    g_object_unref (layout);
+    cairo_fill (cr_param);
     cairo_restore (cr_param);
 }
 
