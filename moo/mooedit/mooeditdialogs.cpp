@@ -29,13 +29,11 @@
 #include "mooutils/moo-gtk3-compat.h"
 #include <mooglib/moo-glib.h>
 #include <string.h>
-#ifdef __WIN32__
-#include <mooutils/moofiledialog-win32.h>
-#include <gdk/gdkwin32.h>
-#endif // __WIN32__
-
-
-#ifndef __WIN32__
+/* Native Win32 file-dialog support previously lived behind #ifdef __WIN32__
+ * here, but the moofiledialog-win32.{h,cpp} pair was lost during the GTK2→
+ * GTK3 migration.  Until those are re-ported, fall through to the GTK file
+ * chooser on every platform — it works on Windows, just without native
+ * shell styling. */
 
 MooOpenInfoArray *
 _moo_edit_open_dialog (GtkWidget *widget,
@@ -156,71 +154,6 @@ _moo_edit_save_as_dialog (MooEdit    *doc,
     g_object_unref (dialog);
     return info;
 }
-
-#else // __WIN32__
-
-static std::string
-get_folder_from_document(MooEdit* doc)
-{
-    GFile* file = moo_edit_get_file (doc);
-
-    if (!file)
-        return std::string();
-
-    GFile* parent = g_file_get_parent(file);
-    char *parent_path = g_file_get_path(parent);
-    std::string start_folder (parent_path);
-
-    g_free(parent_path);
-    g_object_unref(parent);
-    g_object_unref(file);
-
-    return start_folder;
-}
-
-MooOpenInfoArray *
-_moo_edit_open_dialog(GtkWidget* parent,
-                      MooEdit*   current_doc)
-{
-    std::string start_folder;
-
-    if (current_doc && moo_prefs_get_bool(moo_edit_setting(MOO_EDIT_PREFS_DIALOGS_OPEN_FOLLOWS_DOC)))
-        start_folder = get_folder_from_document(current_doc);
-
-    GtkWidget* toplevel = parent ? gtk_widget_get_toplevel(parent) : nullptr;
-    HWND hwnd = toplevel ? reinterpret_cast<HWND> (GDK_WINDOW_HWND(gtk_widget_get_window (toplevel))) : nullptr;
-    std::vector<std::string> files = moo_show_win32_file_open_dialog (hwnd, start_folder);
-    if (files.empty())
-        return nullptr;
-
-    MooOpenInfoArray *result = moo_open_info_array_new();
-    for (const auto& path : files)
-        moo_open_info_array_take(result, moo_open_info_new(path.c_str(), MOO_ENCODING_AUTO, -1, MOO_OPEN_FLAGS_NONE));
-    return result;
-}
-
-
-MooSaveInfo*
-_moo_edit_save_as_dialog(MooEdit*    doc,
-                         const char* display_basename)
-{
-    MooEditView* view = moo_edit_get_view (doc);
-    GtkWidget* toplevel = view ? gtk_widget_get_toplevel(GTK_WIDGET(view)) : nullptr;
-    HWND hwnd = toplevel ? reinterpret_cast<HWND> (GDK_WINDOW_HWND(gtk_widget_get_window (toplevel))) : nullptr;
-
-    std::string start_folder;
-
-    if (moo_prefs_get_bool(moo_edit_setting(MOO_EDIT_PREFS_DIALOGS_OPEN_FOLLOWS_DOC)))
-        start_folder = get_folder_from_document (doc);
-
-    std::string save_as = moo_show_win32_file_save_as_dialog(hwnd, start_folder, display_basename);
-    if (save_as.empty())
-        return nullptr;
-
-    return moo_save_info_new (save_as.c_str(), nullptr);
-}
-
-#endif // __WIN32__
 
 
 MooSaveChangesResponse
