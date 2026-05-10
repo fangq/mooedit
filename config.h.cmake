@@ -48,11 +48,13 @@
 #cmakedefine01 MOO_BROKEN_GTK_THEME
 
 /* ── OS flags ────────────────────────────────────────────────────────────── */
-#cmakedefine MOO_OS_WIN32
-#cmakedefine MOO_OS_UNIX
-#cmakedefine MOO_OS_DARWIN
-#cmakedefine MOO_OS_FREEBSD
-#cmakedefine MOO_OS_LINUX
+/* moo-config.h defines MOO_OS_* with value 1, so emit the same form here to
+   avoid "redefined" warnings when both headers end up in the same TU. */
+#cmakedefine MOO_OS_WIN32   1
+#cmakedefine MOO_OS_UNIX    1
+#cmakedefine MOO_OS_DARWIN  1
+#cmakedefine MOO_OS_FREEBSD 1
+#cmakedefine MOO_OS_LINUX   1
 
 /* ── Debug flags ─────────────────────────────────────────────────────────── */
 /* moo-config.h requires DEBUG, MOO_DEBUG, and ENABLE_DEBUG to be in sync.   */

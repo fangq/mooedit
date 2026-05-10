@@ -502,8 +502,8 @@ moo_accel_check_event (GtkWidget       *widget,
                        guint            keyval,
                        GdkModifierType  mods)
 {
-    guint ev_keyval;
-    GdkModifierType ev_mods;
+    guint ev_keyval = 0;
+    GdkModifierType ev_mods = (GdkModifierType) 0;
     moo_accel_translate_event (widget, event, &ev_keyval, &ev_mods);
     return keyval == ev_keyval && mods == ev_mods;
 }
