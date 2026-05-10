@@ -41,8 +41,8 @@ Name: "norwegian"; MessagesFile: "compiler:Languages\norwegian.isl"
 Name: "polish"; MessagesFile: "compiler:Languages\polish.isl"
 Name: "portuguese"; MessagesFile: "compiler:Languages\portuguese.isl"
 Name: "russian"; MessagesFile: "compiler:Languages\russian.isl"
-Name: "serbiancyrillic"; MessagesFile: "compiler:Languages\serbiancyrillic.isl"
-Name: "serbianlatin"; MessagesFile: "compiler:Languages\serbianlatin.isl"
+; Both Serbian variants were dropped from the Inno Setup 6 bundled
+; translations along with Greek; available only as unofficial downloads.
 Name: "slovenian"; MessagesFile: "compiler:Languages\slovenian.isl"
 Name: "spanish"; MessagesFile: "compiler:Languages\spanish.isl"
 Name: "ukrainian"; MessagesFile: "compiler:Languages\ukrainian.isl"
