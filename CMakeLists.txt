@@ -246,6 +246,7 @@ target_include_directories(moo_build_settings INTERFACE
 )
 
 target_compile_definitions(moo_build_settings INTERFACE
+    HAVE_CONFIG_H=1
     MOO_CONFIG_H_INCLUDED=1
     GETTEXT_PACKAGE="${GETTEXT_PACKAGE}"
     XDG_PREFIX=_moo_edit_xdg

@@ -238,7 +238,10 @@ _moo_win32_open_uri (const char *uri)
 
     h = ShellExecuteA (NULL, "open", uri, NULL, NULL, SW_SHOWNORMAL);
 
-    if ((int)h <= 32)
+    /* ShellExecute returns an HINSTANCE that, per MSDN, encodes a small
+     * integer status: values <= 32 mean failure.  Cast through INT_PTR
+     * (a pointer-sized integer) — plain (int) truncates on x86_64. */
+    if ((INT_PTR) h <= 32)
     {
         char *msg = g_win32_error_message (GetLastError());
         g_warning ("could not open uri '%s': %s", uri, msg);
