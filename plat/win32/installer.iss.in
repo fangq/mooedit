@@ -30,7 +30,9 @@ Name: "danish"; MessagesFile: "compiler:Languages\danish.isl"
 Name: "dutch"; MessagesFile: "compiler:Languages\dutch.isl"
 Name: "finnish"; MessagesFile: "compiler:Languages\finnish.isl"
 Name: "french"; MessagesFile: "compiler:Languages\french.isl"
-Name: "greek"; MessagesFile: "compiler:Languages\greek.isl"
+; greek.isl was dropped from Inno Setup 6's bundled translations and is
+; only available as an unofficial download from jrsoftware.org/isdl.php,
+; so referencing it would fail the install build.
 Name: "hebrew"; MessagesFile: "compiler:Languages\hebrew.isl"
 Name: "hungarian"; MessagesFile: "compiler:Languages\hungarian.isl"
 Name: "italian"; MessagesFile: "compiler:Languages\italian.isl"
