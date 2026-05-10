@@ -17,7 +17,10 @@
  * class:MooApp: (parent GObject): application object
  */
 
+/* glib-unix.h is UNIX-only; gated to avoid breaking Win32 builds. */
+#ifndef G_OS_WIN32
 #include <glib-unix.h>
+#endif
 #include "config.h"
 
 #include "mooapp-private.h"
@@ -918,8 +921,12 @@ moo_app_run (MooApp *app)
 
     g_idle_add_full(G_PRIORITY_DEFAULT_IDLE + 1, (GSourceFunc) emit_started, app, NULL);
 
-    /* Allow Ctrl+C to quit */
+    /* Allow Ctrl+C to quit (UNIX only — Windows uses CTRL handlers via
+     * SetConsoleCtrlHandler, but medit links with -mwindows so it has no
+     * console of its own anyway). */
+#ifndef G_OS_WIN32
     g_unix_signal_add(SIGINT, (GSourceFunc)gtk_main_quit, NULL);
+#endif
     gtk_main ();
         /* GTK3: call quit handler explicitly after gtk_main returns */
         on_gtk_main_quit (app);
