@@ -639,8 +639,26 @@ apply_cursor_style (GtkSourceStyleScheme *scheme,
 
 	if (has_primary)
 	{
+		/* gtk_widget_modify_cursor takes GdkColor* (8-byte struct with
+		 * guint16 channels), NOT GdkRGBA* (32 bytes of doubles).  The
+		 * old "(const GdkColor*) &primary_color" cast was type-punning
+		 * UB — glibc happened to tolerate it on Linux but mingw on
+		 * Windows hard-crashes ("POSIX WinThreads for Windows has
+		 * stopped working") when the dialog Apply triggers it.
+		 * Convert properly first. */
+		GdkColor primary_gdk;
+		GdkColor secondary_gdk;
+		primary_gdk.pixel   = 0;
+		primary_gdk.red     = (guint16) (CLAMP (primary_color.red,   0.0, 1.0) * 65535.0);
+		primary_gdk.green   = (guint16) (CLAMP (primary_color.green, 0.0, 1.0) * 65535.0);
+		primary_gdk.blue    = (guint16) (CLAMP (primary_color.blue,  0.0, 1.0) * 65535.0);
+		secondary_gdk.pixel = 0;
+		secondary_gdk.red   = (guint16) (CLAMP (secondary_color.red,   0.0, 1.0) * 65535.0);
+		secondary_gdk.green = (guint16) (CLAMP (secondary_color.green, 0.0, 1.0) * 65535.0);
+		secondary_gdk.blue  = (guint16) (CLAMP (secondary_color.blue,  0.0, 1.0) * 65535.0);
+
 		G_GNUC_BEGIN_IGNORE_DEPRECATIONS
-		gtk_widget_modify_cursor (widget, (const GdkColor*) &primary_color, (const GdkColor*) &secondary_color);
+		gtk_widget_modify_cursor (widget, &primary_gdk, &secondary_gdk);
 		G_GNUC_END_IGNORE_DEPRECATIONS
 		g_object_set_data (G_OBJECT (widget),
 				   "gtk-source-view-cursor-color-set",
