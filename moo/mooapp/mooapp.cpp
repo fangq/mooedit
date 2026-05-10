@@ -17,8 +17,10 @@
  * class:MooApp: (parent GObject): application object
  */
 
-/* glib-unix.h is UNIX-only; gated to avoid breaking Win32 builds. */
-#ifndef G_OS_WIN32
+/* glib-unix.h is UNIX-only; gated to avoid breaking Win32 builds.
+ * G_OS_WIN32 is defined inside <glib.h> which hasn't been included yet
+ * here, so use the compiler-builtin _WIN32 for the predicate instead. */
+#ifndef _WIN32
 #include <glib-unix.h>
 #endif
 #include "config.h"
