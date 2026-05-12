@@ -361,14 +361,22 @@ child_free (Child *child)
                                               (gpointer) child_row_activated,
                                               child);
         g_signal_handlers_disconnect_by_func (child->widget,
-                                              (gpointer) child_selection_changed,
-                                              child);
-        g_signal_handlers_disconnect_by_func (child->widget,
                                               (gpointer) child_key_press,
                                               child);
         g_signal_handlers_disconnect_by_func (child->widget,
                                               (gpointer) child_button_press,
                                               child);
+        /* child_selection_changed was connected to the selection object
+         * (tree-view) or to the widget itself (icon-view), not always to
+         * child->widget directly. */
+        if (child->type == MOO_TREE_VIEW_TREE && child->u.tree.selection)
+            g_signal_handlers_disconnect_by_func (child->u.tree.selection,
+                                                  (gpointer) child_selection_changed,
+                                                  child);
+        else
+            g_signal_handlers_disconnect_by_func (child->widget,
+                                                  (gpointer) child_selection_changed,
+                                                  child);
         g_object_unref (child->widget);
     }
 

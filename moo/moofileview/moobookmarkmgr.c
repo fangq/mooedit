@@ -786,6 +786,23 @@ static void          dialog_response        (GtkWidget      *dialog,
 static void          dialog_show            (GtkWidget      *dialog,
                                              MooBookmarkMgr *mgr);
 
+/* Zero widget pointers so callbacks return early when called during dialog
+ * destruction, before sibling widgets are finalized.  Connected to the
+ * dialog's "destroy" signal which fires (via G_SIGNAL_RUN_CLEANUP) before
+ * child widgets are torn down, so we can poison the fields first. */
+static void
+editor_dialog_on_destroy (GtkWidget *dialog G_GNUC_UNUSED, BkEditorXml *xml)
+{
+    xml->treeview          = NULL;
+    xml->icon_combo        = NULL;
+    xml->selected_hbox     = NULL;
+    xml->delete_button     = NULL;
+    xml->new_button        = NULL;
+    xml->separator_button  = NULL;
+    xml->path_label        = NULL;
+    xml->file_button_holder = NULL;
+}
+
 GtkWidget *
 _moo_bookmark_mgr_get_editor (MooBookmarkMgr *mgr)
 {
@@ -802,6 +819,10 @@ _moo_bookmark_mgr_get_editor (MooBookmarkMgr *mgr)
 
     init_editor_dialog (xml);
 
+    /* Must connect destroy handler before other signals so child-widget
+     * callbacks see NULL pointers instead of dangling ones. */
+    g_signal_connect (dialog, "destroy",
+                      G_CALLBACK (editor_dialog_on_destroy), xml);
     g_signal_connect (dialog, "response",
                       G_CALLBACK (dialog_response), mgr);
     g_signal_connect (dialog, "delete-event",
@@ -1105,6 +1126,9 @@ selection_changed (GtkTreeSelection *selection,
 {
     GtkWidget *selected_hbox;
     int selected;
+
+    if (!xml->delete_button)
+        return;
 
     selected_hbox = GTK_WIDGET (xml->selected_hbox);
     selected = gtk_tree_selection_count_selected_rows (selection);
@@ -1451,6 +1475,9 @@ combo_update_icon (GtkComboBox *combo,
     MooBookmark *bookmark;
     GtkListStore *icon_store;
 
+    if (!xml->treeview)
+        return;
+
     selection = gtk_tree_view_get_selection (xml->treeview);
     rows = gtk_tree_selection_get_selected_rows (selection, &model);
     g_return_if_fail (rows != NULL && rows->next == NULL);
@@ -1591,6 +1618,9 @@ icon_combo_changed (GtkComboBox *combo,
     GtkTreeModel *icon_model;
     GdkPixbuf *pixbuf = NULL;
     char *stock = NULL;
+
+    if (!xml->treeview)
+        return;
 
     selection = gtk_tree_view_get_selection (xml->treeview);
     rows = gtk_tree_selection_get_selected_rows (selection, &model);

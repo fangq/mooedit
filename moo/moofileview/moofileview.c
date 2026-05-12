@@ -955,6 +955,24 @@ moo_file_view_finalize (GObject *object)
         g_source_remove (fileview->priv->select_file_idle);
     g_free (fileview->priv->select_file);
 
+    if (fileview->priv->view)
+    {
+        g_signal_handlers_disconnect_by_func (fileview->priv->view,
+                                              (gpointer) moo_file_view_key_press,
+                                              fileview);
+        g_signal_handlers_disconnect_by_func (fileview->priv->view,
+                                              (gpointer) file_list_selection_changed,
+                                              fileview);
+        g_signal_handlers_disconnect_by_func (fileview->priv->view,
+                                              (gpointer) file_list_button_press,
+                                              fileview);
+        g_signal_handlers_disconnect_by_func (fileview->priv->view,
+                                              (gpointer) file_list_row_activated,
+                                              fileview);
+        g_object_unref (fileview->priv->view);
+        fileview->priv->view = NULL;
+    }
+
     g_object_unref (fileview->priv->model);
     g_object_unref (fileview->priv->filter_model);
     history_free (fileview);

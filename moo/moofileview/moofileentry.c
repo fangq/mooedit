@@ -302,7 +302,8 @@ moo_file_entry_completion_finalize (GObject *object)
     completion_disconnect_folder (cmpl);
     g_free (cmpl->priv->dirname);
 
-    gtk_widget_destroy (cmpl->priv->popup);
+    if (cmpl->priv->popup)
+        gtk_widget_destroy (cmpl->priv->popup);
     g_object_unref (cmpl->priv->model);
 
     g_free (cmpl->priv);
