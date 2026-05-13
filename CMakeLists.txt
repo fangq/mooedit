@@ -127,6 +127,12 @@ endif()
 # ── Python bindings ───────────────────────────────────────────────────────────
 include(MooPython)  # sets MOO_ENABLE_PYTHON, PYTHON_INCLUDES, PYTHON_LIBS, PYGTK_*
 
+# ── Spell-check (gspell + hunspell) ───────────────────────────────────────────
+set(MOO_WITH_SPELL "auto" CACHE STRING
+    "Build with gspell-based spell-check: yes, no, or auto")
+set_property(CACHE MOO_WITH_SPELL PROPERTY STRINGS auto yes no)
+include(MooSpell)   # sets MOO_BUILD_SPELL, PkgConfig::GSPELL
+
 # ── Build-target options ──────────────────────────────────────────────────────
 option(MOO_BUILD_MODULE "Build standalone Python module instead of medit app" OFF)
 
@@ -254,6 +260,7 @@ target_compile_definitions(moo_build_settings INTERFACE
     ${MOO_EXTRA_DEFS}
     $<$<BOOL:${MOO_ENABLE_PYTHON}>:MOO_ENABLE_PYTHON=1>
     $<$<BOOL:${MOO_BUILD_CTAGS}>:MOO_BUILD_CTAGS=1>
+    $<$<BOOL:${MOO_BUILD_SPELL}>:MOO_BUILD_SPELL=1>
     $<$<BOOL:${MOO_ENABLE_COVERAGE}>:MOO_ENABLE_COVERAGE=1>
     $<$<BOOL:${MOO_BROKEN_GTK_THEME}>:MOO_BROKEN_GTK_THEME=1>
 )

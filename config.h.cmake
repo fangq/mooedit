@@ -46,6 +46,7 @@
 #cmakedefine ENABLE_NLS              1
 #cmakedefine MOO_ENABLE_PYTHON       1
 #cmakedefine MOO_BUILD_CTAGS         1
+#cmakedefine MOO_BUILD_SPELL         1
 #cmakedefine MOO_ENABLE_COVERAGE     1
 #cmakedefine MOO_BROKEN_GTK_THEME    1
 

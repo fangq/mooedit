@@ -885,6 +885,7 @@ set(_mooedit_sources
     mooedit/mooeditfileinfo-impl.h mooedit/mooeditfileinfo.cpp
     mooedit/moofold.cpp          mooedit/moofold.h
     mooedit/mooindenter.cpp      mooedit/mooindenter.h
+    mooedit/moospellcheck.cpp    mooedit/moospellcheck.h
     mooedit/moolang.cpp          mooedit/moolang.h
     mooedit/moolangmgr.cpp       mooedit/moolangmgr.h
     mooedit/moolangmgr-private.h mooedit/moolang-private.h
@@ -1085,6 +1086,9 @@ if(MOO_BUILD_APP)
     endif()
     if(MOO_BUILD_TERMINAL)
         target_link_libraries(medit PRIVATE PkgConfig::VTE)
+    endif()
+    if(MOO_BUILD_SPELL)
+        target_link_libraries(medit PRIVATE PkgConfig::GSPELL)
     endif()
 
     if(MOO_OS_WIN32)
