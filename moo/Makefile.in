@@ -225,7 +225,8 @@ am___moo_la_SOURCES_DIST = medit-module/medit-module.cpp moo-config.h \
 	mooedit/mooeditwindow.cpp mooedit/mooeditwindow-impl.h \
 	mooedit/mooeditfileinfo-impl.h mooedit/mooeditfileinfo.cpp \
 	mooedit/moofold.cpp mooedit/moofold.h mooedit/mooindenter.cpp \
-	mooedit/mooindenter.h mooedit/moolang.cpp mooedit/moolang.h \
+	mooedit/mooindenter.h mooedit/moospellcheck.cpp \
+	mooedit/moospellcheck.h mooedit/moolang.cpp mooedit/moolang.h \
 	mooedit/moolangmgr.cpp mooedit/moolangmgr.h \
 	mooedit/moolangmgr-private.h mooedit/moolang-private.h \
 	mooedit/moolinebuffer.c mooedit/moolinebuffer.h \
@@ -459,7 +460,8 @@ am__objects_14 = $(am__objects_1) $(am__objects_2) \
 	mooedit/_moo_la-mooeditprogress.lo \
 	mooedit/_moo_la-mooedittab.lo mooedit/_moo_la-mooeditwindow.lo \
 	mooedit/_moo_la-mooeditfileinfo.lo mooedit/_moo_la-moofold.lo \
-	mooedit/_moo_la-mooindenter.lo mooedit/_moo_la-moolang.lo \
+	mooedit/_moo_la-mooindenter.lo \
+	mooedit/_moo_la-moospellcheck.lo mooedit/_moo_la-moolang.lo \
 	mooedit/_moo_la-moolangmgr.lo mooedit/_moo_la-moolinebuffer.lo \
 	mooedit/_moo_la-moolinemark.lo mooedit/_moo_la-mooplugin.lo \
 	mooedit/_moo_la-mooplugin-loader.lo \
@@ -629,7 +631,8 @@ am__medit_SOURCES_DIST = medit-app/mem-debug.h medit-app/run-tests.h \
 	mooedit/mooeditwindow.cpp mooedit/mooeditwindow-impl.h \
 	mooedit/mooeditfileinfo-impl.h mooedit/mooeditfileinfo.cpp \
 	mooedit/moofold.cpp mooedit/moofold.h mooedit/mooindenter.cpp \
-	mooedit/mooindenter.h mooedit/moolang.cpp mooedit/moolang.h \
+	mooedit/mooindenter.h mooedit/moospellcheck.cpp \
+	mooedit/moospellcheck.h mooedit/moolang.cpp mooedit/moolang.h \
 	mooedit/moolangmgr.cpp mooedit/moolangmgr.h \
 	mooedit/moolangmgr-private.h mooedit/moolang-private.h \
 	mooedit/moolinebuffer.c mooedit/moolinebuffer.h \
@@ -860,10 +863,10 @@ am__objects_36 = $(am__objects_24) $(am__objects_2) \
 	mooedit/mooeditprogress.$(OBJEXT) mooedit/mooedittab.$(OBJEXT) \
 	mooedit/mooeditwindow.$(OBJEXT) \
 	mooedit/mooeditfileinfo.$(OBJEXT) mooedit/moofold.$(OBJEXT) \
-	mooedit/mooindenter.$(OBJEXT) mooedit/moolang.$(OBJEXT) \
-	mooedit/moolangmgr.$(OBJEXT) mooedit/moolinebuffer.$(OBJEXT) \
-	mooedit/moolinemark.$(OBJEXT) mooedit/mooplugin.$(OBJEXT) \
-	mooedit/mooplugin-loader.$(OBJEXT) \
+	mooedit/mooindenter.$(OBJEXT) mooedit/moospellcheck.$(OBJEXT) \
+	mooedit/moolang.$(OBJEXT) mooedit/moolangmgr.$(OBJEXT) \
+	mooedit/moolinebuffer.$(OBJEXT) mooedit/moolinemark.$(OBJEXT) \
+	mooedit/mooplugin.$(OBJEXT) mooedit/mooplugin-loader.$(OBJEXT) \
 	mooedit/mootextbtree.$(OBJEXT) mooedit/mootextbuffer.$(OBJEXT) \
 	mooedit/mootextfind.$(OBJEXT) mooedit/mootextprint.$(OBJEXT) \
 	mooedit/mootextsearch.$(OBJEXT) \
@@ -1076,6 +1079,7 @@ am__depfiles_remade = ./$(DEPDIR)/_moo_la-marshals.Plo \
 	mooedit/$(DEPDIR)/_moo_la-moolinemark.Plo \
 	mooedit/$(DEPDIR)/_moo_la-mooplugin-loader.Plo \
 	mooedit/$(DEPDIR)/_moo_la-mooplugin.Plo \
+	mooedit/$(DEPDIR)/_moo_la-moospellcheck.Plo \
 	mooedit/$(DEPDIR)/_moo_la-mootextbtree.Plo \
 	mooedit/$(DEPDIR)/_moo_la-mootextbuffer.Plo \
 	mooedit/$(DEPDIR)/_moo_la-mootextfind.Plo \
@@ -1111,6 +1115,7 @@ am__depfiles_remade = ./$(DEPDIR)/_moo_la-marshals.Plo \
 	mooedit/$(DEPDIR)/moolinemark.Po \
 	mooedit/$(DEPDIR)/mooplugin-loader.Po \
 	mooedit/$(DEPDIR)/mooplugin.Po \
+	mooedit/$(DEPDIR)/moospellcheck.Po \
 	mooedit/$(DEPDIR)/mootextbtree.Po \
 	mooedit/$(DEPDIR)/mootextbuffer.Po \
 	mooedit/$(DEPDIR)/mootextfind.Po \
@@ -1958,7 +1963,8 @@ moo_sources = moo-config.h mooglib/moo-glib.h mooglib/moo-stat.h \
 	mooedit/mooeditwindow.cpp mooedit/mooeditwindow-impl.h \
 	mooedit/mooeditfileinfo-impl.h mooedit/mooeditfileinfo.cpp \
 	mooedit/moofold.cpp mooedit/moofold.h mooedit/mooindenter.cpp \
-	mooedit/mooindenter.h mooedit/moolang.cpp mooedit/moolang.h \
+	mooedit/mooindenter.h mooedit/moospellcheck.cpp \
+	mooedit/moospellcheck.h mooedit/moolang.cpp mooedit/moolang.h \
 	mooedit/moolangmgr.cpp mooedit/moolangmgr.h \
 	mooedit/moolangmgr-private.h mooedit/moolang-private.h \
 	mooedit/moolinebuffer.c mooedit/moolinebuffer.h \
@@ -2669,6 +2675,8 @@ mooedit/_moo_la-moofold.lo: mooedit/$(am__dirstamp) \
 	mooedit/$(DEPDIR)/$(am__dirstamp)
 mooedit/_moo_la-mooindenter.lo: mooedit/$(am__dirstamp) \
 	mooedit/$(DEPDIR)/$(am__dirstamp)
+mooedit/_moo_la-moospellcheck.lo: mooedit/$(am__dirstamp) \
+	mooedit/$(DEPDIR)/$(am__dirstamp)
 mooedit/_moo_la-moolang.lo: mooedit/$(am__dirstamp) \
 	mooedit/$(DEPDIR)/$(am__dirstamp)
 mooedit/_moo_la-moolangmgr.lo: mooedit/$(am__dirstamp) \
@@ -3147,6 +3155,8 @@ mooedit/moofold.$(OBJEXT): mooedit/$(am__dirstamp) \
 	mooedit/$(DEPDIR)/$(am__dirstamp)
 mooedit/mooindenter.$(OBJEXT): mooedit/$(am__dirstamp) \
 	mooedit/$(DEPDIR)/$(am__dirstamp)
+mooedit/moospellcheck.$(OBJEXT): mooedit/$(am__dirstamp) \
+	mooedit/$(DEPDIR)/$(am__dirstamp)
 mooedit/moolang.$(OBJEXT): mooedit/$(am__dirstamp) \
 	mooedit/$(DEPDIR)/$(am__dirstamp)
 mooedit/moolangmgr.$(OBJEXT): mooedit/$(am__dirstamp) \
@@ -3608,6 +3618,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@mooedit/$(DEPDIR)/_moo_la-moolinemark.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@mooedit/$(DEPDIR)/_moo_la-mooplugin-loader.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@mooedit/$(DEPDIR)/_moo_la-mooplugin.Plo@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@mooedit/$(DEPDIR)/_moo_la-moospellcheck.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@mooedit/$(DEPDIR)/_moo_la-mootextbtree.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@mooedit/$(DEPDIR)/_moo_la-mootextbuffer.Plo@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@mooedit/$(DEPDIR)/_moo_la-mootextfind.Plo@am__quote@ # am--include-marker
@@ -3645,6 +3656,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@mooedit/$(DEPDIR)/moolinemark.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@mooedit/$(DEPDIR)/mooplugin-loader.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@mooedit/$(DEPDIR)/mooplugin.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@mooedit/$(DEPDIR)/moospellcheck.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@mooedit/$(DEPDIR)/mootextbtree.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@mooedit/$(DEPDIR)/mootextbuffer.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@mooedit/$(DEPDIR)/mootextfind.Po@am__quote@ # am--include-marker
@@ -4843,6 +4855,13 @@ mooedit/_moo_la-mooindenter.lo: mooedit/mooindenter.cpp
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(_moo_la_CXXFLAGS) $(CXXFLAGS) -c -o mooedit/_moo_la-mooindenter.lo `test -f 'mooedit/mooindenter.cpp' || echo '$(srcdir)/'`mooedit/mooindenter.cpp
 
+mooedit/_moo_la-moospellcheck.lo: mooedit/moospellcheck.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(_moo_la_CXXFLAGS) $(CXXFLAGS) -MT mooedit/_moo_la-moospellcheck.lo -MD -MP -MF mooedit/$(DEPDIR)/_moo_la-moospellcheck.Tpo -c -o mooedit/_moo_la-moospellcheck.lo `test -f 'mooedit/moospellcheck.cpp' || echo '$(srcdir)/'`mooedit/moospellcheck.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) mooedit/$(DEPDIR)/_moo_la-moospellcheck.Tpo mooedit/$(DEPDIR)/_moo_la-moospellcheck.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	$(AM_V_CXX)source='mooedit/moospellcheck.cpp' object='mooedit/_moo_la-moospellcheck.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(AM_V_CXX@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(_moo_la_CXXFLAGS) $(CXXFLAGS) -c -o mooedit/_moo_la-moospellcheck.lo `test -f 'mooedit/moospellcheck.cpp' || echo '$(srcdir)/'`mooedit/moospellcheck.cpp
+
 mooedit/_moo_la-moolang.lo: mooedit/moolang.cpp
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(_moo_la_CXXFLAGS) $(CXXFLAGS) -MT mooedit/_moo_la-moolang.lo -MD -MP -MF mooedit/$(DEPDIR)/_moo_la-moolang.Tpo -c -o mooedit/_moo_la-moolang.lo `test -f 'mooedit/moolang.cpp' || echo '$(srcdir)/'`mooedit/moolang.cpp
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) mooedit/$(DEPDIR)/_moo_la-moolang.Tpo mooedit/$(DEPDIR)/_moo_la-moolang.Plo
@@ -5812,6 +5831,7 @@ distclean: distclean-am
 	-rm -f mooedit/$(DEPDIR)/_moo_la-moolinemark.Plo
 	-rm -f mooedit/$(DEPDIR)/_moo_la-mooplugin-loader.Plo
 	-rm -f mooedit/$(DEPDIR)/_moo_la-mooplugin.Plo
+	-rm -f mooedit/$(DEPDIR)/_moo_la-moospellcheck.Plo
 	-rm -f mooedit/$(DEPDIR)/_moo_la-mootextbtree.Plo
 	-rm -f mooedit/$(DEPDIR)/_moo_la-mootextbuffer.Plo
 	-rm -f mooedit/$(DEPDIR)/_moo_la-mootextfind.Plo
@@ -5849,6 +5869,7 @@ distclean: distclean-am
 	-rm -f mooedit/$(DEPDIR)/moolinemark.Po
 	-rm -f mooedit/$(DEPDIR)/mooplugin-loader.Po
 	-rm -f mooedit/$(DEPDIR)/mooplugin.Po
+	-rm -f mooedit/$(DEPDIR)/moospellcheck.Po
 	-rm -f mooedit/$(DEPDIR)/mootextbtree.Po
 	-rm -f mooedit/$(DEPDIR)/mootextbuffer.Po
 	-rm -f mooedit/$(DEPDIR)/mootextfind.Po
@@ -6220,6 +6241,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f mooedit/$(DEPDIR)/_moo_la-moolinemark.Plo
 	-rm -f mooedit/$(DEPDIR)/_moo_la-mooplugin-loader.Plo
 	-rm -f mooedit/$(DEPDIR)/_moo_la-mooplugin.Plo
+	-rm -f mooedit/$(DEPDIR)/_moo_la-moospellcheck.Plo
 	-rm -f mooedit/$(DEPDIR)/_moo_la-mootextbtree.Plo
 	-rm -f mooedit/$(DEPDIR)/_moo_la-mootextbuffer.Plo
 	-rm -f mooedit/$(DEPDIR)/_moo_la-mootextfind.Plo
@@ -6257,6 +6279,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f mooedit/$(DEPDIR)/moolinemark.Po
 	-rm -f mooedit/$(DEPDIR)/mooplugin-loader.Po
 	-rm -f mooedit/$(DEPDIR)/mooplugin.Po
+	-rm -f mooedit/$(DEPDIR)/moospellcheck.Po
 	-rm -f mooedit/$(DEPDIR)/mootextbtree.Po
 	-rm -f mooedit/$(DEPDIR)/mootextbuffer.Po
 	-rm -f mooedit/$(DEPDIR)/mootextfind.Po
