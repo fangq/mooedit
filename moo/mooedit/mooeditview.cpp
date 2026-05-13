@@ -420,6 +420,15 @@ _moo_edit_view_do_popup (MooEditView    *view,
     g_return_if_fail (menu != NULL);
     g_object_ref_sink (menu);
 
+    /* Append spell-check items (Suggestions submenu + Add to Dictionary +
+     * Ignore All) when the right-click landed on a misspelled word.
+     * No-op when MOO_BUILD_SPELL is off. */
+    if (event)
+        _moo_spell_check_populate_popup (view, menu,
+                                         (int) event->x, (int) event->y);
+    else
+        _moo_spell_check_populate_popup (view, menu, -1, -1);
+
     if (event)
     {
         gtk_menu_popup (menu, NULL, NULL, NULL, NULL,

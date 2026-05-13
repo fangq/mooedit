@@ -34,6 +34,18 @@ void    _moo_spell_check_detach        (MooEditView    *view);
  * attached checker; cheap to call repeatedly. */
 void    _moo_spell_check_apply_prefs   (MooEditView    *view);
 
+/* Append spell-check items (Suggestions submenu + "Add to Dictionary"
+ * + "Ignore All") to a medit-built popup menu.  Called from
+ * _moo_edit_view_do_popup().  `widget_x`/`widget_y` are the right-click
+ * coordinates in widget-relative space; pass -1,-1 to use the current
+ * cursor position (e.g. when popup was triggered by keyboard).  No-op
+ * when MOO_BUILD_SPELL is off, or when there's no misspelled word at
+ * the click position. */
+void    _moo_spell_check_populate_popup (MooEditView   *view,
+                                         GtkMenu       *menu,
+                                         int            widget_x,
+                                         int            widget_y);
+
 G_END_DECLS
 
 #endif /* MOO_SPELL_CHECK_H */
