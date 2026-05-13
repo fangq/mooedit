@@ -5221,15 +5221,14 @@ draw_fold_mark (MooTextView    *view,
                 int             height,
                 int             window_width)
 {
-    /* Draw a small filled triangle: ▶ pointing right when collapsed,
-     * ▼ pointing down when expanded.  Use raw cairo paths instead of a
-     * Unicode glyph (U+276F / U+25B6) — the latter shows up as a tofu
-     * square on systems whose default UI font lacks the codepoint
-     * (e.g. MS-Sans on Windows MSYS2). */
+    /* Draw a chevron — ❯ pointing right when collapsed, ❮-rotated /
+     * ⌄ pointing down when expanded.  Two stroked line segments meeting
+     * at the apex, instead of a filled triangle: lighter visual weight,
+     * still 100 % cairo (no font dependency, so no tofu on Windows). */
     int cx, cy;
     GtkStyleContext *ctx;
     GdkRGBA fg = {0.6, 0.6, 0.6, 1.0};
-    double half;
+    double half, lw;
     int target_px;
 
     cx = window_width - view->priv->lm.fold_width / 2;
@@ -5240,35 +5239,40 @@ draw_fold_mark (MooTextView    *view,
     gtk_style_context_save (ctx);
     gtk_style_context_get_color (ctx, gtk_style_context_get_state (ctx), &fg);
     gtk_style_context_restore (ctx);
-    fg.alpha = 0.6;
+    fg.alpha = 0.75;
 
     target_px = view->priv->lm.fold_width - 4;
     if (target_px < 6) target_px = 6;
     half = target_px / 2.0;
+    /* Stroke width scales with size: ~1/6 of the glyph height, clamped
+     * so it doesn't disappear on small sizes or get clunky on big ones. */
+    lw = half / 3.0;
+    if (lw < 1.2) lw = 1.2;
+    if (lw > 2.4) lw = 2.4;
 
     cairo_save (cr_param);
     cairo_set_source_rgba (cr_param, fg.red, fg.green, fg.blue, fg.alpha);
+    cairo_set_line_width (cr_param, lw);
+    cairo_set_line_cap  (cr_param, CAIRO_LINE_CAP_ROUND);
+    cairo_set_line_join (cr_param, CAIRO_LINE_JOIN_ROUND);
     cairo_translate (cr_param, cx, cy);
 
     if (fold->collapsed)
     {
-        /* ▶ pointing right — content is hidden.  Slightly narrower than
-         * tall to look balanced next to the line-number column. */
-        cairo_move_to (cr_param, -half * 0.55, -half * 0.7);
-        cairo_line_to (cr_param,  half * 0.55,  0);
-        cairo_line_to (cr_param, -half * 0.55,  half * 0.7);
-        cairo_close_path (cr_param);
+        /* ❯ — apex on the right, opens leftward */
+        cairo_move_to (cr_param, -half * 0.45, -half * 0.7);
+        cairo_line_to (cr_param,  half * 0.45,           0);
+        cairo_line_to (cr_param, -half * 0.45,  half * 0.7);
     }
     else
     {
-        /* ▼ pointing down — block is expanded */
-        cairo_move_to (cr_param, -half * 0.7, -half * 0.55);
-        cairo_line_to (cr_param,  half * 0.7, -half * 0.55);
-        cairo_line_to (cr_param,           0,  half * 0.55);
-        cairo_close_path (cr_param);
+        /* ⌄ — apex at the bottom, opens upward */
+        cairo_move_to (cr_param, -half * 0.7, -half * 0.45);
+        cairo_line_to (cr_param,           0,  half * 0.45);
+        cairo_line_to (cr_param,  half * 0.7, -half * 0.45);
     }
 
-    cairo_fill (cr_param);
+    cairo_stroke (cr_param);
     cairo_restore (cr_param);
 }
 
