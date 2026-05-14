@@ -94,6 +94,9 @@ typedef struct {
     GdkRGBA code_fg;       /* foreground for code (a touch dimmer)     */
     GdkRGBA heading_fg;    /* shared colour for H1/H2 (others: theme)  */
     GdkRGBA hr_fg;
+    GdkRGBA quote_bg;      /* soft background for <blockquote>         */
+    GdkRGBA quote_fg;      /* dimmer text inside <blockquote>          */
+    GdkRGBA table_bg;      /* soft background for tables               */
 } MarkdownPalette;
 
 static void
@@ -120,6 +123,9 @@ markdown_pick_palette (GtkWidget *html_view, MarkdownPalette *p)
         gdk_rgba_parse (&p->code_fg,    "#e6e6e6");
         gdk_rgba_parse (&p->heading_fg, "#9cdcfe");   /* cyan-blue (VS-Code-ish) */
         gdk_rgba_parse (&p->hr_fg,      "#444444");
+        gdk_rgba_parse (&p->quote_bg,   "#1e2227");   /* faint panel tint */
+        gdk_rgba_parse (&p->quote_fg,   "#a8b1bd");   /* muted grey-blue */
+        gdk_rgba_parse (&p->table_bg,   "#1e2227");   /* same as quote */
     }
     else
     {
@@ -129,6 +135,9 @@ markdown_pick_palette (GtkWidget *html_view, MarkdownPalette *p)
         gdk_rgba_parse (&p->code_fg,    "#222222");
         gdk_rgba_parse (&p->heading_fg, "#1a1a1a");   /* near-black, lets size carry */
         gdk_rgba_parse (&p->hr_fg,      "#cccccc");
+        gdk_rgba_parse (&p->quote_bg,   "#f6f8fa");   /* GitHub-ish faint panel */
+        gdk_rgba_parse (&p->quote_fg,   "#586069");   /* GitHub-ish muted text */
+        gdk_rgba_parse (&p->table_bg,   "#fafbfc");   /* even softer than quote */
     }
 }
 
@@ -178,6 +187,18 @@ markdown_restyle_tags (GtkWidget *html_view)
                               "pixels-below-lines",        8,
                               NULL);
             }
+            else if (_moo_html_tag_is_table (tag))
+            {
+                /* Tables render as monospace text with box-drawing
+                 * borders; give them a faint background so the grid
+                 * reads as a unit. */
+                g_object_set (tag,
+                              "paragraph-background-rgba", &p->table_bg,
+                              "scale",                     0.92,
+                              "pixels-above-lines",        2,
+                              "pixels-below-lines",        2,
+                              NULL);
+            }
             else if (_moo_html_tag_is_monospace (tag))
             {
                 /* Inline <code> — span-background only (not whole para). */
@@ -185,6 +206,20 @@ markdown_restyle_tags (GtkWidget *html_view)
                               "background-rgba", &p->code_bg,
                               "foreground-rgba", &p->code_fg,
                               "scale",           0.92,
+                              NULL);
+            }
+
+            if (_moo_html_tag_is_blockquote (tag))
+            {
+                /* GitHub-style: indented, italic, muted text on a faint
+                 * paragraph background.  left-margin already came from
+                 * the MOO_HTML_LEFT_MARGIN flag in the tag's attr. */
+                g_object_set (tag,
+                              "paragraph-background-rgba", &p->quote_bg,
+                              "foreground-rgba",           &p->quote_fg,
+                              "style",                     PANGO_STYLE_ITALIC,
+                              "pixels-above-lines",        4,
+                              "pixels-below-lines",        4,
                               NULL);
             }
         },

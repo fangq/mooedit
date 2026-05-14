@@ -100,6 +100,8 @@ gboolean        _moo_html_tag_is_link        (GtkTextTag *tag);
 gboolean        _moo_html_tag_is_monospace   (GtkTextTag *tag);  /* <code> + <pre> both */
 gboolean        _moo_html_tag_is_pre         (GtkTextTag *tag);  /* <pre> only */
 int             _moo_html_tag_get_heading    (GtkTextTag *tag);
+gboolean        _moo_html_tag_is_blockquote  (GtkTextTag *tag);
+gboolean        _moo_html_tag_is_table       (GtkTextTag *tag);
 
 
 G_END_DECLS

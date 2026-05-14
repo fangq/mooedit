@@ -84,7 +84,13 @@ typedef enum {
     MOO_HTML_HEADING            = 1 << 14,
     MOO_HTML_FONT_SIZE          = 1 << 15,
     MOO_HTML_FONT_PT_SIZE       = 1 << 16,
-    MOO_HTML_FONT_FACE          = 1 << 17
+    MOO_HTML_FONT_FACE          = 1 << 17,
+
+    /* Marker flags — they don't set any text property by themselves but
+     * let consumers like the Markdown preview plugin recognise the
+     * element kind via the tag predicates exposed in moohtml.h. */
+    MOO_HTML_BLOCKQUOTE         = 1 << 18,
+    MOO_HTML_TABLE              = 1 << 19
 } MooHtmlAttrMask;
 
 MOO_DEFINE_FLAGS(MooHtmlAttrMask)
@@ -749,7 +755,8 @@ attr_compose (MooHtmlAttr       *dest,
     static MooHtmlAttrMask simple =
             MOO_HTML_BOLD | MOO_HTML_ITALIC | MOO_HTML_UNDERLINE |
             MOO_HTML_STRIKETHROUGH | MOO_HTML_MONOSPACE | MOO_HTML_SUB |
-            MOO_HTML_SUP | MOO_HTML_PRE;
+            MOO_HTML_SUP | MOO_HTML_PRE |
+            MOO_HTML_BLOCKQUOTE | MOO_HTML_TABLE;
     static MooHtmlAttrMask font_size_mask =
             MOO_HTML_LARGER | MOO_HTML_SMALLER | MOO_HTML_HEADING |
             MOO_HTML_FONT_SIZE | MOO_HTML_FONT_PT_SIZE;
@@ -1868,13 +1875,20 @@ process_elm_body (GtkTextView    *view,
         }
         else if (IS_NAMED_ELM_ (child, "blockquote"))
         {
-            /* Simple blockquote: emit "> " prefix on each new line.
-             * For a polished version we'd indent via a tag with
-             * left-margin, but this renders sanely without extra plumbing. */
+            /* Render <blockquote> as a left-indented italic block.
+             * The markdown preview plugin sets a paragraph background
+             * on tags that have MOO_HTML_BLOCKQUOTE so we get the
+             * GitHub-style grey sidebar look. */
+            MooHtmlAttr bq_attr;
+            MooHtmlTag *bq_tag;
+            memset (&bq_attr, 0, sizeof bq_attr);
+            bq_attr.mask        = MOO_HTML_LEFT_MARGIN | MOO_HTML_BLOCKQUOTE
+                                  | MOO_HTML_ITALIC;
+            bq_attr.left_margin = 18;
+            bq_tag = moo_html_create_tag (view, &bq_attr, current, FALSE);
             moo_html_new_line (view, buffer, iter, current, FALSE);
-            moo_html_insert_verbatim (view, buffer, iter, current, "> ");
-            process_elm_body (view, buffer, child, current, iter);
-            moo_html_new_line (view, buffer, iter, current, FALSE);
+            process_elm_body (view, buffer, child, bq_tag, iter);
+            moo_html_new_line (view, buffer, iter, bq_tag, FALSE);
         }
 
         else if (IS_ELEMENT (child))
@@ -2111,7 +2125,11 @@ process_ol_elm (GtkTextView    *view,
             g_free (number);
             STR_FREE (value);
         }
-        else
+        else if (IS_TEXT (child) || IS_COMMENT (child))
+        {
+            /* Whitespace and comments between <li> tags — ignore silently. */
+        }
+        else if (IS_ELEMENT (child))
         {
             g_message ("unknown node '%s'", child->name);
             process_elm_body (view, buffer, child, current, iter);
@@ -2465,6 +2483,73 @@ out:
 }
 
 
+/* ─────────────── Table rendering (2-pass column-aligned) ───────────────
+ *
+ * GtkTextView can't draw a real grid, so we approximate one with
+ * monospace text and Unicode box-drawing characters.  First pass walks
+ * the table tree, collects each <tr>'s text-content cells, and computes
+ * the max char-width per column.  Second pass emits each row with
+ * cells padded to the column width and a header separator after the
+ * <thead> row.  The whole block is wrapped in a MOO_HTML_TABLE tag so
+ * the Markdown preview plugin can apply monospace font + soft
+ * background.
+ */
+
+typedef struct {
+    GPtrArray *cells;     /* char * per cell (utf-8) */
+    gboolean   is_header; /* came from <thead> or had any <th> */
+} TableRow;
+
+static void
+table_row_free (gpointer p)
+{
+    TableRow *r = (TableRow *) p;
+    if (r->cells)
+        g_ptr_array_free (r->cells, TRUE);
+    g_free (r);
+}
+
+/* Collect <tr> rows under `elm`, recursing through <thead>/<tbody>/<tfoot>.
+ * inside_thead tracks whether we're descended from a <thead>. */
+static void
+table_collect_rows (xmlNode *elm, GPtrArray *rows, gboolean inside_thead)
+{
+    xmlNode *child;
+    for (child = elm->children; child != nullptr; child = child->next)
+    {
+        if (!IS_ELEMENT (child))
+            continue;
+        if (IS_NAMED_ELM_ (child, "tr"))
+        {
+            TableRow *row = g_new0 (TableRow, 1);
+            row->cells     = g_ptr_array_new_with_free_func (g_free);
+            row->is_header = inside_thead;
+
+            for (xmlNode *c = child->children; c != nullptr; c = c->next)
+            {
+                if (!IS_ELEMENT (c))
+                    continue;
+                if (IS_NAMED_ELM_ (c, "th"))
+                    row->is_header = TRUE;
+                if (IS_NAMED_ELM_ (c, "td") || IS_NAMED_ELM_ (c, "th"))
+                {
+                    xmlChar *txt = xmlNodeGetContent (c);
+                    char    *s   = g_strdup (txt ? (const char *) txt : "");
+                    g_strstrip (s);
+                    g_ptr_array_add (row->cells, s);
+                    if (txt) xmlFree (txt);
+                }
+            }
+            g_ptr_array_add (rows, row);
+        }
+        else if (IS_NAMED_ELM_ (child, "thead"))
+            table_collect_rows (child, rows, TRUE);
+        else if (IS_NAMED_ELM_ (child, "tbody")
+                 || IS_NAMED_ELM_ (child, "tfoot"))
+            table_collect_rows (child, rows, FALSE);
+    }
+}
+
 static void
 process_table_elm (GtkTextView *view,
                    GtkTextBuffer *buffer,
@@ -2472,47 +2557,123 @@ process_table_elm (GtkTextView *view,
                    MooHtmlTag *parent,
                    GtkTextIter *iter)
 {
-    /* Tables get a blank line above and below so they read as a block
-     * separated from surrounding paragraphs.  process_elm_body recurses
-     * into thead/tbody — those are handled in the unnamed-element branch
-     * of process_elm_body so each <tr> is dispatched into the renderer
-     * below. */
+    GPtrArray *rows;
+    GArray    *widths;
+    guint      ncols = 0;
+    MooHtmlAttr table_attr;
+    MooHtmlTag *table_tag;
+
+    rows = g_ptr_array_new_with_free_func (table_row_free);
+    table_collect_rows (elm, rows, FALSE);
+
+    if (rows->len == 0)
+    {
+        g_ptr_array_free (rows, TRUE);
+        return;
+    }
+
+    /* Column count = max cell count across all rows. */
+    for (guint r = 0; r < rows->len; r++)
+    {
+        TableRow *row = (TableRow *) rows->pdata[r];
+        if (row->cells->len > ncols)
+            ncols = row->cells->len;
+    }
+    if (ncols == 0)
+    {
+        g_ptr_array_free (rows, TRUE);
+        return;
+    }
+
+    /* Per-column max width in (Pango) chars. */
+    widths = g_array_new (FALSE, TRUE, sizeof (long));
+    g_array_set_size (widths, ncols);
+    for (guint r = 0; r < rows->len; r++)
+    {
+        TableRow *row = (TableRow *) rows->pdata[r];
+        for (guint c = 0; c < row->cells->len; c++)
+        {
+            long w = g_utf8_strlen ((const char *) row->cells->pdata[c], -1);
+            long *cur = &g_array_index (widths, long, c);
+            if (w > *cur) *cur = w;
+        }
+    }
+
+    /* Build the rendered block as one string so it shows up as one
+     * tagged region.  Border glyphs: ─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼ */
+    GString *out = g_string_new (NULL);
+
+    auto append_hline = [&](const char *lft, const char *mid, const char *rgt) {
+        g_string_append (out, lft);
+        for (guint c = 0; c < ncols; c++)
+        {
+            long w = g_array_index (widths, long, c);
+            for (long i = 0; i < w + 2; i++)
+                g_string_append (out, "\xe2\x94\x80"); /* ─ */
+            g_string_append (out, c + 1 == ncols ? rgt : mid);
+        }
+        g_string_append_c (out, '\n');
+    };
+
+    append_hline ("\xe2\x94\x8c", "\xe2\x94\xac", "\xe2\x94\x90"); /* ┌┬┐ */
+
+    gboolean separator_emitted = FALSE;
+    for (guint r = 0; r < rows->len; r++)
+    {
+        TableRow *row = (TableRow *) rows->pdata[r];
+        g_string_append (out, "\xe2\x94\x82"); /* │ */
+        for (guint c = 0; c < ncols; c++)
+        {
+            const char *cell = c < row->cells->len
+                ? (const char *) row->cells->pdata[c] : "";
+            long cw = g_utf8_strlen (cell, -1);
+            long w  = g_array_index (widths, long, c);
+            g_string_append_c (out, ' ');
+            g_string_append (out, cell);
+            for (long i = cw; i < w; i++)
+                g_string_append_c (out, ' ');
+            g_string_append_c (out, ' ');
+            g_string_append (out, "\xe2\x94\x82"); /* │ */
+        }
+        g_string_append_c (out, '\n');
+
+        /* Header/body divider runs once, right after the last header row. */
+        if (!separator_emitted && row->is_header
+            && (r + 1 >= rows->len
+                || !((TableRow *) rows->pdata[r + 1])->is_header))
+        {
+            append_hline ("\xe2\x94\x9c", "\xe2\x94\xbc", "\xe2\x94\xa4"); /* ├┼┤ */
+            separator_emitted = TRUE;
+        }
+    }
+
+    append_hline ("\xe2\x94\x94", "\xe2\x94\xb4", "\xe2\x94\x98"); /* └┴┘ */
+
+    /* Wrap the whole block in a MOO_HTML_TABLE+MONOSPACE tag.  The
+     * markdown plugin paints a soft background on these in
+     * markdown_restyle_tags. */
+    memset (&table_attr, 0, sizeof table_attr);
+    table_attr.mask = MOO_HTML_TABLE | MOO_HTML_MONOSPACE;
+    table_tag = moo_html_create_tag (view, &table_attr, parent, FALSE);
+
     moo_html_new_line (view, buffer, iter, parent, FALSE);
     moo_html_new_line (view, buffer, iter, parent, TRUE);
-    process_elm_body (view, buffer, elm, parent, iter);
-    moo_html_new_line (view, buffer, iter, parent, FALSE);
+    moo_html_insert_verbatim (view, buffer, iter, table_tag, out->str);
     moo_html_new_line (view, buffer, iter, parent, TRUE);
+
+    g_string_free (out, TRUE);
+    g_array_free (widths, TRUE);
+    g_ptr_array_free (rows, TRUE);
 }
 
 static void
 process_tr_elm (GtkTextView *view, GtkTextBuffer *buffer, xmlNode *elm,
                 MooHtmlTag *parent, GtkTextIter *iter)
 {
-    xmlNode *child;
-    gboolean any_cell = FALSE;
-
-    moo_html_new_line (view, buffer, iter, parent, FALSE);
-
-    /* Render each <td>/<th> with "| " separators so the row reads
-     * like a Markdown source table.  Walk children directly rather than
-     * delegating to process_elm_body so we can wrap each cell with the
-     * pipe delimiters. */
-    for (child = elm->children; child != nullptr; child = child->next)
-    {
-        if (IS_NAMED_ELM_ (child, "td") || IS_NAMED_ELM_ (child, "th"))
-        {
-            if (!any_cell)
-            {
-                moo_html_insert_verbatim (view, buffer, iter, parent, "| ");
-                any_cell = TRUE;
-            }
-            process_elm_body (view, buffer, child, parent, iter);
-            moo_html_insert_verbatim (view, buffer, iter, parent, " | ");
-        }
-    }
-
-    if (any_cell)
-        moo_html_new_line (view, buffer, iter, parent, FALSE);
+    /* No-op: process_table_elm fully owns the table render, so a stray
+     * <tr> outside a <table> is silently dropped.  Real rows are walked
+     * by table_collect_rows, not via this dispatch path. */
+    (void) view; (void) buffer; (void) elm; (void) parent; (void) iter;
 }
 
 
@@ -2560,4 +2721,22 @@ _moo_html_tag_get_heading (GtkTextTag *tag)
     if (!t->attr || !(t->attr->mask & MOO_HTML_HEADING))
         return 0;
     return (int) t->attr->heading;   /* 1..6 */
+}
+
+gboolean
+_moo_html_tag_is_blockquote (GtkTextTag *tag)
+{
+    if (!MOO_IS_HTML_TAG (tag))
+        return FALSE;
+    MooHtmlTag *t = MOO_HTML_TAG (tag);
+    return t->attr && (t->attr->mask & MOO_HTML_BLOCKQUOTE) != 0;
+}
+
+gboolean
+_moo_html_tag_is_table (GtkTextTag *tag)
+{
+    if (!MOO_IS_HTML_TAG (tag))
+        return FALSE;
+    MooHtmlTag *t = MOO_HTML_TAG (tag);
+    return t->attr && (t->attr->mask & MOO_HTML_TABLE) != 0;
 }
