@@ -162,16 +162,28 @@ markdown_restyle_tags (GtkWidget *html_view)
 
             if (_moo_html_tag_is_link (tag))
             {
-                /* High-contrast link colour, theme-aware. */
-                g_object_set (tag, "foreground-rgba", &p->link, NULL);
+                /* High-contrast underlined link — matches the GitHub
+                 * preview, where every link gets a single line below. */
+                g_object_set (tag,
+                              "foreground-rgba", &p->link,
+                              "underline",       PANGO_UNDERLINE_SINGLE,
+                              NULL);
             }
 
             if ((h = _moo_html_tag_get_heading (tag)) > 0)
             {
                 /* Lift H1/H2 with a coloured tint; H3+ rely on size +
-                 * weight alone to avoid a rainbow effect. */
+                 * weight alone to avoid a rainbow effect.  H1/H2 also
+                 * get an underline below the text — GitHub draws a
+                 * full-width rule, but underlining the heading text is
+                 * a close visual approximation in GtkTextView. */
                 if (h <= 2)
-                    g_object_set (tag, "foreground-rgba", &p->heading_fg, NULL);
+                {
+                    g_object_set (tag,
+                                  "foreground-rgba", &p->heading_fg,
+                                  "underline",       PANGO_UNDERLINE_SINGLE,
+                                  NULL);
+                }
             }
 
             if (_moo_html_tag_is_pre (tag))
@@ -181,19 +193,23 @@ markdown_restyle_tags (GtkWidget *html_view)
                 g_object_set (tag,
                               "paragraph-background-rgba", &p->code_bg,
                               "foreground-rgba",           &p->code_fg,
-                              "left-margin",               16,
+                              "left-margin",               20,
                               "right-margin",              16,
-                              "pixels-above-lines",        8,
-                              "pixels-below-lines",        8,
+                              "pixels-above-lines",        6,
+                              "pixels-below-lines",        6,
+                              "pixels-inside-wrap",        2,
+                              "scale",                     0.92,
                               NULL);
             }
             else if (_moo_html_tag_is_table (tag))
             {
-                /* Tables render as monospace text with box-drawing
-                 * borders; give them a faint background so the grid
-                 * reads as a unit. */
+                /* Tables render as column-aligned monospace text with a
+                 * thin under-header rule; the faint background plus a
+                 * left indent make the block read as a tabular unit. */
                 g_object_set (tag,
                               "paragraph-background-rgba", &p->table_bg,
+                              "left-margin",               16,
+                              "right-margin",              16,
                               "scale",                     0.92,
                               "pixels-above-lines",        2,
                               "pixels-below-lines",        2,

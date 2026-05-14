@@ -385,12 +385,14 @@ moo_html_data_new (void)
      * DEFAULT_PAR_SPACING (6 px) when the heading tag is built.  Used to
      * be all-zero by default, which made headings nearly flush with the
      * following paragraph.  Larger headings get more breathing room. */
-    data->heading_spacing[0] = 16;   /* H1 */
-    data->heading_spacing[1] = 12;   /* H2 */
-    data->heading_spacing[2] = 10;   /* H3 */
-    data->heading_spacing[3] =  8;   /* H4 */
-    data->heading_spacing[4] =  6;   /* H5 */
-    data->heading_spacing[5] =  4;   /* H6 */
+    /* Less below than above — GitHub-style headings attach to their
+     * section.  H1/H2 are larger so they keep a bit more breathing room. */
+    data->heading_spacing[0] = 10;   /* H1 */
+    data->heading_spacing[1] =  8;   /* H2 */
+    data->heading_spacing[2] =  6;   /* H3 */
+    data->heading_spacing[3] =  4;   /* H4 */
+    data->heading_spacing[4] =  3;   /* H5 */
+    data->heading_spacing[5] =  2;   /* H6 */
 
     data->monospace = g_strdup ("Monospace");
     data->font_faces = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
@@ -977,11 +979,13 @@ moo_html_make_heading_tag (GtkTextView    *view,
     /* Also reserve space ABOVE the heading so it doesn't crowd the
      * preceding paragraph.  Slightly less than the below-spacing so
      * the heading visually attaches to the section it introduces. */
+    /* Above-spacing is bigger than below-spacing so the heading sits
+     * closer to its own section than to the preceding paragraph. */
     g_object_set (tag,
                   "pixels-above-lines",
-                  DEFAULT_PAR_SPACING + data->heading_spacing[heading - 1] / 2,
-                  "pixels-below-lines",
                   DEFAULT_PAR_SPACING + data->heading_spacing[heading - 1],
+                  "pixels-below-lines",
+                  data->heading_spacing[heading - 1] / 2,
                   "scale", data->heading_sizes[heading - 1],
                   "weight", PANGO_WEIGHT_BOLD, nullptr);
 
@@ -2110,8 +2114,8 @@ process_ol_elm (GtkTextView    *view,
             parse_int ((char*) value, &count);
 
             number = make_li_number (count, list_type);
-            /* Two spaces of indent per nesting level beyond the first. */
-            indent = (data->list_depth - 1) * 2;
+            /* Four spaces of indent per nesting level beyond the first. */
+            indent = (data->list_depth - 1) * 4;
             prefix = g_strdup_printf ("%*s%s", indent, "", number);
             had_new_line = data->new_line;
 
@@ -2187,7 +2191,7 @@ process_li_elm (GtkTextView    *view,
     /* list_depth==0 means this <li> was processed outside a <ul>/<ol>
      * (malformed HTML); fall back to a sane default rather than crash. */
     depth = data->list_depth > 0 ? data->list_depth : 1;
-    indent = (depth - 1) * 2;
+    indent = (depth - 1) * 4;
     prefix = g_strdup_printf ("%*s%s ", indent, "",
                               bullets[(depth - 1) % G_N_ELEMENTS (bullets)]);
 
@@ -2599,69 +2603,83 @@ process_table_elm (GtkTextView *view,
         }
     }
 
-    /* Build the rendered block as one string so it shows up as one
-     * tagged region.  Border glyphs: ─ │ ┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼ */
-    GString *out = g_string_new (NULL);
+    /* Render: column-aligned monospace, header row in bold via a
+     * dedicated tag, single underline beneath the header.  No vertical
+     * separators or outer box — keeps the table looking like a clean
+     * tabular block rather than ASCII art. */
+    GString *body   = g_string_new (NULL);     /* non-header rows + sep */
+    GString *header = g_string_new (NULL);     /* header rows only      */
+    gboolean header_done = FALSE;
 
-    auto append_hline = [&](const char *lft, const char *mid, const char *rgt) {
-        g_string_append (out, lft);
-        for (guint c = 0; c < ncols; c++)
-        {
-            long w = g_array_index (widths, long, c);
-            for (long i = 0; i < w + 2; i++)
-                g_string_append (out, "\xe2\x94\x80"); /* ─ */
-            g_string_append (out, c + 1 == ncols ? rgt : mid);
-        }
-        g_string_append_c (out, '\n');
-    };
+    const int gap = 3;   /* spaces between columns */
 
-    append_hline ("\xe2\x94\x8c", "\xe2\x94\xac", "\xe2\x94\x90"); /* ┌┬┐ */
-
-    gboolean separator_emitted = FALSE;
     for (guint r = 0; r < rows->len; r++)
     {
         TableRow *row = (TableRow *) rows->pdata[r];
-        g_string_append (out, "\xe2\x94\x82"); /* │ */
+        GString  *out = row->is_header ? header : body;
+
         for (guint c = 0; c < ncols; c++)
         {
             const char *cell = c < row->cells->len
                 ? (const char *) row->cells->pdata[c] : "";
             long cw = g_utf8_strlen (cell, -1);
             long w  = g_array_index (widths, long, c);
-            g_string_append_c (out, ' ');
             g_string_append (out, cell);
             for (long i = cw; i < w; i++)
                 g_string_append_c (out, ' ');
-            g_string_append_c (out, ' ');
-            g_string_append (out, "\xe2\x94\x82"); /* │ */
+            if (c + 1 < ncols)
+                for (int i = 0; i < gap; i++)
+                    g_string_append_c (out, ' ');
         }
         g_string_append_c (out, '\n');
 
-        /* Header/body divider runs once, right after the last header row. */
-        if (!separator_emitted && row->is_header
+        /* After the last header row emit a thin underline that spans
+         * the same columns as the header text. */
+        if (!header_done && row->is_header
             && (r + 1 >= rows->len
                 || !((TableRow *) rows->pdata[r + 1])->is_header))
         {
-            append_hline ("\xe2\x94\x9c", "\xe2\x94\xbc", "\xe2\x94\xa4"); /* ├┼┤ */
-            separator_emitted = TRUE;
+            for (guint c = 0; c < ncols; c++)
+            {
+                long w = g_array_index (widths, long, c);
+                for (long i = 0; i < w; i++)
+                    g_string_append (header, "\xe2\x94\x80"); /* ─ */
+                if (c + 1 < ncols)
+                    for (int i = 0; i < gap; i++)
+                        g_string_append_c (header, ' ');
+            }
+            g_string_append_c (header, '\n');
+            header_done = TRUE;
         }
     }
 
-    append_hline ("\xe2\x94\x94", "\xe2\x94\xb4", "\xe2\x94\x98"); /* └┴┘ */
-
-    /* Wrap the whole block in a MOO_HTML_TABLE+MONOSPACE tag.  The
-     * markdown plugin paints a soft background on these in
-     * markdown_restyle_tags. */
+    /* Build two nested tags: outer table block (monospace + bg), inner
+     * header tag (bold).  The markdown plugin paints the table_bg on
+     * MOO_HTML_TABLE tags in its restyle pass. */
     memset (&table_attr, 0, sizeof table_attr);
     table_attr.mask = MOO_HTML_TABLE | MOO_HTML_MONOSPACE;
     table_tag = moo_html_create_tag (view, &table_attr, parent, FALSE);
 
-    moo_html_new_line (view, buffer, iter, parent, FALSE);
-    moo_html_new_line (view, buffer, iter, parent, TRUE);
-    moo_html_insert_verbatim (view, buffer, iter, table_tag, out->str);
-    moo_html_new_line (view, buffer, iter, parent, TRUE);
+    MooHtmlAttr  header_attr;
+    MooHtmlTag  *header_tag = nullptr;
+    if (header->len > 0)
+    {
+        memset (&header_attr, 0, sizeof header_attr);
+        header_attr.mask = MOO_HTML_BOLD;
+        header_tag = moo_html_create_tag (view, &header_attr, table_tag, FALSE);
+    }
 
-    g_string_free (out, TRUE);
+    moo_html_new_line (view, buffer, iter, parent, FALSE);
+    if (header->len > 0)
+        moo_html_insert_verbatim (view, buffer, iter,
+                                  header_tag ? header_tag : table_tag,
+                                  header->str);
+    if (body->len > 0)
+        moo_html_insert_verbatim (view, buffer, iter, table_tag, body->str);
+    moo_html_new_line (view, buffer, iter, parent, FALSE);
+
+    g_string_free (body, TRUE);
+    g_string_free (header, TRUE);
     g_array_free (widths, TRUE);
     g_ptr_array_free (rows, TRUE);
 }
