@@ -373,6 +373,17 @@ moo_html_data_new (void)
     data->heading_sizes[4] = PANGO_SCALE_MEDIUM;
     data->heading_sizes[5] = PANGO_SCALE_SMALL;
 
+    /* Per-heading extra "pixels below" the line — added to
+     * DEFAULT_PAR_SPACING (6 px) when the heading tag is built.  Used to
+     * be all-zero by default, which made headings nearly flush with the
+     * following paragraph.  Larger headings get more breathing room. */
+    data->heading_spacing[0] = 16;   /* H1 */
+    data->heading_spacing[1] = 12;   /* H2 */
+    data->heading_spacing[2] = 10;   /* H3 */
+    data->heading_spacing[3] =  8;   /* H4 */
+    data->heading_spacing[4] =  6;   /* H5 */
+    data->heading_spacing[5] =  4;   /* H6 */
+
     data->monospace = g_strdup ("Monospace");
     data->font_faces = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
 
@@ -954,7 +965,12 @@ moo_html_make_heading_tag (GtkTextView    *view,
 
     g_assert (1 <= heading && heading <= 6);
 
+    /* Also reserve space ABOVE the heading so it doesn't crowd the
+     * preceding paragraph.  Slightly less than the below-spacing so
+     * the heading visually attaches to the section it introduces. */
     g_object_set (tag,
+                  "pixels-above-lines",
+                  DEFAULT_PAR_SPACING + data->heading_spacing[heading - 1] / 2,
                   "pixels-below-lines",
                   DEFAULT_PAR_SPACING + data->heading_spacing[heading - 1],
                   "scale", data->heading_sizes[heading - 1],
@@ -2093,8 +2109,20 @@ process_ul_elm (GtkTextView    *view,
                 GtkTextIter    *iter)
 {
     xmlNode *child;
+
+    /* Open the list on its own line, the way <ol> already does.
+     * Without this the first bullet runs into the preceding paragraph. */
+    moo_html_new_line (view, buffer, iter, current, FALSE);
+
+    /* Dispatch each <li> through process_li_elm so it gets the "\n * "
+     * prefix.  Previously the loop walked children verbatim and the
+     * <li> tag was an invisible boundary — every item ended up on the
+     * same line.  Non-<li> children (whitespace, comments) are ignored. */
     for (child = elm->children; child != nullptr; child = child->next)
-        process_elm_body (view, buffer, child, current, iter);
+    {
+        if (IS_LI_ELEMENT (child))
+            process_li_elm (view, buffer, child, current, iter);
+    }
 }
 
 
