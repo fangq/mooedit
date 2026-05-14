@@ -32,37 +32,73 @@
 #  include <gspell/gspell.h>
 
 /* gspell's misspelled-word tag is anonymous (created with name=NULL) and
- * uses PANGO_UNDERLINE_SINGLE + a theme-derived underline-rgba.  Both
- * choices look poor on dark themes: a straight line at low contrast.
+ * uses PANGO_UNDERLINE_SINGLE + a theme-derived underline-rgba.  On dark
+ * themes the default colour is dim red, low contrast.  Override to a
+ * brighter red for visibility.
  *
- * We can't override gspell's choice through a public API, so hook the
- * buffer's tag-table::tag-added signal and recognise gspell's tag by
- * its property fingerprint (no name + underline-rgba set), then upgrade
- * it to PANGO_UNDERLINE_ERROR (wavy on Pango ≥ 1.50) with a brighter,
- * higher-contrast red.  Idempotent per buffer thanks to a "tagged"
- * marker on the table object. */
+ * gtk_text_buffer_create_tag adds the tag to the table FIRST, then sets
+ * its properties — so at tag-added time underline-rgba isn't set yet.
+ * Defer the override to notify::underline-rgba; by then both `underline`
+ * and `underline-rgba` are populated by gspell and we can identify the
+ * tag and overwrite it.
+ *
+ * Also tried PANGO_UNDERLINE_ERROR for a wavy line: works in a vanilla
+ * GtkTextView but renders straight in medit's MooTextView.  Root cause
+ * not yet identified (Pango ≥ 1.50 + same theme/font); for now we keep
+ * the straight line but make it bright red instead of dim.  Drawing a
+ * cairo wave by hand in MooTextView's draw chain is a future option.
+ */
 static void
-on_spell_tag_added (G_GNUC_UNUSED GtkTextTagTable *table,
-                    GtkTextTag                   *tag,
-                    G_GNUC_UNUSED gpointer        user_data)
+on_tag_underline_rgba_notify (GObject       *object,
+                              G_GNUC_UNUSED GParamSpec *pspec,
+                              gpointer       data)
 {
-    char     *name = NULL;
-    gboolean  underline_rgba_set = FALSE;
-    GdkRGBA   bright_red = { 1.0, 0.25, 0.25, 1.0 };
+    GtkTextTag      *tag   = GTK_TEXT_TAG (object);
+    GtkTextTagTable *table = GTK_IS_TEXT_TAG_TABLE (data) ? GTK_TEXT_TAG_TABLE (data) : NULL;
+    char            *name  = NULL;
+    GdkRGBA          bright_red = { 1.0, 0.25, 0.25, 1.0 };
 
-    g_object_get (tag,
-                  "name", &name,
-                  "underline-rgba-set", &underline_rgba_set,
-                  NULL);
+    g_object_get (tag, "name", &name, NULL);
 
-    if (name == NULL && underline_rgba_set)
+    /* Anonymous tag with rgba set → gspell's misspelled-word tag.
+     * Disconnect so our own override doesn't recurse. */
+    if (name == NULL)
     {
+        g_signal_handlers_disconnect_by_func (
+            tag, (gpointer) on_tag_underline_rgba_notify, table);
         g_object_set (tag,
-                      "underline",      PANGO_UNDERLINE_ERROR,
                       "underline-rgba", &bright_red,
                       NULL);
-    }
 
+        /* Force max priority so any other underline-set tag in the same
+         * range can't override us. */
+        if (table != NULL)
+        {
+            int size = gtk_text_tag_table_get_size (table);
+            if (size > 0)
+                gtk_text_tag_set_priority (tag, size - 1);
+        }
+    }
+    g_free (name);
+}
+
+static void
+on_spell_tag_added (GtkTextTagTable *table,
+                    GtkTextTag      *tag,
+                    G_GNUC_UNUSED gpointer user_data)
+{
+    char *name = NULL;
+
+    g_object_get (tag, "name", &name, NULL);
+
+    /* Anonymous tag — most likely gspell's about-to-be-styled misspelled
+     * tag.  Watch for underline-rgba to flip from unset to set.  Pass
+     * the tag table so the notify handler can bump priority. */
+    if (name == NULL)
+    {
+        g_signal_connect (tag, "notify::underline-rgba",
+                          G_CALLBACK (on_tag_underline_rgba_notify), table);
+    }
     g_free (name);
 }
 
@@ -93,9 +129,9 @@ _moo_spell_check_attach (G_GNUC_UNUSED MooEditView *view)
     gbuffer = gspell_text_buffer_get_from_gtk_text_buffer (buffer);
 
     /* Hook the buffer's tag table so when gspell adds its anonymous
-     * misspelled-word tag we can override the appearance.  Must be
-     * installed before basic_setup() runs anything that might create
-     * the tag. */
+     * misspelled-word tag we can override the underline-rgba (default
+     * picks the theme's dim error colour which is hard to read on dark
+     * themes).  Idempotent across attach() calls. */
     install_spell_tag_hook (buffer);
 
     /* Install the en_US checker on the buffer if no other view of the
@@ -331,14 +367,16 @@ _moo_spell_check_populate_popup (G_GNUC_UNUSED MooEditView *view,
     ctx->word_end   = gtk_text_buffer_create_mark (buffer, NULL, &word_end,   FALSE);
     ctx->word       = word;   /* takes ownership */
 
-    /* Separator + submenu header. */
+    /* Prepend (so the spell entries appear at the TOP of medit's
+     * already-long custom popup, where the user can actually see them).
+     * Order ends up: [Spelling ▸] [separator] [...medit's items...]. */
     spell_sep = gtk_separator_menu_item_new ();
     gtk_widget_show (spell_sep);
-    gtk_menu_shell_append (GTK_MENU_SHELL (menu), spell_sep);
+    gtk_menu_shell_prepend (GTK_MENU_SHELL (menu), spell_sep);
 
     sub_item = gtk_menu_item_new_with_label ("Spelling");
     gtk_widget_show (sub_item);
-    gtk_menu_shell_append (GTK_MENU_SHELL (menu), sub_item);
+    gtk_menu_shell_prepend (GTK_MENU_SHELL (menu), sub_item);
     sub = gtk_menu_new ();
     gtk_menu_item_set_submenu (GTK_MENU_ITEM (sub_item), sub);
 
