@@ -1940,6 +1940,44 @@ process_p_elm (GtkTextView    *view,
 }
 
 
+/* GitHub-style header slug: lowercase, runs of non-alphanum become a
+ * single dash, leading/trailing dashes stripped.  Returned string is
+ * owned by caller; NULL if the input has no slug-worthy characters. */
+static char *
+heading_slugify (const char *text)
+{
+    GString *s;
+    gboolean prev_dash = TRUE;   /* suppress leading dashes */
+
+    if (!text)
+        return NULL;
+
+    s = g_string_new (NULL);
+    for (const char *p = text; *p; p = g_utf8_next_char (p))
+    {
+        gunichar ch = g_utf8_get_char (p);
+        if (g_unichar_isalnum (ch))
+        {
+            g_string_append_unichar (s, g_unichar_tolower (ch));
+            prev_dash = FALSE;
+        }
+        else if (!prev_dash)
+        {
+            g_string_append_c (s, '-');
+            prev_dash = TRUE;
+        }
+    }
+    /* Strip trailing dash. */
+    while (s->len > 0 && s->str[s->len - 1] == '-')
+        g_string_truncate (s, s->len - 1);
+    if (s->len == 0)
+    {
+        g_string_free (s, TRUE);
+        return NULL;
+    }
+    return g_string_free (s, FALSE);
+}
+
 static void
 process_heading_elm (GtkTextView    *view,
                      GtkTextBuffer  *buffer,
@@ -1949,6 +1987,7 @@ process_heading_elm (GtkTextView    *view,
 {
     static MooHtmlAttr attr;
     MooHtmlTag *current;
+    xmlChar    *id_attr;
     int n;
 
     g_return_if_fail (elm->name[0] && elm->name[1]);
@@ -1961,6 +2000,33 @@ process_heading_elm (GtkTextView    *view,
     current = moo_html_create_tag (view, &attr, parent, FALSE);
 
     moo_html_new_line (view, buffer, iter, current, FALSE);
+
+    /* Register anchor(s) at the heading's position so [text](#slug)
+     * links can resolve.  Two sources, in priority order:
+     *   1. An explicit id="..." attribute on the heading element.
+     *   2. A GitHub-style slug derived from the heading text.
+     * md4c-html doesn't emit ids by default, so the slug path is the
+     * one that actually matches Markdown autolinks. */
+    id_attr = xmlGetProp (elm, (const xmlChar *) "id");
+    if (id_attr)
+    {
+        moo_html_create_anchor (view, buffer, iter, (const char *) id_attr);
+        xmlFree (id_attr);
+    }
+    {
+        xmlChar *txt = xmlNodeGetContent (elm);
+        if (txt)
+        {
+            char *slug = heading_slugify ((const char *) txt);
+            if (slug)
+            {
+                moo_html_create_anchor (view, buffer, iter, slug);
+                g_free (slug);
+            }
+            xmlFree (txt);
+        }
+    }
+
     process_elm_body (view, buffer, elm, current, iter);
     moo_html_new_line (view, buffer, iter, current, FALSE);
 
@@ -2661,6 +2727,13 @@ process_table_elm (GtkTextView *view,
                                     GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     gtk_grid_set_row_spacing (GTK_GRID (grid), 0);
     gtk_grid_set_column_spacing (GTK_GRID (grid), 0);
+    /* GtkTextView with hexpand/valign FILL children can mis-compute the
+     * anchor's height and clip text below the widget.  Keep the grid at
+     * its natural size and let the row above/below scroll normally. */
+    gtk_widget_set_halign (grid, GTK_ALIGN_START);
+    gtk_widget_set_valign (grid, GTK_ALIGN_START);
+    gtk_widget_set_hexpand (grid, FALSE);
+    gtk_widget_set_vexpand (grid, FALSE);
 
     for (guint r = 0; r < rows->len; r++)
     {
@@ -2674,7 +2747,6 @@ process_table_elm (GtkTextView *view,
             gtk_label_set_line_wrap (GTK_LABEL (label), TRUE);
             gtk_label_set_line_wrap_mode (GTK_LABEL (label),
                                           PANGO_WRAP_WORD_CHAR);
-            gtk_widget_set_hexpand (label, TRUE);
             gtk_widget_set_valign (label, GTK_ALIGN_FILL);
             gtk_widget_set_halign (label, GTK_ALIGN_FILL);
             if (row->is_header)
