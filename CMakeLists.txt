@@ -405,6 +405,12 @@ if(MOO_OS_LINUX)
     # Auto-detect shared-library deps (libgtk-3, libvte, libxml2, ...).
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS  ON)
     set(CPACK_DEBIAN_FILE_NAME          DEB-DEFAULT)
+    # Recommend the en_US hunspell dictionary so spell-check works
+    # out of the box.  Recommends rather than Depends so users on
+    # other locales aren't forced to pull in English.
+    if(MOO_BUILD_SPELL)
+        set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "hunspell-en-us")
+    endif()
     # The project's install() rules use CMAKE_INSTALL_FULL_DATADIR (absolute)
     # for some destinations, so CPack must use DESTDIR to redirect them into
     # the staging tree.  Without this it tries to write to /usr/... directly.

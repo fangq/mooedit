@@ -26,6 +26,7 @@ jobs:
           sudo apt-get install -y \
             build-essential cmake pkg-config intltool \
             libgtk-3-dev libxml2-dev libglib2.0-dev libvte-2.91-dev \
+            libgspell-1-dev libhunspell-dev hunspell-en-us \
             file fakeroot
 
       - name: Configure
@@ -69,7 +70,8 @@ jobs:
           brew update
           brew install \
             cmake pkg-config intltool gettext \
-            gtk+3 libxml2 vte3 adwaita-icon-theme
+            gtk+3 libxml2 vte3 adwaita-icon-theme \
+            gspell hunspell
 
       - name: Configure
         run: |
@@ -93,14 +95,24 @@ jobs:
           stage="dmg-stage/medit-${version}-macos-arm64"
           mkdir -p "$stage"
           # Copy the install tree as a relocatable bundle.  This DMG requires
-          # the user to have GTK3 + vte3 installed via Homebrew (brew install
-          # gtk+3 vte3); a fully-bundled .app with dylibbundler can be added
-          # later if users ask for it.
+          # the user to have GTK3 + vte3 + gspell installed via Homebrew
+          # (brew install gtk+3 vte3 gspell hunspell); a fully-bundled .app
+          # with dylibbundler can be added later if users ask for it.
           cp -R build/install/* "$stage/"
+
+          # Bundle the en_US hunspell dictionary so spell-check works
+          # offline on the user's machine even if they only installed
+          # `hunspell` (no -en variant exists on Homebrew; the en_US dict
+          # ships with the formula itself, in $(brew --prefix)/share/hunspell).
+          mkdir -p "$stage/share/hunspell"
+          if [ -d "$(brew --prefix)/share/hunspell" ]; then
+              cp "$(brew --prefix)/share/hunspell/en_US."* "$stage/share/hunspell/" 2>/dev/null || true
+          fi
+
           cat > "$stage/README.txt" <<'EOF'
           medit (macOS, arm64) — install Homebrew runtime first:
 
-              brew install gtk+3 vte3 adwaita-icon-theme
+              brew install gtk+3 vte3 adwaita-icon-theme gspell hunspell
 
           Then run ./bin/medit
           EOF
@@ -146,6 +158,9 @@ jobs:
             mingw-w64-x86_64-glib2
             mingw-w64-x86_64-adwaita-icon-theme
             mingw-w64-x86_64-hicolor-icon-theme
+            mingw-w64-x86_64-gspell
+            mingw-w64-x86_64-hunspell
+            mingw-w64-x86_64-hunspell-en
             intltool
 
       - name: Install Inno Setup
@@ -236,6 +251,15 @@ jobs:
           cp -R "$mingw_share/icons/Adwaita"    "$stage/share/icons/"    || true
           cp -R "$mingw_share/themes/Default"   "$stage/share/themes/"   || true
           cp -R "$mingw_share/themes/Emacs"     "$stage/share/themes/"   || true
+
+          # Hunspell dictionaries.  libhunspell looks them up under
+          # <prefix>/share/hunspell/ relative to the running binary, so the
+          # bundled en_US.aff + en_US.dic let the spell-checker function
+          # offline with no user setup.
+          mkdir -p "$stage/share/hunspell"
+          if [ -d "$mingw_share/hunspell" ]; then
+              cp -R "$mingw_share/hunspell/." "$stage/share/hunspell/"
+          fi
 
           # Compile the GSettings schemas so GTK doesn't complain at startup.
           glib-compile-schemas "$stage/share/glib-2.0/schemas"
