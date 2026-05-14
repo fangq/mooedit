@@ -29,8 +29,18 @@
 #include "mooedit/mooedit.h"
 #include "mooutils/moostock.h"
 #include "mooutils/mooi18n.h"
+#include "mooutils/mooprefs.h"
 
 #define MARKDOWN_PLUGIN_ID "MarkdownPreview"
+
+/* Persistent pref controlling whether the preview pane should be shown
+ * the moment a window opens.  TRUE by default (the pane is small and
+ * the renderer no-ops cheaply for non-Markdown buffers); set to FALSE
+ * for users who'd rather have it stay hidden until they trigger it via
+ * View → Panes → Markdown Preview.  The pane is still registered in
+ * the PanesMenu regardless, so per-window show/hide is always one menu
+ * click away. */
+#define MARKDOWN_SHOW_PREF "Plugins/MarkdownPreview/show"
 
 #ifdef MOO_BUILD_MARKDOWN
 
@@ -226,6 +236,12 @@ markdown_window_plugin_create (MarkdownWindowPlugin *plugin)
 
     plugin->html_view = html;
 
+    /* Honour the user's "show on open" preference.  When FALSE the
+     * pane is still registered (so it appears in View → Panes →
+     * Markdown Preview), it just doesn't auto-open. */
+    if (moo_prefs_get_bool (MARKDOWN_SHOW_PREF))
+        moo_edit_window_show_pane (window, MARKDOWN_PLUGIN_ID);
+
     /* Wire live-preview signals:
      *   * notify::active-doc on the window → re-target our buffer
      *     "changed" handler when the user switches tabs.
@@ -276,7 +292,7 @@ markdown_window_plugin_destroy (MarkdownWindowPlugin *plugin)
 static gboolean
 markdown_plugin_init (G_GNUC_UNUSED MarkdownPlugin *plugin)
 {
-    /* TODO commit #5: register MOO_EDIT_PREFS_MARKDOWN_PREVIEW bool key. */
+    moo_prefs_new_key_bool (MARKDOWN_SHOW_PREF, TRUE);
     return TRUE;
 }
 
