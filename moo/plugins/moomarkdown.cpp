@@ -47,7 +47,19 @@ typedef struct {
     MooWinPlugin parent;
     MooPane     *pane;          /* registered side-pane */
     GtkWidget   *html_view;     /* MooHtml widget */
+
+    /* Live-preview state — tracked so we can disconnect on doc switch
+     * and on plugin teardown without dangling-handler crashes. */
+    gulong       notify_active_doc_id;  /* on the MooEditWindow */
+    GtkTextBuffer *current_buffer;      /* whichever buffer "changed" is connected to */
+    gulong       buffer_changed_id;     /* handler id on current_buffer */
+    guint        render_timeout_id;     /* g_timeout source for debounce */
 } MarkdownWindowPlugin;
+
+/* How long the user has to be idle (no edits) before we re-render the
+ * preview.  200 ms feels live without slamming md4c on every keystroke.
+ * Cheap to tune later if users want lower-latency feedback. */
+#define MARKDOWN_DEBOUNCE_MS 200
 
 /* md4c invokes this for every chunk of generated HTML.  Append into
  * the GString the caller passed via userdata.  Inlined for clarity —
@@ -107,6 +119,73 @@ markdown_render (MarkdownWindowPlugin *plugin, MooEditView *view_hint)
     g_free (md);
 }
 
+/* Debounce-timer callback.  Render once and clear the slot so the next
+ * "buffer changed" can arm a fresh timer. */
+static gboolean
+markdown_render_timeout (gpointer data)
+{
+    MarkdownWindowPlugin *plugin = (MarkdownWindowPlugin *) data;
+    plugin->render_timeout_id = 0;
+    markdown_render (plugin, NULL);
+    return G_SOURCE_REMOVE;
+}
+
+/* GtkTextBuffer "changed" signal handler.  Reset the debounce timer
+ * so multiple rapid edits coalesce into a single render once the user
+ * pauses. */
+static void
+markdown_on_buffer_changed (G_GNUC_UNUSED GtkTextBuffer *buffer,
+                            gpointer                     data)
+{
+    MarkdownWindowPlugin *plugin = (MarkdownWindowPlugin *) data;
+    if (plugin->render_timeout_id != 0)
+        g_source_remove (plugin->render_timeout_id);
+    plugin->render_timeout_id =
+        g_timeout_add (MARKDOWN_DEBOUNCE_MS, markdown_render_timeout, plugin);
+}
+
+/* (Re-)wire the "changed" handler onto whichever buffer is current for
+ * the window's active doc.  Tolerates NULL doc (just disconnects). */
+static void
+markdown_rewire_buffer_signal (MarkdownWindowPlugin *plugin)
+{
+    MooEditWindow *window = MOO_WIN_PLUGIN (plugin)->window;
+    MooEditView   *view;
+    GtkTextBuffer *buffer = NULL;
+
+    view = moo_edit_window_get_active_view (window);
+    if (view != NULL)
+        buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
+
+    if (buffer == plugin->current_buffer)
+        return;     /* nothing to do — already wired to this buffer */
+
+    if (plugin->current_buffer != NULL && plugin->buffer_changed_id != 0)
+    {
+        g_signal_handler_disconnect (plugin->current_buffer,
+                                     plugin->buffer_changed_id);
+        plugin->buffer_changed_id = 0;
+    }
+    plugin->current_buffer = buffer;
+    if (buffer != NULL)
+        plugin->buffer_changed_id = g_signal_connect (
+            buffer, "changed",
+            G_CALLBACK (markdown_on_buffer_changed), plugin);
+}
+
+/* MooEditWindow "notify::active-doc" handler.  Re-wire to the new doc's
+ * buffer and trigger an immediate render (no debounce — switching docs
+ * isn't typing). */
+static void
+markdown_on_active_doc_notify (G_GNUC_UNUSED GObject *window,
+                                G_GNUC_UNUSED GParamSpec *pspec,
+                                gpointer data)
+{
+    MarkdownWindowPlugin *plugin = (MarkdownWindowPlugin *) data;
+    markdown_rewire_buffer_signal (plugin);
+    markdown_render (plugin, NULL);
+}
+
 static gboolean
 markdown_window_plugin_create (MarkdownWindowPlugin *plugin)
 {
@@ -147,6 +226,17 @@ markdown_window_plugin_create (MarkdownWindowPlugin *plugin)
 
     plugin->html_view = html;
 
+    /* Wire live-preview signals:
+     *   * notify::active-doc on the window → re-target our buffer
+     *     "changed" handler when the user switches tabs.
+     *   * "changed" on the active doc's buffer → schedule a debounced
+     *     re-render.
+     * Both are torn down in markdown_window_plugin_destroy. */
+    plugin->notify_active_doc_id = g_signal_connect (
+        window, "notify::active-doc",
+        G_CALLBACK (markdown_on_active_doc_notify), plugin);
+    markdown_rewire_buffer_signal (plugin);
+
     /* Initial render of whatever's currently the active document. */
     markdown_render (plugin, NULL);
     return TRUE;
@@ -156,6 +246,25 @@ static void
 markdown_window_plugin_destroy (MarkdownWindowPlugin *plugin)
 {
     MooEditWindow *window = MOO_WIN_PLUGIN (plugin)->window;
+
+    /* Live-preview teardown: cancel pending render, drop signal handlers. */
+    if (plugin->render_timeout_id != 0)
+    {
+        g_source_remove (plugin->render_timeout_id);
+        plugin->render_timeout_id = 0;
+    }
+    if (plugin->current_buffer != NULL && plugin->buffer_changed_id != 0)
+    {
+        g_signal_handler_disconnect (plugin->current_buffer,
+                                     plugin->buffer_changed_id);
+        plugin->buffer_changed_id = 0;
+    }
+    plugin->current_buffer = NULL;
+    if (plugin->notify_active_doc_id != 0)
+    {
+        g_signal_handler_disconnect (window, plugin->notify_active_doc_id);
+        plugin->notify_active_doc_id = 0;
+    }
 
     /* The pane owns the scrolled window which owns the MooHtml; removing
      * it from the paned tears the whole subtree down via GTK ref drops. */
