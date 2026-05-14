@@ -2585,6 +2585,35 @@ table_collect_rows (xmlNode *elm, GPtrArray *rows, gboolean inside_thead)
     }
 }
 
+/* CSS applied to every embedded table widget.  Cell borders collapse
+ * by giving each cell border-top + border-left and the table itself
+ * border-right + border-bottom, but GTK's CSS doesn't do collapsing
+ * properly across grid children, so we just put a full 1 px border on
+ * every cell and accept the 2-px-thick interior lines.  Header cells
+ * get a slightly darker background. */
+static const char TABLE_CSS[] =
+    "grid.moo-md-table { padding: 0; margin: 4px 0; }\n"
+    "grid.moo-md-table > label { "
+    "  padding: 4px 10px; "
+    "  border: 1px solid alpha(currentColor, 0.35); "
+    "}\n"
+    "grid.moo-md-table > label.moo-md-th { "
+    "  font-weight: bold; "
+    "  background: alpha(currentColor, 0.08); "
+    "}\n";
+
+static GtkCssProvider *
+table_css_provider (void)
+{
+    static GtkCssProvider *provider = NULL;
+    if (provider == NULL)
+    {
+        provider = gtk_css_provider_new ();
+        gtk_css_provider_load_from_data (provider, TABLE_CSS, -1, NULL);
+    }
+    return provider;
+}
+
 static void
 process_table_elm (GtkTextView *view,
                    GtkTextBuffer *buffer,
@@ -2592,11 +2621,11 @@ process_table_elm (GtkTextView *view,
                    MooHtmlTag *parent,
                    GtkTextIter *iter)
 {
-    GPtrArray *rows;
-    GArray    *widths;
-    guint      ncols = 0;
-    MooHtmlAttr table_attr;
-    MooHtmlTag *table_tag;
+    GPtrArray          *rows;
+    GtkWidget          *grid;
+    GtkTextChildAnchor *anchor;
+    MooHtmlData        *data;
+    guint               ncols = 0;
 
     rows = g_ptr_array_new_with_free_func (table_row_free);
     table_collect_rows (elm, rows, FALSE);
@@ -2620,98 +2649,56 @@ process_table_elm (GtkTextView *view,
         return;
     }
 
-    /* Per-column max width in (Pango) chars. */
-    widths = g_array_new (FALSE, TRUE, sizeof (long));
-    g_array_set_size (widths, ncols);
-    for (guint r = 0; r < rows->len; r++)
-    {
-        TableRow *row = (TableRow *) rows->pdata[r];
-        for (guint c = 0; c < row->cells->len; c++)
-        {
-            long w = g_utf8_strlen ((const char *) row->cells->pdata[c], -1);
-            long *cur = &g_array_index (widths, long, c);
-            if (w > *cur) *cur = w;
-        }
-    }
-
-    /* Render: column-aligned monospace, header row in bold via a
-     * dedicated tag, single underline beneath the header.  No vertical
-     * separators or outer box — keeps the table looking like a clean
-     * tabular block rather than ASCII art. */
-    GString *body   = g_string_new (NULL);     /* non-header rows + sep */
-    GString *header = g_string_new (NULL);     /* header rows only      */
-    gboolean header_done = FALSE;
-
-    const int gap = 3;   /* spaces between columns */
+    /* Build the grid: one GtkLabel per cell, attached at (col, row).
+     * Plain-text content via xmlNodeGetContent — we already collected
+     * that in table_collect_rows.  Rich Markdown inside cells (links,
+     * bold) is sacrificed here in exchange for real cell borders. */
+    grid = gtk_grid_new ();
+    gtk_style_context_add_class (gtk_widget_get_style_context (grid),
+                                 "moo-md-table");
+    gtk_style_context_add_provider (gtk_widget_get_style_context (grid),
+                                    GTK_STYLE_PROVIDER (table_css_provider ()),
+                                    GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    gtk_grid_set_row_spacing (GTK_GRID (grid), 0);
+    gtk_grid_set_column_spacing (GTK_GRID (grid), 0);
 
     for (guint r = 0; r < rows->len; r++)
     {
         TableRow *row = (TableRow *) rows->pdata[r];
-        GString  *out = row->is_header ? header : body;
-
         for (guint c = 0; c < ncols; c++)
         {
             const char *cell = c < row->cells->len
                 ? (const char *) row->cells->pdata[c] : "";
-            long cw = g_utf8_strlen (cell, -1);
-            long w  = g_array_index (widths, long, c);
-            g_string_append (out, cell);
-            for (long i = cw; i < w; i++)
-                g_string_append_c (out, ' ');
-            if (c + 1 < ncols)
-                for (int i = 0; i < gap; i++)
-                    g_string_append_c (out, ' ');
-        }
-        g_string_append_c (out, '\n');
-
-        /* After the last header row emit a thin underline that spans
-         * the same columns as the header text. */
-        if (!header_done && row->is_header
-            && (r + 1 >= rows->len
-                || !((TableRow *) rows->pdata[r + 1])->is_header))
-        {
-            for (guint c = 0; c < ncols; c++)
-            {
-                long w = g_array_index (widths, long, c);
-                for (long i = 0; i < w; i++)
-                    g_string_append (header, "\xe2\x94\x80"); /* ─ */
-                if (c + 1 < ncols)
-                    for (int i = 0; i < gap; i++)
-                        g_string_append_c (header, ' ');
-            }
-            g_string_append_c (header, '\n');
-            header_done = TRUE;
+            GtkWidget *label = gtk_label_new (cell);
+            gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+            gtk_label_set_line_wrap (GTK_LABEL (label), TRUE);
+            gtk_label_set_line_wrap_mode (GTK_LABEL (label),
+                                          PANGO_WRAP_WORD_CHAR);
+            gtk_widget_set_hexpand (label, TRUE);
+            gtk_widget_set_valign (label, GTK_ALIGN_FILL);
+            gtk_widget_set_halign (label, GTK_ALIGN_FILL);
+            if (row->is_header)
+                gtk_style_context_add_class (
+                    gtk_widget_get_style_context (label), "moo-md-th");
+            gtk_style_context_add_provider (
+                gtk_widget_get_style_context (label),
+                GTK_STYLE_PROVIDER (table_css_provider ()),
+                GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+            gtk_widget_show (label);
+            gtk_grid_attach (GTK_GRID (grid), label, c, r, 1, 1);
         }
     }
+    gtk_widget_show (grid);
 
-    /* Build two nested tags: outer table block (monospace + bg), inner
-     * header tag (bold).  The markdown plugin paints the table_bg on
-     * MOO_HTML_TABLE tags in its restyle pass. */
-    memset (&table_attr, 0, sizeof table_attr);
-    table_attr.mask = MOO_HTML_TABLE | MOO_HTML_MONOSPACE;
-    table_tag = moo_html_create_tag (view, &table_attr, parent, FALSE);
-
-    MooHtmlAttr  header_attr;
-    MooHtmlTag  *header_tag = nullptr;
-    if (header->len > 0)
-    {
-        memset (&header_attr, 0, sizeof header_attr);
-        header_attr.mask = MOO_HTML_BOLD;
-        header_tag = moo_html_create_tag (view, &header_attr, table_tag, FALSE);
-    }
-
+    /* Embed the grid into the text view at a child anchor.  Tracked via
+     * data->rulers so the buffer cleanup tears it down. */
+    data = moo_html_get_data (view);
     moo_html_new_line (view, buffer, iter, parent, FALSE);
-    if (header->len > 0)
-        moo_html_insert_verbatim (view, buffer, iter,
-                                  header_tag ? header_tag : table_tag,
-                                  header->str);
-    if (body->len > 0)
-        moo_html_insert_verbatim (view, buffer, iter, table_tag, body->str);
-    moo_html_new_line (view, buffer, iter, parent, FALSE);
+    anchor = gtk_text_buffer_create_child_anchor (buffer, iter);
+    gtk_text_view_add_child_at_anchor (view, grid, anchor);
+    data->rulers = g_slist_prepend (data->rulers, grid);
+    moo_html_new_line (view, buffer, iter, parent, TRUE);
 
-    g_string_free (body, TRUE);
-    g_string_free (header, TRUE);
-    g_array_free (widths, TRUE);
     g_ptr_array_free (rows, TRUE);
 }
 
