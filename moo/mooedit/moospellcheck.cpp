@@ -60,7 +60,6 @@ on_tag_underline_rgba_notify (GObject       *object,
     GtkTextTag      *tag   = GTK_TEXT_TAG (object);
     GtkTextTagTable *table = GTK_IS_TEXT_TAG_TABLE (data) ? GTK_TEXT_TAG_TABLE (data) : NULL;
     char            *name  = NULL;
-    GdkRGBA          bright_red = { 1.0, 0.25, 0.25, 1.0 };
 
     g_object_get (tag, "name", &name, NULL);
 
@@ -68,10 +67,19 @@ on_tag_underline_rgba_notify (GObject       *object,
      * Disconnect so our own override doesn't recurse. */
     if (name == NULL)
     {
+        /* The colour was chosen at attach time based on the view's
+         * theme luminance and stashed on the tag-table.  Fall back to
+         * a generic bright red if anything is missing. */
+        GdkRGBA           fallback = { 1.0, 0.4, 0.4, 1.0 };
+        const GdkRGBA    *chosen   = (const GdkRGBA *) (table
+            ? g_object_get_data (G_OBJECT (table), "moo-spell-underline-rgba")
+            : NULL);
+        const GdkRGBA    *use      = chosen ? chosen : &fallback;
+
         g_signal_handlers_disconnect_by_func (
             tag, (gpointer) on_tag_underline_rgba_notify, table);
         g_object_set (tag,
-                      "underline-rgba", &bright_red,
+                      "underline-rgba", use,
                       NULL);
 
         /* Force max priority so any other underline-set tag in the same
@@ -106,10 +114,66 @@ on_spell_tag_added (GtkTextTagTable *table,
     g_free (name);
 }
 
+/* Pick a misspelled-word underline colour appropriate for the current
+ * theme.  Stash it on the tag-table so the notify handler can read it
+ * back when gspell finalises the tag's properties.  The colour is
+ * chosen once per buffer; if the user later switches themes mid-session,
+ * existing buffers keep the old colour — a slight imperfection that
+ * could be addressed by hooking the widget's "style-updated" signal in
+ * a future polish pass. */
 static void
-install_spell_tag_hook (GtkTextBuffer *buffer)
+update_underline_rgba_for_theme (GtkTextTagTable *table, GtkWidget *view_widget)
+{
+    GtkStyleContext *ctx = gtk_widget_get_style_context (view_widget);
+    GdkRGBA          bg  = { 1.0, 1.0, 1.0, 1.0 };
+    GdkRGBA         *chosen;
+    double           luma;
+
+    gtk_style_context_save (ctx);
+    gtk_style_context_add_class (ctx, GTK_STYLE_CLASS_VIEW);
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+    gtk_style_context_get_background_color (ctx,
+        gtk_style_context_get_state (ctx), &bg);
+    G_GNUC_END_IGNORE_DEPRECATIONS
+    gtk_style_context_restore (ctx);
+
+    luma = 0.299 * bg.red + 0.587 * bg.green + 0.114 * bg.blue;
+
+    chosen = g_new (GdkRGBA, 1);
+    if (luma <= 0.5)
+    {
+        /* Dark background (Oblivion etc.) — washed-out red blends into
+         * gray.  Use a bright pink-red that still reads as "error". */
+        chosen->red   = 1.0;
+        chosen->green = 0.55;
+        chosen->blue  = 0.55;
+        chosen->alpha = 1.0;
+    }
+    else
+    {
+        /* Light background — deeper saturated red. */
+        chosen->red   = 0.85;
+        chosen->green = 0.10;
+        chosen->blue  = 0.10;
+        chosen->alpha = 1.0;
+    }
+
+    g_object_set_data_full (G_OBJECT (table),
+                            "moo-spell-underline-rgba",
+                            chosen,
+                            g_free);
+}
+
+static void
+install_spell_tag_hook (GtkTextBuffer *buffer, GtkWidget *view_widget)
 {
     GtkTextTagTable *table = gtk_text_buffer_get_tag_table (buffer);
+
+    /* Re-pick colour every time attach() runs — covers the case where
+     * the user opens the same buffer in a second view after a theme
+     * change. */
+    update_underline_rgba_for_theme (table, view_widget);
+
     if (g_object_get_data (G_OBJECT (table), "moo-spell-tag-hook"))
         return;
     g_signal_connect (table, "tag-added",
@@ -135,8 +199,9 @@ _moo_spell_check_attach (G_GNUC_UNUSED MooEditView *view)
     /* Hook the buffer's tag table so when gspell adds its anonymous
      * misspelled-word tag we can override the underline-rgba (default
      * picks the theme's dim error colour which is hard to read on dark
-     * themes).  Idempotent across attach() calls. */
-    install_spell_tag_hook (buffer);
+     * themes).  Idempotent across attach() calls; pass the view so the
+     * helper can probe its style context for the bg luminance. */
+    install_spell_tag_hook (buffer, GTK_WIDGET (view));
 
     /* Install the en_US checker on the buffer if no other view of the
      * same buffer has already done so.  Buffer owns the ref. */

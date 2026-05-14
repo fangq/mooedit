@@ -172,10 +172,12 @@ _moo_edit_init_prefs (void)
     NEW_KEY_STRING (MOO_EDIT_PREFS_ENCODINGS, _moo_get_default_encodings ());
     NEW_KEY_STRING (MOO_EDIT_PREFS_ENCODING_SAVE, MOO_ENCODING_UTF8);
 
-    /* Spell-check.  Off by default until commit #4 lands the proper
-     * comments+strings scope filter — once that exists "auto" + ON is
-     * the natural default.  Scope values: "auto", "all", "code".  */
-    NEW_KEY_BOOL   (MOO_EDIT_PREFS_SPELL_ENABLED, FALSE);
+    /* Spell-check.  Enabled by default with scope=auto so plain-text
+     * files get checked; source files (anything with a MooLang) skip
+     * spell-check until commit #4 lands the comments+strings filter,
+     * at which point auto = check inside comments/strings only for
+     * code, and check everything for prose. */
+    NEW_KEY_BOOL   (MOO_EDIT_PREFS_SPELL_ENABLED, TRUE);
     NEW_KEY_STRING (MOO_EDIT_PREFS_SPELL_SCOPE,   "auto");
 }
 
