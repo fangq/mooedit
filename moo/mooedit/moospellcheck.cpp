@@ -27,6 +27,10 @@
 
 #include "config.h"
 #include "mooedit/moospellcheck.h"
+#include "mooedit/mooeditprefs.h"
+#include "mooedit/mootextbuffer.h"
+#include "mooedit/moolang.h"
+#include "mooutils/mooprefs.h"
 
 #ifdef MOO_BUILD_SPELL
 #  include <gspell/gspell.h>
@@ -151,9 +155,14 @@ _moo_spell_check_attach (G_GNUC_UNUSED MooEditView *view)
     }
 
     gview = gspell_text_view_get_from_gtk_text_view (GTK_TEXT_VIEW (view));
-    /* basic_setup enables inline checking, the language menu, and the
-     * "Add to dictionary"/"Ignore"/suggestion items in the popup. */
+    /* basic_setup() turns on inline checking + the language menu; we
+     * immediately override the inline-checking flag with the value
+     * dictated by MOO_EDIT_PREFS_SPELL_ENABLED + scope (next call). */
     gspell_text_view_basic_setup (gview);
+
+    /* Honor prefs from the start (else newly-created views always start
+     * with spell-check on, regardless of the user setting). */
+    _moo_spell_check_apply_prefs (view);
 #endif
 }
 
@@ -176,12 +185,69 @@ _moo_spell_check_detach (G_GNUC_UNUSED MooEditView *view)
 #endif
 }
 
+#ifdef MOO_BUILD_SPELL
+/* Decide whether the view's buffer is "source code" — anything with a
+ * MooLang attached counts.  Plain text and unrecognised file types fall
+ * back to prose mode.  Used to interpret scope="auto". */
+static gboolean
+spell_buffer_is_code (GtkTextBuffer *buffer)
+{
+    MooTextBuffer *mbuf;
+    MooLang       *lang;
+
+    if (!MOO_IS_TEXT_BUFFER (buffer))
+        return FALSE;
+
+    mbuf = MOO_TEXT_BUFFER (buffer);
+    lang = moo_text_buffer_get_lang (mbuf);
+    return lang != NULL;
+}
+#endif
+
 void
 _moo_spell_check_apply_prefs (G_GNUC_UNUSED MooEditView *view)
 {
 #ifdef MOO_BUILD_SPELL
-    /* TODO (commit #3): read MOO_EDIT_PREFS_SPELL_* and reconfigure
-     * (toggle inline checking, switch language, etc.). */
+    GtkTextBuffer  *buffer;
+    GspellTextView *gview;
+    gboolean        enabled;
+    const char     *scope_str;
+    gboolean        effective_on;
+
+    g_return_if_fail (MOO_IS_EDIT_VIEW (view));
+
+    buffer    = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
+    gview     = gspell_text_view_get_from_gtk_text_view (GTK_TEXT_VIEW (view));
+    enabled   = moo_prefs_get_bool   (moo_edit_setting (MOO_EDIT_PREFS_SPELL_ENABLED));
+    scope_str = moo_prefs_get_string (moo_edit_setting (MOO_EDIT_PREFS_SPELL_SCOPE));
+
+    if (!enabled)
+    {
+        effective_on = FALSE;
+    }
+    else if (scope_str && g_str_equal (scope_str, "all"))
+    {
+        /* User wants spell-check everywhere, regardless of language. */
+        effective_on = TRUE;
+    }
+    else if (scope_str && g_str_equal (scope_str, "code"))
+    {
+        /* "Comments + strings only" — until commit #4 implements the
+         * proper filter via gspell-no-spell-check tags, treat code mode
+         * as "off for source files, on for prose".  Once the filter
+         * lands we'll set effective_on=TRUE here and let the filter
+         * suppress non-comment/string regions. */
+        effective_on = !spell_buffer_is_code (buffer);
+    }
+    else
+    {
+        /* "auto" (default): on for prose, off for code (transitional
+         * — same as "code" path above until commit #4). */
+        effective_on = !spell_buffer_is_code (buffer);
+    }
+
+    if (gview != NULL)
+        gspell_text_view_set_inline_spell_checking (gview, effective_on);
 #endif
 }
 

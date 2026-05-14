@@ -16,6 +16,7 @@
 #include "mooedit/mooeditprefs.h"
 #include "mooedit/mooedit-impl.h"
 #include "mooedit/mooeditview-impl.h"
+#include "mooedit/moospellcheck.h"
 #include "mooedit/mooedit-fileops.h"
 #include "mooedit/mootextview-private.h"
 #include "mooedit/mooedit-enums.h"
@@ -170,6 +171,12 @@ _moo_edit_init_prefs (void)
 
     NEW_KEY_STRING (MOO_EDIT_PREFS_ENCODINGS, _moo_get_default_encodings ());
     NEW_KEY_STRING (MOO_EDIT_PREFS_ENCODING_SAVE, MOO_ENCODING_UTF8);
+
+    /* Spell-check.  Off by default until commit #4 lands the proper
+     * comments+strings scope filter — once that exists "auto" + ON is
+     * the natural default.  Scope values: "auto", "all", "code".  */
+    NEW_KEY_BOOL   (MOO_EDIT_PREFS_SPELL_ENABLED, FALSE);
+    NEW_KEY_STRING (MOO_EDIT_PREFS_SPELL_SCOPE,   "auto");
 }
 
 
@@ -259,6 +266,9 @@ _moo_edit_view_apply_prefs (MooEditView *view)
 
     if (scheme)
         moo_text_view_set_style_scheme (MOO_TEXT_VIEW (view), scheme);
+
+    /* No-op when MOO_BUILD_SPELL is off. */
+    _moo_spell_check_apply_prefs (view);
 
     g_object_thaw_notify (G_OBJECT (view));
 }

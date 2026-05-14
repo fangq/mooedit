@@ -71,6 +71,10 @@ const char *moo_edit_setting            (const char *setting_name);
 #define MOO_EDIT_PREFS_FONT                     "font"
 #define MOO_EDIT_PREFS_LINE_NUMBERS_FONT        "line_numbers_font"
 
+/* Spell-check (gspell-based; only effective when MOO_BUILD_SPELL is on) */
+#define MOO_EDIT_PREFS_SPELL_ENABLED            "spell_enabled"
+#define MOO_EDIT_PREFS_SPELL_SCOPE              "spell_scope"   /* "auto" | "all" | "code" */
+
 #define MOO_EDIT_PREFS_LAST_DIR                 "last_dir"
 #define MOO_EDIT_PREFS_PDF_LAST_DIR             "pdf_last_dir"
 
