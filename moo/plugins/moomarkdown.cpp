@@ -35,6 +35,7 @@
 #ifdef MOO_BUILD_MARKDOWN
 
 #include <gtk/gtk.h>
+#include "mooapp/moohtml.h"
 
 typedef struct {
     MooPlugin parent;
@@ -47,17 +48,57 @@ typedef struct {
 } MarkdownWindowPlugin;
 
 static gboolean
-markdown_window_plugin_create (G_GNUC_UNUSED MarkdownWindowPlugin *plugin)
+markdown_window_plugin_create (MarkdownWindowPlugin *plugin)
 {
-    /* TODO commit #2: build a MooHtml inside a scrolled window, register
-     * the pane via moo_edit_window_add_pane(..., MOO_PANE_POS_RIGHT). */
+    MooEditWindow *window = MOO_WIN_PLUGIN (plugin)->window;
+    GtkWidget     *scroll;
+    GtkWidget     *html;
+    MooPaneLabel  *label;
+
+    /* MooHtml is a GtkTextView subclass that renders simplified HTML
+     * into a GtkTextBuffer using tags — perfect for a no-WebKit preview.
+     * Wrap in a GtkScrolledWindow so long documents are scrollable. */
+    html   = (GtkWidget *) g_object_new (MOO_TYPE_HTML, NULL);
+    gtk_text_view_set_editable      (GTK_TEXT_VIEW (html), FALSE);
+    gtk_text_view_set_cursor_visible (GTK_TEXT_VIEW (html), FALSE);
+    gtk_text_view_set_wrap_mode      (GTK_TEXT_VIEW (html), GTK_WRAP_WORD_CHAR);
+    gtk_widget_set_size_request (html, 360, -1);   /* sensible default width */
+
+    scroll = gtk_scrolled_window_new (NULL, NULL);
+    gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroll),
+                                    GTK_POLICY_AUTOMATIC,
+                                    GTK_POLICY_AUTOMATIC);
+    gtk_scrolled_window_set_shadow_type (GTK_SCROLLED_WINDOW (scroll),
+                                         GTK_SHADOW_IN);
+    gtk_container_add (GTK_CONTAINER (scroll), html);
+    gtk_widget_show_all (scroll);
+
+    /* The icon-name field is the GTK stock icon shown next to the pane
+     * label; "text-x-generic" is the freedesktop icon for plain text
+     * which renders fine on every theme (Adwaita / Default / etc.). */
+    label = moo_pane_label_new ("text-x-generic", NULL,
+                                _("Markdown Preview"),
+                                _("Markdown Preview"));
+    plugin->pane = moo_edit_window_add_pane (window,
+                                             MARKDOWN_PLUGIN_ID,
+                                             scroll, label,
+                                             MOO_PANE_POS_RIGHT);
+    moo_pane_label_free (label);
+
+    plugin->html_view = html;
     return TRUE;
 }
 
 static void
-markdown_window_plugin_destroy (G_GNUC_UNUSED MarkdownWindowPlugin *plugin)
+markdown_window_plugin_destroy (MarkdownWindowPlugin *plugin)
 {
-    /* TODO commit #2: tear down the pane via moo_edit_window_remove_pane. */
+    MooEditWindow *window = MOO_WIN_PLUGIN (plugin)->window;
+
+    /* The pane owns the scrolled window which owns the MooHtml; removing
+     * it from the paned tears the whole subtree down via GTK ref drops. */
+    moo_edit_window_remove_pane (window, MARKDOWN_PLUGIN_ID);
+    plugin->pane      = NULL;
+    plugin->html_view = NULL;
 }
 
 static gboolean
