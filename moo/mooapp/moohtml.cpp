@@ -1879,19 +1879,34 @@ process_elm_body (GtkTextView    *view,
         }
         else if (IS_NAMED_ELM_ (child, "blockquote"))
         {
-            /* Render <blockquote> as a left-indented italic block.
-             * The markdown preview plugin sets a paragraph background
-             * on tags that have MOO_HTML_BLOCKQUOTE so we get the
-             * GitHub-style grey sidebar look. */
+            /* Render <blockquote> as a left-indented italic block with
+             * a visible left bar (▎) at the start of each contained
+             * paragraph.  The markdown preview plugin paints a soft
+             * background on MOO_HTML_BLOCKQUOTE tags; the bar character
+             * itself is the closest text-mode substitute for GitHub's
+             * left border. */
             MooHtmlAttr bq_attr;
             MooHtmlTag *bq_tag;
             memset (&bq_attr, 0, sizeof bq_attr);
             bq_attr.mask        = MOO_HTML_LEFT_MARGIN | MOO_HTML_BLOCKQUOTE
                                   | MOO_HTML_ITALIC;
-            bq_attr.left_margin = 18;
+            bq_attr.left_margin = 12;
             bq_tag = moo_html_create_tag (view, &bq_attr, current, FALSE);
+
             moo_html_new_line (view, buffer, iter, current, FALSE);
-            process_elm_body (view, buffer, child, bq_tag, iter);
+            for (xmlNode *bq = child->children; bq != nullptr; bq = bq->next)
+            {
+                if (!IS_ELEMENT (bq))
+                    continue;
+                moo_html_new_line (view, buffer, iter, bq_tag, FALSE);
+                /* ▎ U+258E (left one-quarter block) + space */
+                moo_html_insert_verbatim (view, buffer, iter, bq_tag,
+                                          "\xe2\x96\x8e ");
+                if (IS_NAMED_ELM_ (bq, "p"))
+                    process_elm_body (view, buffer, bq, bq_tag, iter);
+                else
+                    process_elm_body (view, buffer, bq, bq_tag, iter);
+            }
             moo_html_new_line (view, buffer, iter, bq_tag, FALSE);
         }
 
@@ -1948,6 +1963,22 @@ process_heading_elm (GtkTextView    *view,
     moo_html_new_line (view, buffer, iter, current, FALSE);
     process_elm_body (view, buffer, elm, current, iter);
     moo_html_new_line (view, buffer, iter, current, FALSE);
+
+    /* GitHub renders an <hr>-style rule beneath H1 and H2.  We embed a
+     * real GtkSeparator at a child anchor — same trick used by
+     * process_hr_elm — so the line is a single full-width pixel rule
+     * rather than wrapped text characters. */
+    if (n <= 2)
+    {
+        GtkTextChildAnchor *anchor;
+        GtkWidget *sep = gtk_separator_new (GTK_ORIENTATION_HORIZONTAL);
+        MooHtmlData *data = moo_html_get_data (view);
+        gtk_widget_show (sep);
+        anchor = gtk_text_buffer_create_child_anchor (buffer, iter);
+        gtk_text_view_add_child_at_anchor (view, sep, anchor);
+        data->rulers = g_slist_prepend (data->rulers, sep);
+        moo_html_new_line (view, buffer, iter, parent, TRUE);
+    }
 }
 
 

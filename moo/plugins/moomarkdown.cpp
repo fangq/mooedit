@@ -173,32 +173,25 @@ markdown_restyle_tags (GtkWidget *html_view)
             if ((h = _moo_html_tag_get_heading (tag)) > 0)
             {
                 /* Lift H1/H2 with a coloured tint; H3+ rely on size +
-                 * weight alone to avoid a rainbow effect.  H1/H2 also
-                 * get an underline below the text — GitHub draws a
-                 * full-width rule, but underlining the heading text is
-                 * a close visual approximation in GtkTextView. */
+                 * weight alone to avoid a rainbow effect. */
                 if (h <= 2)
-                {
-                    g_object_set (tag,
-                                  "foreground-rgba", &p->heading_fg,
-                                  "underline",       PANGO_UNDERLINE_SINGLE,
-                                  NULL);
-                }
+                    g_object_set (tag, "foreground-rgba", &p->heading_fg, NULL);
             }
 
             if (_moo_html_tag_is_pre (tag))
             {
-                /* <pre> block — full-width background, a little padding,
-                 * and a subtle indent so it reads as a code block. */
+                /* <pre> block — full-width background, internal padding
+                 * via pixels-above/below + a small left-margin so the
+                 * text reads as inset inside its block. */
                 g_object_set (tag,
                               "paragraph-background-rgba", &p->code_bg,
                               "foreground-rgba",           &p->code_fg,
-                              "left-margin",               20,
-                              "right-margin",              16,
-                              "pixels-above-lines",        6,
-                              "pixels-below-lines",        6,
-                              "pixels-inside-wrap",        2,
-                              "scale",                     0.92,
+                              "left-margin",                6,
+                              "right-margin",               6,
+                              "pixels-above-lines",        10,
+                              "pixels-below-lines",        10,
+                              "pixels-inside-wrap",         3,
+                              "scale",                      0.92,
                               NULL);
             }
             else if (_moo_html_tag_is_table (tag))
