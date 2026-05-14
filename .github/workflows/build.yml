@@ -27,6 +27,7 @@ jobs:
             build-essential cmake pkg-config intltool \
             libgtk-3-dev libxml2-dev libglib2.0-dev libvte-2.91-dev \
             libgspell-1-dev libhunspell-dev hunspell-en-us \
+            libmd4c-dev libmd4c-html0-dev \
             file fakeroot
 
       - name: Configure
@@ -71,7 +72,7 @@ jobs:
           brew install \
             cmake pkg-config intltool gettext \
             gtk+3 libxml2 vte3 adwaita-icon-theme \
-            gspell hunspell
+            gspell hunspell md4c
 
       - name: Configure
         run: |
@@ -161,6 +162,7 @@ jobs:
             mingw-w64-x86_64-gspell
             mingw-w64-x86_64-hunspell
             mingw-w64-x86_64-hunspell-en
+            mingw-w64-x86_64-md4c
             intltool
 
       - name: Install Inno Setup
