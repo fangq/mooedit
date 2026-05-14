@@ -35,7 +35,9 @@
 #ifdef MOO_BUILD_MARKDOWN
 
 #include <gtk/gtk.h>
+#include <md4c-html.h>
 #include "mooapp/moohtml.h"
+#include "mooedit/mooeditview.h"
 
 typedef struct {
     MooPlugin parent;
@@ -43,9 +45,67 @@ typedef struct {
 
 typedef struct {
     MooWinPlugin parent;
-    MooPane     *pane;          /* registered side-pane (NULL until #2) */
-    GtkWidget   *html_view;     /* MooHtml widget (set in #3) */
+    MooPane     *pane;          /* registered side-pane */
+    GtkWidget   *html_view;     /* MooHtml widget */
 } MarkdownWindowPlugin;
+
+/* md4c invokes this for every chunk of generated HTML.  Append into
+ * the GString the caller passed via userdata.  Inlined for clarity —
+ * the callback is hot but the work is tiny. */
+static void
+md4c_output_cb (const MD_CHAR *text, MD_SIZE size, void *userdata)
+{
+    g_string_append_len ((GString *) userdata, text, size);
+}
+
+/* Convert the active document's buffer text to HTML via md4c and load
+ * it into the MooHtml widget.  No-op when there's no active doc or
+ * the pane was never built.  Caller can pass the active view via
+ * `view_hint` to avoid re-querying it.  Cheap enough to call on every
+ * buffer change once we add debouncing in commit #4. */
+static void
+markdown_render (MarkdownWindowPlugin *plugin, MooEditView *view_hint)
+{
+    MooEditWindow *window;
+    MooEditView   *view;
+    GtkTextBuffer *buffer;
+    GtkTextIter    start, end;
+    char          *md;
+    GString       *html;
+    int            rc;
+
+    if (plugin == NULL || plugin->html_view == NULL)
+        return;
+
+    window = MOO_WIN_PLUGIN (plugin)->window;
+    view   = view_hint ? view_hint : moo_edit_window_get_active_view (window);
+    if (view == NULL)
+        return;
+
+    buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
+    gtk_text_buffer_get_bounds (buffer, &start, &end);
+    md = gtk_text_buffer_get_text (buffer, &start, &end, FALSE);
+    if (md == NULL)
+        return;
+
+    /* md4c writes only the <body> contents; wrap with an HTML envelope
+     * so MooHtml's libxml2-based parser starts in the right state.
+     * MD_DIALECT_GITHUB enables tables, strikethrough, task-lists, and
+     * autolinks — the de-facto GFM feature set users expect today. */
+    html = g_string_sized_new (strlen (md) * 2 + 64);
+    g_string_append (html, "<html><body>");
+    rc = md_html (md, (MD_SIZE) strlen (md),
+                  md4c_output_cb, html,
+                  MD_DIALECT_GITHUB, 0);
+    g_string_append (html, "</body></html>");
+
+    if (rc == 0)
+        _moo_html_load_memory (GTK_TEXT_VIEW (plugin->html_view),
+                               html->str, html->len, NULL, "UTF-8");
+
+    g_string_free (html, TRUE);
+    g_free (md);
+}
 
 static gboolean
 markdown_window_plugin_create (MarkdownWindowPlugin *plugin)
@@ -86,6 +146,9 @@ markdown_window_plugin_create (MarkdownWindowPlugin *plugin)
     moo_pane_label_free (label);
 
     plugin->html_view = html;
+
+    /* Initial render of whatever's currently the active document. */
+    markdown_render (plugin, NULL);
     return TRUE;
 }
 
