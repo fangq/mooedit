@@ -330,6 +330,18 @@ markdown_window_plugin_create (MarkdownWindowPlugin *plugin)
     gtk_text_view_set_wrap_mode      (GTK_TEXT_VIEW (html), GTK_WRAP_WORD_CHAR);
     gtk_widget_set_size_request (html, 360, -1);   /* sensible default width */
 
+    /* Open up line spacing — MooHtml's default is tight because the tags
+     * it creates per-element don't set any paragraph margins.  Adding view-
+     * level defaults gives every paragraph a few pixels of breathing room
+     * (overridable per-tag, which is what headings and <pre> already do). */
+    gtk_text_view_set_pixels_above_lines (GTK_TEXT_VIEW (html), 3);
+    gtk_text_view_set_pixels_below_lines (GTK_TEXT_VIEW (html), 3);
+    gtk_text_view_set_pixels_inside_wrap (GTK_TEXT_VIEW (html), 2);
+    gtk_text_view_set_left_margin   (GTK_TEXT_VIEW (html), 10);
+    gtk_text_view_set_right_margin  (GTK_TEXT_VIEW (html), 10);
+    gtk_text_view_set_top_margin    (GTK_TEXT_VIEW (html), 8);
+    gtk_text_view_set_bottom_margin (GTK_TEXT_VIEW (html), 8);
+
     scroll = gtk_scrolled_window_new (NULL, NULL);
     gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroll),
                                     GTK_POLICY_AUTOMATIC,

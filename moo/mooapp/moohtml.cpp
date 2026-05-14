@@ -54,6 +54,8 @@ struct _MooHtmlData {
     gboolean new_line;
     gboolean space;
 
+    int list_depth;   /* current depth of <ul>/<ol> nesting (0 outside) */
+
     gboolean button_pressed;
     gboolean in_drag;
 
@@ -1856,10 +1858,23 @@ process_elm_body (GtkTextView    *view,
 
         else if (IS_NAMED_ELM_ (child, "td") ||
                  IS_NAMED_ELM_ (child, "th") ||
+                 IS_NAMED_ELM_ (child, "thead") ||
                  IS_NAMED_ELM_ (child, "tbody") ||
-                 IS_NAMED_ELM_ (child, "col"))
+                 IS_NAMED_ELM_ (child, "tfoot") ||
+                 IS_NAMED_ELM_ (child, "col") ||
+                 IS_NAMED_ELM_ (child, "colgroup"))
         {
             process_elm_body (view, buffer, child, current, iter);
+        }
+        else if (IS_NAMED_ELM_ (child, "blockquote"))
+        {
+            /* Simple blockquote: emit "> " prefix on each new line.
+             * For a polished version we'd indent via a tag with
+             * left-margin, but this renders sanely without extra plumbing. */
+            moo_html_new_line (view, buffer, iter, current, FALSE);
+            moo_html_insert_verbatim (view, buffer, iter, current, "> ");
+            process_elm_body (view, buffer, child, current, iter);
+            moo_html_new_line (view, buffer, iter, current, FALSE);
         }
 
         else if (IS_ELEMENT (child))
@@ -2066,26 +2081,33 @@ process_ol_elm (GtkTextView    *view,
 
     moo_html_new_line (view, buffer, iter, current, FALSE);
 
+    data->list_depth++;
     for (child = elm->children; child != nullptr; child = child->next)
     {
         if (IS_LI_ELEMENT (child))
         {
             char *number;
+            char *prefix;
             gboolean had_new_line;
             xmlChar *value;
+            int indent;
 
             value = GET_PROP (child, "value");
             parse_int ((char*) value, &count);
 
             number = make_li_number (count, list_type);
+            /* Two spaces of indent per nesting level beyond the first. */
+            indent = (data->list_depth - 1) * 2;
+            prefix = g_strdup_printf ("%*s%s", indent, "", number);
             had_new_line = data->new_line;
 
-            moo_html_insert_verbatim (view, buffer, iter, current, number);
+            moo_html_insert_verbatim (view, buffer, iter, current, prefix);
             data->new_line = had_new_line;
             process_elm_body (view, buffer, child, current, iter);
             moo_html_new_line (view, buffer, iter, current, FALSE);
             count++;
 
+            g_free (prefix);
             g_free (number);
             STR_FREE (value);
         }
@@ -2095,6 +2117,7 @@ process_ol_elm (GtkTextView    *view,
             process_elm_body (view, buffer, child, current, iter);
         }
     }
+    data->list_depth--;
 
     STR_FREE (start);
     STR_FREE (type);
@@ -2109,20 +2132,21 @@ process_ul_elm (GtkTextView    *view,
                 GtkTextIter    *iter)
 {
     xmlNode *child;
+    MooHtmlData *data = moo_html_get_data (view);
 
     /* Open the list on its own line, the way <ol> already does.
      * Without this the first bullet runs into the preceding paragraph. */
     moo_html_new_line (view, buffer, iter, current, FALSE);
 
-    /* Dispatch each <li> through process_li_elm so it gets the "\n * "
-     * prefix.  Previously the loop walked children verbatim and the
-     * <li> tag was an invisible boundary — every item ended up on the
-     * same line.  Non-<li> children (whitespace, comments) are ignored. */
+    /* Each nested <ul>/<ol> bumps list_depth so the corresponding
+     * <li> gets a deeper indent + different bullet glyph. */
+    data->list_depth++;
     for (child = elm->children; child != nullptr; child = child->next)
     {
         if (IS_LI_ELEMENT (child))
             process_li_elm (view, buffer, child, current, iter);
     }
+    data->list_depth--;
 }
 
 
@@ -2133,14 +2157,27 @@ process_li_elm (GtkTextView    *view,
                 MooHtmlTag     *current,
                 GtkTextIter    *iter)
 {
+    static const char *bullets[] = { "\xe2\x80\xa2", "\xe2\x97\xa6",
+                                     "\xe2\x96\xaa", "\xe2\x80\xa3" };
     gboolean had_new_line;
     MooHtmlData *data = moo_html_get_data (view);
+    int depth, indent;
+    char *prefix;
 
     moo_html_new_line (view, buffer, iter, current, FALSE);
 
+    /* list_depth==0 means this <li> was processed outside a <ul>/<ol>
+     * (malformed HTML); fall back to a sane default rather than crash. */
+    depth = data->list_depth > 0 ? data->list_depth : 1;
+    indent = (depth - 1) * 2;
+    prefix = g_strdup_printf ("%*s%s ", indent, "",
+                              bullets[(depth - 1) % G_N_ELEMENTS (bullets)]);
+
     had_new_line = data->new_line;
-    moo_html_insert_verbatim (view, buffer, iter, current, " * ");
+    moo_html_insert_verbatim (view, buffer, iter, current, prefix);
     data->new_line = had_new_line;
+
+    g_free (prefix);
 
     process_elm_body (view, buffer, elm, current, iter);
     moo_html_new_line (view, buffer, iter, current, FALSE);
@@ -2435,16 +2472,47 @@ process_table_elm (GtkTextView *view,
                    MooHtmlTag *parent,
                    GtkTextIter *iter)
 {
+    /* Tables get a blank line above and below so they read as a block
+     * separated from surrounding paragraphs.  process_elm_body recurses
+     * into thead/tbody — those are handled in the unnamed-element branch
+     * of process_elm_body so each <tr> is dispatched into the renderer
+     * below. */
+    moo_html_new_line (view, buffer, iter, parent, FALSE);
+    moo_html_new_line (view, buffer, iter, parent, TRUE);
     process_elm_body (view, buffer, elm, parent, iter);
+    moo_html_new_line (view, buffer, iter, parent, FALSE);
+    moo_html_new_line (view, buffer, iter, parent, TRUE);
 }
 
 static void
 process_tr_elm (GtkTextView *view, GtkTextBuffer *buffer, xmlNode *elm,
                 MooHtmlTag *parent, GtkTextIter *iter)
 {
+    xmlNode *child;
+    gboolean any_cell = FALSE;
+
     moo_html_new_line (view, buffer, iter, parent, FALSE);
-    process_elm_body (view, buffer, elm, parent, iter);
-    moo_html_new_line (view, buffer, iter, parent, FALSE);
+
+    /* Render each <td>/<th> with "| " separators so the row reads
+     * like a Markdown source table.  Walk children directly rather than
+     * delegating to process_elm_body so we can wrap each cell with the
+     * pipe delimiters. */
+    for (child = elm->children; child != nullptr; child = child->next)
+    {
+        if (IS_NAMED_ELM_ (child, "td") || IS_NAMED_ELM_ (child, "th"))
+        {
+            if (!any_cell)
+            {
+                moo_html_insert_verbatim (view, buffer, iter, parent, "| ");
+                any_cell = TRUE;
+            }
+            process_elm_body (view, buffer, child, parent, iter);
+            moo_html_insert_verbatim (view, buffer, iter, parent, " | ");
+        }
+    }
+
+    if (any_cell)
+        moo_html_new_line (view, buffer, iter, parent, FALSE);
 }
 
 

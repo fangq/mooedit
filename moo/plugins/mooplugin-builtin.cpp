@@ -46,7 +46,8 @@ moo_plugin_init (void)
     _moo_ctags_plugin_init ();
 #endif
 #ifdef MOO_BUILD_MARKDOWN
-    _moo_markdown_plugin_init ();
+    if (!moo_getenv_bool ("MOO_DISABLE_MARKDOWN"))
+        _moo_markdown_plugin_init ();
 #endif
     moo_plugin_read_dirs ();
     _moo_user_tools_plugin_init ();
