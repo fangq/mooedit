@@ -133,6 +133,12 @@ set(MOO_WITH_SPELL "auto" CACHE STRING
 set_property(CACHE MOO_WITH_SPELL PROPERTY STRINGS auto yes no)
 include(MooSpell)   # sets MOO_BUILD_SPELL, PkgConfig::GSPELL
 
+# ── Markdown preview (md4c + md4c-html) ──────────────────────────────────────
+set(MOO_WITH_MARKDOWN "auto" CACHE STRING
+    "Build with md4c-based Markdown preview pane: yes, no, or auto")
+set_property(CACHE MOO_WITH_MARKDOWN PROPERTY STRINGS auto yes no)
+include(MooMarkdown)   # sets MOO_BUILD_MARKDOWN, PkgConfig::MD4C{,_HTML}
+
 # ── Build-target options ──────────────────────────────────────────────────────
 option(MOO_BUILD_MODULE "Build standalone Python module instead of medit app" OFF)
 
@@ -261,6 +267,7 @@ target_compile_definitions(moo_build_settings INTERFACE
     $<$<BOOL:${MOO_ENABLE_PYTHON}>:MOO_ENABLE_PYTHON=1>
     $<$<BOOL:${MOO_BUILD_CTAGS}>:MOO_BUILD_CTAGS=1>
     $<$<BOOL:${MOO_BUILD_SPELL}>:MOO_BUILD_SPELL=1>
+    $<$<BOOL:${MOO_BUILD_MARKDOWN}>:MOO_BUILD_MARKDOWN=1>
     $<$<BOOL:${MOO_ENABLE_COVERAGE}>:MOO_ENABLE_COVERAGE=1>
     $<$<BOOL:${MOO_BROKEN_GTK_THEME}>:MOO_BROKEN_GTK_THEME=1>
 )

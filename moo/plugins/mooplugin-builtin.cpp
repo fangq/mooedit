@@ -22,6 +22,9 @@
 #ifdef HAVE_VTE
 extern "C" gboolean _moo_terminal_plugin_init(void);
 #endif
+#ifdef MOO_BUILD_MARKDOWN
+extern "C" gboolean _moo_markdown_plugin_init(void);
+#endif
 
 void
 moo_plugin_init (void)
@@ -41,6 +44,9 @@ moo_plugin_init (void)
     _moo_find_plugin_init ();
 #ifdef MOO_BUILD_CTAGS
     _moo_ctags_plugin_init ();
+#endif
+#ifdef MOO_BUILD_MARKDOWN
+    _moo_markdown_plugin_init ();
 #endif
     moo_plugin_read_dirs ();
     _moo_user_tools_plugin_init ();

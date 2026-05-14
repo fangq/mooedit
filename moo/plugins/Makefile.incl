@@ -5,7 +5,8 @@ plugins_sources +=			\
 	plugins/mooplugin-builtin.h	\
 	plugins/mooplugin-builtin.cpp	\
 	plugins/moofilelist.cpp		\
-	plugins/moofind.cpp
+	plugins/moofind.cpp		\
+	plugins/moomarkdown.cpp
 
 if MOO_BUILD_TERMINAL
 plugins_sources += plugins/mooterminal.c

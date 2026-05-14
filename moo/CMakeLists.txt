@@ -982,6 +982,9 @@ endif()
 if(MOO_BUILD_TERMINAL)
     list(APPEND _plugins_sources plugins/mooterminal.c)
 endif()
+if(MOO_BUILD_MARKDOWN)
+    list(APPEND _plugins_sources plugins/moomarkdown.cpp)
+endif()
 
 # ════════════════════════════════════════════════════════════════════════════
 # Aggregate all moo_sources (prefix with ${_src}/ for absolute paths)
@@ -1089,6 +1092,10 @@ if(MOO_BUILD_APP)
     endif()
     if(MOO_BUILD_SPELL)
         target_link_libraries(medit PRIVATE PkgConfig::GSPELL)
+    endif()
+    if(MOO_BUILD_MARKDOWN)
+        target_link_libraries(medit PRIVATE
+            PkgConfig::MD4C PkgConfig::MD4C_HTML)
     endif()
 
     if(MOO_OS_WIN32)
