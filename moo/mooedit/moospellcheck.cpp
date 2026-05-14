@@ -29,8 +29,11 @@
 #include "mooedit/moospellcheck.h"
 #include "mooedit/mooeditprefs.h"
 #include "mooedit/mootextbuffer.h"
+#include "mooedit/mootextview.h"
+#include "mooedit/mootextstylescheme.h"
 #include "mooedit/moolang.h"
 #include "mooutils/mooprefs.h"
+#include "gtksourceview/gtksourcestylescheme.h"
 
 #ifdef MOO_BUILD_SPELL
 #  include <gspell/gspell.h>
@@ -124,18 +127,52 @@ on_spell_tag_added (GtkTextTagTable *table,
 static void
 update_underline_rgba_for_theme (GtkTextTagTable *table, GtkWidget *view_widget)
 {
-    GtkStyleContext *ctx = gtk_widget_get_style_context (view_widget);
-    GdkRGBA          bg  = { 1.0, 1.0, 1.0, 1.0 };
-    GdkRGBA         *chosen;
-    double           luma;
+    GdkRGBA   bg = { 1.0, 1.0, 1.0, 1.0 };
+    GdkRGBA  *chosen;
+    double    luma;
+    gboolean  bg_from_scheme = FALSE;
 
-    gtk_style_context_save (ctx);
-    gtk_style_context_add_class (ctx, GTK_STYLE_CLASS_VIEW);
-    G_GNUC_BEGIN_IGNORE_DEPRECATIONS
-    gtk_style_context_get_background_color (ctx,
-        gtk_style_context_get_state (ctx), &bg);
-    G_GNUC_END_IGNORE_DEPRECATIONS
-    gtk_style_context_restore (ctx);
+    /* Prefer the GtkSourceView style-scheme's "text" background — that's
+     * what actually appears behind the editor text once the user picks a
+     * scheme like Oblivion.  Querying GtkStyleContext alone would return
+     * the underlying GTK theme bg (typically Adwaita-light) and pick the
+     * wrong shade. */
+    if (MOO_IS_TEXT_VIEW (view_widget))
+    {
+        MooTextStyleScheme *scheme =
+            moo_text_view_get_style_scheme (MOO_TEXT_VIEW (view_widget));
+        if (scheme != NULL)
+        {
+            GtkSourceStyle *text_style =
+                gtk_source_style_scheme_get_style (
+                    GTK_SOURCE_STYLE_SCHEME (scheme), "text");
+            if (text_style != NULL)
+            {
+                gchar    *bg_str = NULL;
+                gboolean  bg_set = FALSE;
+                g_object_get (text_style,
+                              "background",     &bg_str,
+                              "background-set", &bg_set,
+                              NULL);
+                if (bg_set && bg_str && gdk_rgba_parse (&bg, bg_str))
+                    bg_from_scheme = TRUE;
+                g_free (bg_str);
+            }
+        }
+    }
+
+    /* Fallback: GTK theme view bg. */
+    if (!bg_from_scheme)
+    {
+        GtkStyleContext *ctx = gtk_widget_get_style_context (view_widget);
+        gtk_style_context_save (ctx);
+        gtk_style_context_add_class (ctx, GTK_STYLE_CLASS_VIEW);
+        G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+        gtk_style_context_get_background_color (ctx,
+            gtk_style_context_get_state (ctx), &bg);
+        G_GNUC_END_IGNORE_DEPRECATIONS
+        gtk_style_context_restore (ctx);
+    }
 
     luma = 0.299 * bg.red + 0.587 * bg.green + 0.114 * bg.blue;
 
@@ -164,6 +201,25 @@ update_underline_rgba_for_theme (GtkTextTagTable *table, GtkWidget *view_widget)
                             g_free);
 }
 
+/* GtkTextTagTable callback: update any already-created gspell tag with
+ * the new underline colour.  Recognised by the fingerprint we already
+ * use (anonymous + underline-rgba-set). */
+static void
+restyle_existing_gspell_tag (GtkTextTag *tag, gpointer data)
+{
+    const GdkRGBA *new_color = (const GdkRGBA *) data;
+    char          *name      = NULL;
+    gboolean       rgba_set  = FALSE;
+
+    g_object_get (tag,
+                  "name",               &name,
+                  "underline-rgba-set", &rgba_set,
+                  NULL);
+    if (name == NULL && rgba_set)
+        g_object_set (tag, "underline-rgba", new_color, NULL);
+    g_free (name);
+}
+
 static void
 install_spell_tag_hook (GtkTextBuffer *buffer, GtkWidget *view_widget)
 {
@@ -183,6 +239,33 @@ install_spell_tag_hook (GtkTextBuffer *buffer, GtkWidget *view_widget)
 }
 #endif /* MOO_BUILD_SPELL */
 
+#ifdef MOO_BUILD_SPELL
+/* Point Enchant (which backs gspell) at a medit-specific config dir so
+ * "Add to Dictionary" entries don't pollute or share the system-wide
+ * ~/.config/enchant/.  Called once per process, before the first
+ * GspellChecker is created.  If ENCHANT_CONFIG_DIR is already set in
+ * the user's environment, respect that — power users may want to share
+ * a personal dict across GTK apps. */
+static void
+init_enchant_config_dir_once (void)
+{
+    static gsize once = 0;
+    if (g_once_init_enter (&once))
+    {
+        if (g_getenv ("ENCHANT_CONFIG_DIR") == NULL)
+        {
+            char        *dir = g_build_filename (g_get_user_config_dir (),
+                                                 "medit", "enchant", NULL);
+            mgw_errno_t  err = MGW_E_NOERROR;
+            mgw_mkdir_with_parents (dir, 0700, &err);
+            g_setenv ("ENCHANT_CONFIG_DIR", dir, TRUE);
+            g_free (dir);
+        }
+        g_once_init_leave (&once, 1);
+    }
+}
+#endif /* MOO_BUILD_SPELL */
+
 void
 _moo_spell_check_attach (G_GNUC_UNUSED MooEditView *view)
 {
@@ -192,6 +275,9 @@ _moo_spell_check_attach (G_GNUC_UNUSED MooEditView *view)
     GspellTextView      *gview;
 
     g_return_if_fail (MOO_IS_EDIT_VIEW (view));
+
+    /* Redirect Enchant's user-dict dir before any gspell init runs. */
+    init_enchant_config_dir_once ();
 
     buffer  = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
     gbuffer = gspell_text_buffer_get_from_gtk_text_buffer (buffer);
@@ -281,7 +367,16 @@ _moo_spell_check_apply_prefs (G_GNUC_UNUSED MooEditView *view)
 
     g_return_if_fail (MOO_IS_EDIT_VIEW (view));
 
-    buffer    = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
+    /* Skip if the view is already being torn down — apply_prefs() can
+     * fire late during prefs-save-on-close and dereferencing the view
+     * after gtk_widget_destroy() segfaults. */
+    if (gtk_widget_in_destruction (GTK_WIDGET (view)))
+        return;
+
+    buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
+    if (!GTK_IS_TEXT_BUFFER (buffer))
+        return;
+
     gview     = gspell_text_view_get_from_gtk_text_view (GTK_TEXT_VIEW (view));
     enabled   = moo_prefs_get_bool   (moo_edit_setting (MOO_EDIT_PREFS_SPELL_ENABLED));
     scope_str = moo_prefs_get_string (moo_edit_setting (MOO_EDIT_PREFS_SPELL_SCOPE));
@@ -313,6 +408,22 @@ _moo_spell_check_apply_prefs (G_GNUC_UNUSED MooEditView *view)
 
     if (gview != NULL)
         gspell_text_view_set_inline_spell_checking (gview, effective_on);
+
+    /* Re-pick the underline colour now that the style scheme is in
+     * effect (it may not have been at attach time), and propagate the
+     * new colour to any already-existing gspell tag in the table. */
+    {
+        GtkTextTagTable *table = gtk_text_buffer_get_tag_table (buffer);
+        const GdkRGBA   *color;
+
+        update_underline_rgba_for_theme (table, GTK_WIDGET (view));
+        color = (const GdkRGBA *) g_object_get_data (
+            G_OBJECT (table), "moo-spell-underline-rgba");
+        if (color != NULL)
+            gtk_text_tag_table_foreach (table,
+                                        restyle_existing_gspell_tag,
+                                        (gpointer) color);
+    }
 #endif
 }
 
@@ -560,4 +671,105 @@ _moo_spell_check_populate_popup (G_GNUC_UNUSED MooEditView *view,
                                ctx, spell_popup_ctx_free, (GConnectFlags) 0);
     }
 #endif /* MOO_BUILD_SPELL */
+}
+
+/* ── Status-bar + menubar entry points ─────────────────────────────────── */
+
+char *
+_moo_spell_check_status_text (G_GNUC_UNUSED MooEditView *view)
+{
+#ifdef MOO_BUILD_SPELL
+    GtkTextBuffer        *buffer;
+    GspellTextBuffer     *gbuffer;
+    GspellChecker        *checker;
+    GspellTextView       *gview;
+    const GspellLanguage *lang;
+    const char           *code;
+    gboolean              enabled;
+
+    g_return_val_if_fail (MOO_IS_EDIT_VIEW (view), NULL);
+
+    enabled = moo_prefs_get_bool (moo_edit_setting (MOO_EDIT_PREFS_SPELL_ENABLED));
+    if (!enabled)
+        return g_strdup ("Spell: off");
+
+    gview = gspell_text_view_get_from_gtk_text_view (GTK_TEXT_VIEW (view));
+    if (gview != NULL &&
+        !gspell_text_view_get_inline_spell_checking (gview))
+        return g_strdup ("Spell: off");
+
+    buffer  = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
+    gbuffer = gspell_text_buffer_get_from_gtk_text_buffer (buffer);
+    checker = gspell_text_buffer_get_spell_checker (gbuffer);
+    if (checker == NULL)
+        return g_strdup ("Spell: off");
+
+    lang = gspell_checker_get_language (checker);
+    code = lang ? gspell_language_get_code (lang) : NULL;
+    return g_strdup_printf ("Spell: %s", code ? code : "default");
+#else
+    (void) view;
+    return NULL;
+#endif
+}
+
+#ifdef MOO_BUILD_SPELL
+/* Common: find the word at the current cursor, return NULL if no word
+ * or no spell-checker attached.  Caller g_free's. */
+static char *
+get_word_at_cursor (MooEditView    *view,
+                    GspellChecker **out_checker,
+                    GtkTextBuffer **out_buffer)
+{
+    GtkTextBuffer    *buffer;
+    GspellTextBuffer *gbuffer;
+    GspellChecker    *checker;
+    GtkTextIter       cur, word_start, word_end;
+    char             *word = NULL;
+
+    buffer  = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
+    gbuffer = gspell_text_buffer_get_from_gtk_text_buffer (buffer);
+    checker = gspell_text_buffer_get_spell_checker (gbuffer);
+    if (checker == NULL)
+        return NULL;
+
+    gtk_text_buffer_get_iter_at_mark (buffer, &cur,
+                                      gtk_text_buffer_get_insert (buffer));
+    if (!extract_word_at_iter (buffer, &cur, &word_start, &word_end, &word))
+        return NULL;
+
+    if (out_checker) *out_checker = checker;
+    if (out_buffer)  *out_buffer  = buffer;
+    return word;   /* caller frees */
+}
+#endif /* MOO_BUILD_SPELL */
+
+void
+_moo_spell_check_add_word_at_cursor (G_GNUC_UNUSED MooEditView *view)
+{
+#ifdef MOO_BUILD_SPELL
+    GspellChecker *checker = NULL;
+    char          *word;
+
+    g_return_if_fail (MOO_IS_EDIT_VIEW (view));
+    word = get_word_at_cursor (view, &checker, NULL);
+    if (word && checker)
+        gspell_checker_add_word_to_personal (checker, word, -1);
+    g_free (word);
+#endif
+}
+
+void
+_moo_spell_check_ignore_word_at_cursor (G_GNUC_UNUSED MooEditView *view)
+{
+#ifdef MOO_BUILD_SPELL
+    GspellChecker *checker = NULL;
+    char          *word;
+
+    g_return_if_fail (MOO_IS_EDIT_VIEW (view));
+    word = get_word_at_cursor (view, &checker, NULL);
+    if (word && checker)
+        gspell_checker_add_word_to_session (checker, word, -1);
+    g_free (word);
+#endif
 }

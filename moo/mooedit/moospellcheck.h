@@ -46,6 +46,18 @@ void    _moo_spell_check_populate_popup (MooEditView   *view,
                                          int            widget_x,
                                          int            widget_y);
 
+/* Short status-bar string describing the spell-checker state for `view`:
+ * e.g. "Spell: en_US", "Spell: off", or NULL when MOO_BUILD_SPELL is
+ * disabled.  Caller must g_free() the returned string. */
+char   *_moo_spell_check_status_text    (MooEditView   *view);
+
+/* Convenience entry points for menubar actions — apply the named gspell
+ * operation to the word at the current cursor.  Currently used by
+ * EditWindow's "Add to Dictionary" / "Ignore Word" menu items so users
+ * have keyboard-reachable alternatives to the right-click submenu. */
+void    _moo_spell_check_add_word_at_cursor    (MooEditView *view);
+void    _moo_spell_check_ignore_word_at_cursor (MooEditView *view);
+
 G_END_DECLS
 
 #endif /* MOO_SPELL_CHECK_H */
