@@ -80,6 +80,117 @@ md4c_output_cb (const MD_CHAR *text, MD_SIZE size, void *userdata)
     g_string_append_len ((GString *) userdata, text, size);
 }
 
+/* Markdown-specific tag styling — applied after every MooHtml load so
+ * the Markdown preview pane has its own visual identity (theme-aware
+ * link colour, subtle code/pre backgrounds, slightly coloured headings)
+ * without touching how the About dialog renders.
+ *
+ * MooHtml's tags are mostly anonymous; we identify each kind by the
+ * narrow predicates added to moohtml.h.  Theme awareness reuses the
+ * same luma-based picker we already use for spell-check underlines. */
+typedef struct {
+    GdkRGBA link;
+    GdkRGBA code_bg;       /* background for inline <code> and <pre>   */
+    GdkRGBA code_fg;       /* foreground for code (a touch dimmer)     */
+    GdkRGBA heading_fg;    /* shared colour for H1/H2 (others: theme)  */
+    GdkRGBA hr_fg;
+} MarkdownPalette;
+
+static void
+markdown_pick_palette (GtkWidget *html_view, MarkdownPalette *p)
+{
+    GtkStyleContext *ctx = gtk_widget_get_style_context (html_view);
+    GdkRGBA bg = { 1.0, 1.0, 1.0, 1.0 };
+    double  luma;
+
+    gtk_style_context_save (ctx);
+    gtk_style_context_add_class (ctx, GTK_STYLE_CLASS_VIEW);
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+    gtk_style_context_get_background_color (ctx,
+        gtk_style_context_get_state (ctx), &bg);
+    G_GNUC_END_IGNORE_DEPRECATIONS
+    gtk_style_context_restore (ctx);
+
+    luma = 0.299 * bg.red + 0.587 * bg.green + 0.114 * bg.blue;
+    if (luma <= 0.5)
+    {
+        /* Dark theme: punchy accents on a near-black background. */
+        gdk_rgba_parse (&p->link,       "#7eb6ff");   /* light blue */
+        gdk_rgba_parse (&p->code_bg,    "#2b2b2b");   /* slightly lighter than bg */
+        gdk_rgba_parse (&p->code_fg,    "#e6e6e6");
+        gdk_rgba_parse (&p->heading_fg, "#9cdcfe");   /* cyan-blue (VS-Code-ish) */
+        gdk_rgba_parse (&p->hr_fg,      "#444444");
+    }
+    else
+    {
+        /* Light theme: deeper colours so they read on white. */
+        gdk_rgba_parse (&p->link,       "#1a73e8");   /* Google-style blue */
+        gdk_rgba_parse (&p->code_bg,    "#f5f5f5");   /* very light grey */
+        gdk_rgba_parse (&p->code_fg,    "#222222");
+        gdk_rgba_parse (&p->heading_fg, "#1a1a1a");   /* near-black, lets size carry */
+        gdk_rgba_parse (&p->hr_fg,      "#cccccc");
+    }
+}
+
+/* Iterate every tag in the preview buffer's table and override its
+ * properties based on its element kind.  Idempotent — every render
+ * call rebuilds the buffer, so this just paints over MooHtml's
+ * fresh tags.  Called from markdown_render() right after the load. */
+static void
+markdown_restyle_tags (GtkWidget *html_view)
+{
+    GtkTextBuffer   *buf   = gtk_text_view_get_buffer (GTK_TEXT_VIEW (html_view));
+    GtkTextTagTable *table = gtk_text_buffer_get_tag_table (buf);
+    MarkdownPalette  pal;
+
+    markdown_pick_palette (html_view, &pal);
+
+    gtk_text_tag_table_foreach (
+        table,
+        [](GtkTextTag *tag, gpointer data) {
+            const MarkdownPalette *p = (const MarkdownPalette *) data;
+            int h;
+
+            if (_moo_html_tag_is_link (tag))
+            {
+                /* High-contrast link colour, theme-aware. */
+                g_object_set (tag, "foreground-rgba", &p->link, NULL);
+            }
+
+            if ((h = _moo_html_tag_get_heading (tag)) > 0)
+            {
+                /* Lift H1/H2 with a coloured tint; H3+ rely on size +
+                 * weight alone to avoid a rainbow effect. */
+                if (h <= 2)
+                    g_object_set (tag, "foreground-rgba", &p->heading_fg, NULL);
+            }
+
+            if (_moo_html_tag_is_pre (tag))
+            {
+                /* <pre> block — full-width background, a little padding,
+                 * and a subtle indent so it reads as a code block. */
+                g_object_set (tag,
+                              "paragraph-background-rgba", &p->code_bg,
+                              "foreground-rgba",           &p->code_fg,
+                              "left-margin",               16,
+                              "right-margin",              16,
+                              "pixels-above-lines",        8,
+                              "pixels-below-lines",        8,
+                              NULL);
+            }
+            else if (_moo_html_tag_is_monospace (tag))
+            {
+                /* Inline <code> — span-background only (not whole para). */
+                g_object_set (tag,
+                              "background-rgba", &p->code_bg,
+                              "foreground-rgba", &p->code_fg,
+                              "scale",           0.92,
+                              NULL);
+            }
+        },
+        &pal);
+}
+
 /* Convert the active document's buffer text to HTML via md4c and load
  * it into the MooHtml widget.  No-op when there's no active doc or
  * the pane was never built.  Caller can pass the active view via
@@ -122,8 +233,14 @@ markdown_render (MarkdownWindowPlugin *plugin, MooEditView *view_hint)
     g_string_append (html, "</body></html>");
 
     if (rc == 0)
+    {
         _moo_html_load_memory (GTK_TEXT_VIEW (plugin->html_view),
                                html->str, html->len, NULL, "UTF-8");
+        /* Override MooHtml's defaults with the Markdown-preview palette
+         * (theme-aware links, code backgrounds, heading tints).  Cheap
+         * — fewer than a couple dozen tags per render. */
+        markdown_restyle_tags (plugin->html_view);
+    }
 
     g_string_free (html, TRUE);
     g_free (md);

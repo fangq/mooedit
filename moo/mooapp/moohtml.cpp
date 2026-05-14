@@ -2446,3 +2446,50 @@ process_tr_elm (GtkTextView *view, GtkTextBuffer *buffer, xmlNode *elm,
     process_elm_body (view, buffer, elm, parent, iter);
     moo_html_new_line (view, buffer, iter, parent, FALSE);
 }
+
+
+/* ───────────── Tag-kind predicates (public via moohtml.h) ────────────
+ *
+ * Consumers like the Markdown preview pane need to restyle tags after
+ * _moo_html_load_memory() returns.  The bitmask lives in the private
+ * MooHtmlAttr struct (definition inside this TU), so expose narrow
+ * accessors instead of leaking the struct shape.
+ */
+
+gboolean
+_moo_html_tag_is_link (GtkTextTag *tag)
+{
+    if (!MOO_IS_HTML_TAG (tag))
+        return FALSE;
+    MooHtmlTag *t = MOO_HTML_TAG (tag);
+    return t->attr && (t->attr->mask & MOO_HTML_LINK) != 0;
+}
+
+gboolean
+_moo_html_tag_is_monospace (GtkTextTag *tag)
+{
+    if (!MOO_IS_HTML_TAG (tag))
+        return FALSE;
+    MooHtmlTag *t = MOO_HTML_TAG (tag);
+    return t->attr && (t->attr->mask & MOO_HTML_MONOSPACE) != 0;
+}
+
+gboolean
+_moo_html_tag_is_pre (GtkTextTag *tag)
+{
+    if (!MOO_IS_HTML_TAG (tag))
+        return FALSE;
+    MooHtmlTag *t = MOO_HTML_TAG (tag);
+    return t->attr && (t->attr->mask & MOO_HTML_PRE) != 0;
+}
+
+int
+_moo_html_tag_get_heading (GtkTextTag *tag)
+{
+    if (!MOO_IS_HTML_TAG (tag))
+        return 0;
+    MooHtmlTag *t = MOO_HTML_TAG (tag);
+    if (!t->attr || !(t->attr->mask & MOO_HTML_HEADING))
+        return 0;
+    return (int) t->attr->heading;   /* 1..6 */
+}
