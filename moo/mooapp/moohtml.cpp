@@ -2743,12 +2743,19 @@ process_table_elm (GtkTextView *view,
             const char *cell = c < row->cells->len
                 ? (const char *) row->cells->pdata[c] : "";
             GtkWidget *label = gtk_label_new (cell);
+            /* Keep labels at their natural size with explicit
+             * START alignment.  FILL + line-wrap interacts badly with
+             * GtkTextView's child-anchor sizing on GTK 3.22 and ends
+             * up allocating the grid an enormous height — clicks land
+             * on the grid widget far below the visible cells.  Short
+             * cells don't need wrap, and the column-natural-width
+             * sizing keeps the table compact. */
             gtk_label_set_xalign (GTK_LABEL (label), 0.0);
-            gtk_label_set_line_wrap (GTK_LABEL (label), TRUE);
-            gtk_label_set_line_wrap_mode (GTK_LABEL (label),
-                                          PANGO_WRAP_WORD_CHAR);
-            gtk_widget_set_valign (label, GTK_ALIGN_FILL);
-            gtk_widget_set_halign (label, GTK_ALIGN_FILL);
+            gtk_label_set_yalign (GTK_LABEL (label), 0.5);
+            gtk_widget_set_halign (label, GTK_ALIGN_START);
+            gtk_widget_set_valign (label, GTK_ALIGN_BASELINE);
+            gtk_widget_set_hexpand (label, FALSE);
+            gtk_widget_set_vexpand (label, FALSE);
             if (row->is_header)
                 gtk_style_context_add_class (
                     gtk_widget_get_style_context (label), "moo-md-th");
