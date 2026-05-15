@@ -302,9 +302,20 @@ moo_file_entry_completion_finalize (GObject *object)
     completion_disconnect_folder (cmpl);
     g_free (cmpl->priv->dirname);
 
-    if (cmpl->priv->popup)
+    /* The popup is a GTK_WINDOW_POPUP top-level window.  At app
+     * shutdown GTK tears down all top-levels before our finalize runs,
+     * so cmpl->priv->popup may already point to freed memory by the
+     * time we get here.  GTK_IS_WIDGET catches that case and the
+     * treeview pointer is invalid too (it's a descendant of popup).
+     * The weak refs set up in completion_create_popup keep both
+     * pointers NULL if the natural destroy happened earlier. */
+    if (cmpl->priv->popup && GTK_IS_WIDGET (cmpl->priv->popup))
         gtk_widget_destroy (cmpl->priv->popup);
-    g_object_unref (cmpl->priv->model);
+    cmpl->priv->popup    = NULL;
+    cmpl->priv->treeview = NULL;
+    if (cmpl->priv->model && G_IS_OBJECT (cmpl->priv->model))
+        g_object_unref (cmpl->priv->model);
+    cmpl->priv->model = NULL;
 
     g_free (cmpl->priv);
     cmpl->priv = NULL;
@@ -1216,6 +1227,19 @@ completion_disconnect_folder (MooFileEntryCompletion *cmpl)
 
 
 static void
+completion_popup_weak_notify (gpointer data, GObject *dead)
+{
+    MooFileEntryCompletion *cmpl = (MooFileEntryCompletion *) data;
+    if (cmpl->priv == NULL)
+        return;
+    if ((GObject *) cmpl->priv->popup == dead)
+    {
+        cmpl->priv->popup    = NULL;
+        cmpl->priv->treeview = NULL;   /* descendant of popup, gone too */
+    }
+}
+
+static void
 completion_create_popup (MooFileEntryCompletion *cmpl)
 {
     GtkCellRenderer *cell;
@@ -1223,6 +1247,11 @@ completion_create_popup (MooFileEntryCompletion *cmpl)
     GtkTreeSelection *selection;
 
     cmpl->priv->popup = gtk_window_new (GTK_WINDOW_POPUP);
+    /* Top-level popups get destroyed by GTK during shutdown before
+     * our finalize runs; this weak ref keeps the cached pointer in
+     * sync so finalize doesn't dereference a freed widget. */
+    g_object_weak_ref (G_OBJECT (cmpl->priv->popup),
+                       completion_popup_weak_notify, cmpl);
     gtk_widget_set_size_request (cmpl->priv->popup, -1, -1);
     gtk_window_set_default_size (GTK_WINDOW (cmpl->priv->popup), 1, 1);
     gtk_window_set_resizable (GTK_WINDOW (cmpl->priv->popup), FALSE);
