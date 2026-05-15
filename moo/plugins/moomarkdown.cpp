@@ -374,6 +374,24 @@ markdown_window_plugin_create (MarkdownWindowPlugin *plugin)
     gtk_text_view_set_wrap_mode      (GTK_TEXT_VIEW (html), GTK_WRAP_WORD_CHAR);
     gtk_widget_set_size_request (html, 360, -1);   /* sensible default width */
 
+    /* Bump the base font 1.2× so the preview reads at a comfortable
+     * size next to the source editor.  Applied via CSS on this widget
+     * only so other GtkTextViews in the window stay unaffected.  Per-
+     * tag scale overrides (headings, code) compound on top of this. */
+    {
+        static GtkCssProvider *fp = NULL;
+        if (fp == NULL)
+        {
+            fp = gtk_css_provider_new ();
+            gtk_css_provider_load_from_data (
+                fp, "textview { font-size: 120%; }", -1, NULL);
+        }
+        gtk_style_context_add_provider (
+            gtk_widget_get_style_context (html),
+            GTK_STYLE_PROVIDER (fp),
+            GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    }
+
     /* Open up line spacing — MooHtml's default is tight because the tags
      * it creates per-element don't set any paragraph margins.  Adding view-
      * level defaults gives every paragraph a few pixels of breathing room
