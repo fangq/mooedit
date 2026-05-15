@@ -2727,13 +2727,16 @@ process_table_elm (GtkTextView *view,
                                     GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     gtk_grid_set_row_spacing (GTK_GRID (grid), 0);
     gtk_grid_set_column_spacing (GTK_GRID (grid), 0);
-    /* GtkTextView with hexpand/valign FILL children can mis-compute the
-     * anchor's height and clip text below the widget.  Keep the grid at
-     * its natural size and let the row above/below scroll normally. */
+    /* Keep the grid at its natural size — let the text view scroll
+     * around it rather than expanding to fill the viewport. */
     gtk_widget_set_halign (grid, GTK_ALIGN_START);
     gtk_widget_set_valign (grid, GTK_ALIGN_START);
     gtk_widget_set_hexpand (grid, FALSE);
     gtk_widget_set_vexpand (grid, FALSE);
+    /* Don't take focus on click — otherwise GtkTextView keeps
+     * scrolling the grid into view and the widget straddles the
+     * viewport, causing an oscillation. */
+    gtk_widget_set_can_focus (grid, FALSE);
 
     for (guint r = 0; r < rows->len; r++)
     {
@@ -2743,19 +2746,19 @@ process_table_elm (GtkTextView *view,
             const char *cell = c < row->cells->len
                 ? (const char *) row->cells->pdata[c] : "";
             GtkWidget *label = gtk_label_new (cell);
-            /* Keep labels at their natural size with explicit
-             * START alignment.  FILL + line-wrap interacts badly with
-             * GtkTextView's child-anchor sizing on GTK 3.22 and ends
-             * up allocating the grid an enormous height — clicks land
-             * on the grid widget far below the visible cells.  Short
-             * cells don't need wrap, and the column-natural-width
-             * sizing keeps the table compact. */
+            /* halign=FILL so the label spans the column width and the
+             * CSS border draws around the full cell rectangle (not
+             * just the text); valign stays START to avoid the
+             * height-for-width over-allocation that FILL+wrap caused
+             * earlier.  Text inside the label is still left-aligned
+             * via gtk_label_set_xalign. */
             gtk_label_set_xalign (GTK_LABEL (label), 0.0);
             gtk_label_set_yalign (GTK_LABEL (label), 0.5);
-            gtk_widget_set_halign (label, GTK_ALIGN_START);
-            gtk_widget_set_valign (label, GTK_ALIGN_BASELINE);
-            gtk_widget_set_hexpand (label, FALSE);
+            gtk_widget_set_halign (label, GTK_ALIGN_FILL);
+            gtk_widget_set_valign (label, GTK_ALIGN_FILL);
+            gtk_widget_set_hexpand (label, TRUE);
             gtk_widget_set_vexpand (label, FALSE);
+            gtk_widget_set_can_focus (label, FALSE);
             if (row->is_header)
                 gtk_style_context_add_class (
                     gtk_widget_get_style_context (label), "moo-md-th");
