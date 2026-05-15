@@ -23,9 +23,9 @@ find_package(PkgConfig REQUIRED)
 # Mark REQUIRED only when the user explicitly asked for it; in "auto"
 # mode let configure succeed without spell-check support.
 if(MOO_WITH_SPELL STREQUAL "yes")
-    pkg_check_modules(GSPELL REQUIRED IMPORTED_TARGET gspell-1>=1.8)
+    pkg_check_modules(GSPELL REQUIRED IMPORTED_TARGET gspell-1>=1.2)
 else()
-    pkg_check_modules(GSPELL IMPORTED_TARGET gspell-1>=1.8)
+    pkg_check_modules(GSPELL IMPORTED_TARGET gspell-1>=1.2)
 endif()
 
 if(GSPELL_FOUND)
