@@ -2758,7 +2758,12 @@ process_table_elm (GtkTextView *view,
             gtk_widget_set_valign (label, GTK_ALIGN_FILL);
             gtk_widget_set_hexpand (label, TRUE);
             gtk_widget_set_vexpand (label, FALSE);
-            gtk_widget_set_can_focus (label, FALSE);
+            /* Labels are focusable + selectable so the user can click
+             * to focus and drag-select cell text.  Each label is
+             * single-line and fits in the viewport, so the auto
+             * scroll-to-focus doesn't oscillate the way it did when
+             * the whole grid was the focus target. */
+            gtk_label_set_selectable (GTK_LABEL (label), TRUE);
             if (row->is_header)
                 gtk_style_context_add_class (
                     gtk_widget_get_style_context (label), "moo-md-th");

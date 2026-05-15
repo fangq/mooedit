@@ -180,17 +180,20 @@ markdown_restyle_tags (GtkWidget *html_view)
 
             if (_moo_html_tag_is_pre (tag))
             {
-                /* <pre> block — full-width background, internal padding
-                 * via pixels-above/below + a small left-margin so the
-                 * text reads as inset inside its block. */
+                /* <pre> block — tight line-to-line spacing inside the
+                 * code block (pixels-above/below-lines apply to *every*
+                 * line, so anything > a couple of px adds a visible gap
+                 * between consecutive code lines).  The block-edge
+                 * padding above and below the whole block comes from
+                 * the blank lines around <pre> in the parsed HTML. */
                 g_object_set (tag,
                               "paragraph-background-rgba", &p->code_bg,
                               "foreground-rgba",           &p->code_fg,
                               "left-margin",                6,
                               "right-margin",               6,
-                              "pixels-above-lines",        10,
-                              "pixels-below-lines",        10,
-                              "pixels-inside-wrap",         3,
+                              "pixels-above-lines",         1,
+                              "pixels-below-lines",         1,
+                              "pixels-inside-wrap",         0,
                               "scale",                      0.92,
                               NULL);
             }
