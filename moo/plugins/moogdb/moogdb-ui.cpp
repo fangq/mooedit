@@ -459,6 +459,53 @@ moo_gdb_win_toggle_bp (MooGdbWin *win, const char *file, int line)
         moo_gdb_session_break_add (s, file, line);
 }
 
+/* ── Execution control forwards ──────────────────────────────────── */
+
+void
+moo_gdb_win_start (MooGdbWin *win)
+{
+    g_return_if_fail (win != NULL);
+    MooGdbSession *s = ensure_session (win);
+    if (!s) return;
+    /* If the user hasn't told us about a target binary yet, try the
+     * doc that's currently active — useful when a built binary lives
+     * next to its source file.  Project-config dialog (commit 8)
+     * replaces this guesswork. */
+    MooEditor *editor = moo_editor_instance ();
+    MooEdit   *doc    = moo_edit_window_get_active_doc (win->window);
+    (void) editor;
+    if (doc) {
+        char *file = moo_edit_get_filename (doc);
+        if (file) {
+            /* Strip an extension to get a plausible executable name —
+             * for foo.c, look for ./foo.  Not bulletproof, but a
+             * sensible default for "Start Debugging" while we wait
+             * for the per-project config UI. */
+            char *dot = strrchr (file, '.');
+            char *guess;
+            if (dot && dot > strrchr (file, '/'))
+                guess = g_strndup (file, dot - file);
+            else
+                guess = g_strdup (file);
+            moo_gdb_session_set_target (s, guess);
+            g_free (guess);
+            g_free (file);
+        }
+    }
+    moo_gdb_session_run (s);
+}
+
+void moo_gdb_win_continue (MooGdbWin *win)
+    { if (win && win->session) moo_gdb_session_continue   (win->session); }
+void moo_gdb_win_step_over (MooGdbWin *win)
+    { if (win && win->session) moo_gdb_session_step_over  (win->session); }
+void moo_gdb_win_step_into (MooGdbWin *win)
+    { if (win && win->session) moo_gdb_session_step_into  (win->session); }
+void moo_gdb_win_step_out  (MooGdbWin *win)
+    { if (win && win->session) moo_gdb_session_step_out   (win->session); }
+void moo_gdb_win_stop      (MooGdbWin *win)
+    { if (win && win->session) { moo_gdb_session_quit (win->session); } }
+
 /* MooTextView "line-mark-clicked" signal handler.  Convert the
  * clicked (view, line) into (file, line) and forward to toggle_bp. */
 static gboolean

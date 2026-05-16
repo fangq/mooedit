@@ -483,6 +483,32 @@ moo_gdb_session_continue (MooGdbSession *s)
     send_command (s, "-exec-continue", NULL, NULL);
 }
 
+/* -exec-next advances over a single source line; if the line is a
+ * function call, the call returns before gdb stops again. */
+void
+moo_gdb_session_step_over (MooGdbSession *s)
+{
+    g_return_if_fail (MOO_IS_GDB_SESSION (s));
+    send_command (s, "-exec-next", NULL, NULL);
+}
+
+/* -exec-step advances by one source line, descending into any
+ * function call on that line. */
+void
+moo_gdb_session_step_into (MooGdbSession *s)
+{
+    g_return_if_fail (MOO_IS_GDB_SESSION (s));
+    send_command (s, "-exec-step", NULL, NULL);
+}
+
+/* -exec-finish runs until the current function returns. */
+void
+moo_gdb_session_step_out (MooGdbSession *s)
+{
+    g_return_if_fail (MOO_IS_GDB_SESSION (s));
+    send_command (s, "-exec-finish", NULL, NULL);
+}
+
 /* ── Breakpoints ──────────────────────────────────────────────────── */
 
 /* Decode a `bkpt={number="N",fullname="...",file="...",line="L",...}`

@@ -44,6 +44,17 @@ void       moo_gdb_win_toggle_bp(MooGdbWin     *win,
                                  const char    *file,
                                  int            line);
 
+/* Execution control — forwarded to the (lazy) session.  start kicks
+ * off "-exec-run"; subsequent commands target the running inferior.
+ * No-op if there's no session yet (start) or no live inferior
+ * (continue / step). */
+void       moo_gdb_win_start    (MooGdbWin     *win);
+void       moo_gdb_win_continue (MooGdbWin     *win);
+void       moo_gdb_win_step_over(MooGdbWin     *win);
+void       moo_gdb_win_step_into(MooGdbWin     *win);
+void       moo_gdb_win_step_out (MooGdbWin     *win);
+void       moo_gdb_win_stop     (MooGdbWin     *win);
+
 G_END_DECLS
 
 #endif /* MOO_GDB_UI_H */
