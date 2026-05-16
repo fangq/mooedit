@@ -119,6 +119,10 @@ const char    *moo_gdb_session_get_version (MooGdbSession *session);
  *   "log-output"     :: (const char *line)
  *       gdb's own internal log lines (&"..." MI record).
  *
+ *   "target-output"  :: (const char *line)
+ *       inferior stdout/stderr captured by gdb (@"..." MI record).
+ *       Where the user's printf() output lands.
+ *
  *   "running"             :: ()
  *       fired on the *running async record.
  *

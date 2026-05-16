@@ -226,6 +226,16 @@ on_log_signal (G_GNUC_UNUSED MooGdbSession *s,
 }
 
 static void
+on_target_signal (G_GNUC_UNUSED MooGdbSession *s,
+                  const char *line, gpointer user_data)
+{
+    /* Inferior's own stdout/stderr — what the user expects to see
+     * when their program prints something.  Style it with the
+     * "target" tag so it visually separates from gdb's chatter. */
+    console_append ((MooGdbWin *) user_data, line, "target");
+}
+
+static void
 on_console_error (G_GNUC_UNUSED MooGdbSession *s,
                   const char *msg, gpointer user_data)
 {
@@ -299,6 +309,12 @@ build_console_pane (MooGdbWin *win)
     gtk_text_buffer_create_tag (buf, "input",
         "foreground", "#1a73e8",
         "style",      PANGO_STYLE_ITALIC,
+        NULL);
+    /* Inferior's own stdout/stderr — keep readable but visually
+     * distinct from gdb's chatter so the user can tell their
+     * program's printf output apart at a glance. */
+    gtk_text_buffer_create_tag (buf, "target",
+        "foreground", "#27ae60",
         NULL);
 
     GtkWidget *entry = gtk_entry_new ();
@@ -443,10 +459,25 @@ clear_exec_mark (MooGdbWin *win)
     win->exec_line = 0;
 }
 
-/* Place / replace the current-line marker at file:line.  Opens the
- * file in the editor if it isn't already, focuses the view, and
- * scrolls the line into view.  Caches the location so on_doc_loaded
- * can re-attach if the file gets closed and reopened later. */
+/* Place / replace the current-line marker at file:line.
+ *
+ * If `file` is already open in this window, focus its tab, place
+ * the arrow, and scroll into view.
+ *
+ * If `file` isn't open: only auto-open it when it actually exists
+ * on disk (and is a regular file, not a directory).  Hitting a stop
+ * inside glibc's __libc_start_main reports a source path like
+ * "nptl/libc_start_call_main.h" that the user doesn't have a copy
+ * of; trying to open that throws a popup.  In that case we just
+ * cache the (file, line) for later — execution will usually step
+ * back into the user's own source on the next resume. */
+static gboolean
+file_is_readable (const char *file)
+{
+    if (!file || !*file) return FALSE;
+    return g_file_test (file, G_FILE_TEST_IS_REGULAR);
+}
+
 static void
 set_exec_mark (MooGdbWin *win, const char *file, int line)
 {
@@ -456,12 +487,21 @@ set_exec_mark (MooGdbWin *win, const char *file, int line)
     win->exec_file = g_strdup (file);
     win->exec_line = line;
 
-    /* Open / focus the doc holding `file`.  moo_editor_get_doc takes
-     * a path-like string (UTF-8 filename), not a GFile, so we don't
-     * need to wrap it. */
     MooEditor *editor = moo_editor_instance ();
     MooEdit   *doc    = moo_editor_get_doc (editor, file);
     if (!doc) {
+        /* Don't open files we can't verify exist — glibc internals,
+         * generated headers, etc. reported by gdb at function-prologue
+         * stops would otherwise pop a "Can't open" error dialog. */
+        if (!file_is_readable (file)) {
+            console_append (win,
+                "stopped at ", "log");
+            console_append (win, file, "log");
+            char *suffix = g_strdup_printf (":%d (source not available)\n", line);
+            console_append (win, suffix, "log");
+            g_free (suffix);
+            return;
+        }
         moo_editor_open_path (editor, file, NULL, 0, win->window);
         doc = moo_editor_get_doc (editor, file);
     }
@@ -479,10 +519,6 @@ set_exec_mark (MooGdbWin *win, const char *file, int line)
                                    win->exec_mark, line - 1);
     g_object_set (view, "show-line-marks", TRUE, NULL);
 
-    /* Scroll the view so the user can actually see where we
-     * stopped.  moo_edit_window_set_active_doc focuses the right
-     * tab; gtk_text_view_scroll_to_iter positions the cursor line
-     * roughly mid-viewport. */
     moo_edit_window_set_active_doc (win->window, doc);
     GtkTextIter iter;
     gtk_text_buffer_get_iter_at_line (buf, &iter, line - 1);
@@ -590,6 +626,8 @@ ensure_session (MooGdbWin *win)
                       G_CALLBACK (on_console_signal), win);
     g_signal_connect (win->session, "log-output",
                       G_CALLBACK (on_log_signal), win);
+    g_signal_connect (win->session, "target-output",
+                      G_CALLBACK (on_target_signal), win);
     g_signal_connect (win->session, "error",
                       G_CALLBACK (on_console_error), win);
     GError *err = NULL;

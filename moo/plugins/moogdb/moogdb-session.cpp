@@ -57,6 +57,7 @@ enum {
     SIG_STATE_CHANGED,
     SIG_CONSOLE_OUTPUT,
     SIG_LOG_OUTPUT,
+    SIG_TARGET_OUTPUT,
     SIG_RUNNING,
     SIG_STOPPED,
     SIG_BP_ADDED,
@@ -132,6 +133,15 @@ moo_gdb_session_class_init (MooGdbSessionClass *klass)
 
     signals[SIG_LOG_OUTPUT] = g_signal_new (
         "log-output", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+        0, NULL, NULL, g_cclosure_marshal_VOID__STRING,
+        G_TYPE_NONE, 1, G_TYPE_STRING);
+
+    /* "target-output" :: (const char *line)
+     * Fires for @"..." MI records — the inferior's stdout/stderr
+     * as captured by gdb.  Surface this in the console pane so the
+     * user can see their program's printf() output. */
+    signals[SIG_TARGET_OUTPUT] = g_signal_new (
+        "target-output", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
         0, NULL, NULL, g_cclosure_marshal_VOID__STRING,
         G_TYPE_NONE, 1, G_TYPE_STRING);
 
@@ -385,6 +395,11 @@ dispatch_record (MooGdbSession *s, MooGdbMiRecord *r)
     case MOO_GDB_MI_LOG: {
         const char *t = moo_gdb_mi_record_text (r);
         if (t) g_signal_emit (s, signals[SIG_LOG_OUTPUT], 0, t);
+        break;
+    }
+    case MOO_GDB_MI_TARGET: {
+        const char *t = moo_gdb_mi_record_text (r);
+        if (t) g_signal_emit (s, signals[SIG_TARGET_OUTPUT], 0, t);
         break;
     }
     case MOO_GDB_MI_PROMPT:
