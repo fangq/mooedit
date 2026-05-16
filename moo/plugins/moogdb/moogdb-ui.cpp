@@ -156,18 +156,12 @@ struct _MooGdbWin {
     MooGdbSession *session;        /* lazily created */
     GHashTable    *bp_by_file;     /* char* -> GHashTable<int, GdbBreakpoint*> */
     GHashTable    *bp_by_number;   /* int   -> GdbBreakpoint* (borrowed) */
-    gulong         line_mark_handler_id;
-    gulong         doc_loaded_handler_id;
-    gulong         bp_added_handler_id;
-    gulong         bp_removed_handler_id;
-    gulong         stopped_handler_id;
 
     /* Current-line marker.  At most one across the whole window:
      * when the debugger stops, we open the relevant file and place
      * an arrow icon at the line; when it resumes (or quits), we
-     * remove the mark.  exec_file/exec_line cache the location so
-     * doc-loaded can re-attach the mark if the user closed and
-     * reopened the file mid-session. */
+     * remove the mark.  exec_file/exec_line cache the location for
+     * possible later use (doc-load re-attach) when we add that. */
     MooLineMark   *exec_mark;
     char          *exec_file;
     int            exec_line;
@@ -226,6 +220,8 @@ attach_visual_mark (G_GNUC_UNUSED MooGdbWin *win, GdbBreakpoint *bp)
 {
     if (bp->mark) return;
     MooEditor *editor = moo_editor_instance ();
+    /* moo_editor_get_docs returns transfer-full — caller frees with
+     * moo_edit_array_free. */
     MooEditArray *docs = moo_editor_get_docs (editor);
     if (!docs) return;
     for (guint i = 0; i < docs->n_elms; i++) {
@@ -247,6 +243,7 @@ attach_visual_mark (G_GNUC_UNUSED MooGdbWin *win, GdbBreakpoint *bp)
                                        bp->mark, bp->line - 1);
         break;
     }
+    moo_edit_array_free (docs);
 }
 
 static void
@@ -415,15 +412,15 @@ ensure_session (MooGdbWin *win)
 {
     if (win->session) return win->session;
     win->session = moo_gdb_session_new ();
-    win->bp_added_handler_id = g_signal_connect (
-        win->session, "breakpoint-added",
-        G_CALLBACK (on_session_bp_added), win);
-    win->bp_removed_handler_id = g_signal_connect (
-        win->session, "breakpoint-removed",
-        G_CALLBACK (on_session_bp_removed), win);
-    win->stopped_handler_id = g_signal_connect (
-        win->session, "stopped",
-        G_CALLBACK (on_session_stopped), win);
+    /* Session signals are released automatically when the session
+     * is unref'd in moo_gdb_win_free, so we don't need to track
+     * handler ids individually. */
+    g_signal_connect (win->session, "breakpoint-added",
+                      G_CALLBACK (on_session_bp_added), win);
+    g_signal_connect (win->session, "breakpoint-removed",
+                      G_CALLBACK (on_session_bp_removed), win);
+    g_signal_connect (win->session, "stopped",
+                      G_CALLBACK (on_session_stopped), win);
     g_signal_connect (win->session, "running",
                       G_CALLBACK (on_session_running), win);
     g_signal_connect (win->session, "exited",
@@ -524,58 +521,6 @@ void moo_gdb_win_pause     (MooGdbWin *win)
 void moo_gdb_win_stop      (MooGdbWin *win)
     { if (win && win->session) { moo_gdb_session_quit (win->session); } }
 
-/* MooTextView "line-mark-clicked" signal handler.  Convert the
- * clicked (view, line) into (file, line) and forward to toggle_bp. */
-static gboolean
-on_line_mark_clicked (MooTextView *tview, int line, MooGdbWin *win)
-{
-    /* The MooTextView in medit is wrapped by a MooEditView; the
-     * doc gives us the filename.  Walk up: view is the MooEditView. */
-    if (!MOO_IS_EDIT_VIEW (tview))
-        return FALSE;
-    MooEdit *doc = moo_edit_view_get_doc (MOO_EDIT_VIEW (tview));
-    if (!doc) return FALSE;
-    char *file = moo_edit_get_filename (doc);
-    if (!file) return FALSE;
-    /* line argument is 0-based; our model uses 1-based. */
-    moo_gdb_win_toggle_bp (win, file, line + 1);
-    g_free (file);
-    return TRUE;
-}
-
-/* On editor "doc-loaded" we may need to re-attach previously
- * registered breakpoint marks AND the current-line marker — both
- * were created before the file's buffer was visible (or removed
- * when the file was closed). */
-static void
-on_doc_loaded (G_GNUC_UNUSED MooEditor *editor, MooEdit *doc,
-               MooGdbWin *win)
-{
-    char *file = moo_edit_get_filename (doc);
-    if (!file) return;
-
-    /* Breakpoints */
-    GHashTable *line_tbl = (GHashTable *)
-        g_hash_table_lookup (win->bp_by_file, file);
-    if (line_tbl) {
-        GHashTableIter it;
-        gpointer key, val;
-        g_hash_table_iter_init (&it, line_tbl);
-        while (g_hash_table_iter_next (&it, &key, &val))
-            attach_visual_mark (win, (GdbBreakpoint *) val);
-    }
-
-    /* Current-line marker — only one across the window. */
-    if (win->exec_file && !strcmp (win->exec_file, file) && !win->exec_mark) {
-        char *saved_file = g_strdup (win->exec_file);
-        int   saved_line = win->exec_line;
-        set_exec_mark (win, saved_file, saved_line);
-        g_free (saved_file);
-    }
-
-    g_free (file);
-}
-
 MooGdbWin *
 moo_gdb_win_new (MooEditWindow *window)
 {
@@ -585,37 +530,14 @@ moo_gdb_win_new (MooEditWindow *window)
                                                g_free, free_file_table);
     win->bp_by_number = g_hash_table_new (g_direct_hash, g_direct_equal);
 
-    /* Catch line-mark-clicked on every editor view that lives in
-     * this window.  Connecting once at the class level keeps the
-     * code small at the cost of routing every click through one
-     * handler — fine for Phase 3. */
-    GObjectClass *vklass = (GObjectClass *) g_type_class_peek (
-        MOO_TYPE_EDIT_VIEW);
-    (void) vklass;
-    /* Per-instance signal connection on existing views + new views
-     * via the editor's doc-list-changed signal would be the proper
-     * approach.  For now we connect at the class-default level,
-     * meaning every MooTextView instance fires our handler.  The
-     * handler short-circuits on non-MOO_EDIT_VIEW objects. */
-    win->line_mark_handler_id = g_signal_add_emission_hook (
-        g_signal_lookup ("line-mark-clicked", MOO_TYPE_TEXT_VIEW),
-        0,
-        [](GSignalInvocationHint *, guint, const GValue *params,
-           gpointer user_data) -> gboolean {
-            MooGdbWin *w = (MooGdbWin *) user_data;
-            MooTextView *tview = MOO_TEXT_VIEW (g_value_get_object (&params[0]));
-            int          line  = g_value_get_int    (&params[1]);
-            on_line_mark_clicked (tview, line, w);
-            /* TRUE → stay subscribed */
-            return TRUE;
-        },
-        win, NULL);
-
-    MooEditor *editor = moo_editor_instance ();
-    win->doc_loaded_handler_id = g_signal_connect (
-        editor, "after-doc-loaded",
-        G_CALLBACK (on_doc_loaded), win);
-
+    /* Note: gutter-click breakpoint toggling and doc-loaded
+     * re-attach were tried via an emission hook on
+     * line-mark-clicked + a connect on a doc-loaded editor signal,
+     * but the signal lookup races plugin init (the class isn't
+     * always initialized yet) and there's no doc-loaded signal on
+     * MooEditor.  The F9 menu action covers the common case for
+     * now; per-view connection on a doc-show signal can be added
+     * later when those concerns are sorted out. */
     return win;
 }
 
@@ -623,15 +545,6 @@ void
 moo_gdb_win_free (MooGdbWin *win)
 {
     if (!win) return;
-
-    if (win->line_mark_handler_id)
-        g_signal_remove_emission_hook (
-            g_signal_lookup ("line-mark-clicked", MOO_TYPE_TEXT_VIEW),
-            win->line_mark_handler_id);
-
-    MooEditor *editor = moo_editor_instance ();
-    if (win->doc_loaded_handler_id)
-        g_signal_handler_disconnect (editor, win->doc_loaded_handler_id);
 
     clear_exec_mark (win);
 
