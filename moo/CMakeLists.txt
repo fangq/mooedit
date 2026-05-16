@@ -985,6 +985,9 @@ endif()
 if(MOO_BUILD_MARKDOWN)
     list(APPEND _plugins_sources plugins/moomarkdown.cpp)
 endif()
+if(MOO_BUILD_WIKI)
+    list(APPEND _plugins_sources plugins/moowiki.cpp)
+endif()
 
 # ════════════════════════════════════════════════════════════════════════════
 # Aggregate all moo_sources (prefix with ${_src}/ for absolute paths)

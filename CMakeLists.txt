@@ -139,6 +139,12 @@ set(MOO_WITH_MARKDOWN "auto" CACHE STRING
 set_property(CACHE MOO_WITH_MARKDOWN PROPERTY STRINGS auto yes no)
 include(MooMarkdown)   # sets MOO_BUILD_MARKDOWN, PkgConfig::MD4C{,_HTML}
 
+# ── Wiki preview (in-tree converter, no external deps) ───────────────────────
+set(MOO_WITH_WIKI "auto" CACHE STRING
+    "Build with Habitat/UseMod-style wiki preview pane: yes, no, or auto")
+set_property(CACHE MOO_WITH_WIKI PROPERTY STRINGS auto yes no)
+include(MooWiki)   # sets MOO_BUILD_WIKI (always TRUE unless explicitly disabled)
+
 # ── Build-target options ──────────────────────────────────────────────────────
 option(MOO_BUILD_MODULE "Build standalone Python module instead of medit app" OFF)
 
@@ -268,6 +274,7 @@ target_compile_definitions(moo_build_settings INTERFACE
     $<$<BOOL:${MOO_BUILD_CTAGS}>:MOO_BUILD_CTAGS=1>
     $<$<BOOL:${MOO_BUILD_SPELL}>:MOO_BUILD_SPELL=1>
     $<$<BOOL:${MOO_BUILD_MARKDOWN}>:MOO_BUILD_MARKDOWN=1>
+    $<$<BOOL:${MOO_BUILD_WIKI}>:MOO_BUILD_WIKI=1>
     $<$<BOOL:${MOO_ENABLE_COVERAGE}>:MOO_ENABLE_COVERAGE=1>
     $<$<BOOL:${MOO_BROKEN_GTK_THEME}>:MOO_BROKEN_GTK_THEME=1>
 )
