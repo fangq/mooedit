@@ -157,7 +157,7 @@ moo_gdb_plugin_init (MooGdbPlugin *plugin)
         "display-name",     _("Start Debugging"),
         "label",            _("_Start Debugging"),
         "tooltip",          _("Run the current target under gdb"),
-        "default-accel",    "<ctrl>F5",
+        "default-accel",    "<Ctrl>F5",
         "closure-callback", debug_start_cb,
         nullptr);
 
@@ -165,7 +165,7 @@ moo_gdb_plugin_init (MooGdbPlugin *plugin)
         "display-name",     _("Continue"),
         "label",            _("_Continue"),
         "tooltip",          _("Continue execution until the next stop"),
-        "default-accel",    "<ctrl>F8",
+        "default-accel",    "<Ctrl>F8",
         "closure-callback", debug_continue_cb,
         nullptr);
 
@@ -189,7 +189,7 @@ moo_gdb_plugin_init (MooGdbPlugin *plugin)
         "display-name",     _("Step Out"),
         "label",            _("Step Ou_t"),
         "tooltip",          _("Run until the current function returns"),
-        "default-accel",    "<shift>F11",
+        "default-accel",    "<Shift>F11",
         "closure-callback", debug_step_out_cb,
         nullptr);
 
@@ -220,25 +220,28 @@ moo_gdb_plugin_init (MooGdbPlugin *plugin)
     if (xml)
     {
         plugin->ui_merge_id = moo_ui_xml_new_merge_id (xml);
-        /* Slot everything under the existing "Edit" menu for now —
-         * a dedicated "Debug" submenu in medit.xml lands in commit 8
-         * alongside the project-config dialog. */
-        const char *const items[] = {
-            "DebugTestConnection",
-            "DebugConfigure",
-            "DebugStart",
-            "DebugContinue",
-            "DebugStepOver",
-            "DebugStepInto",
-            "DebugStepOut",
-            "DebugPause",
-            "DebugStop",
-            "DebugToggleBreakpoint",
-        };
-        for (int i = 0; i < (int) G_N_ELEMENTS (items); i++)
-            moo_ui_xml_add_item (xml, plugin->ui_merge_id,
-                                 "Editor/Menubar/Edit",
-                                 items[i], items[i], -1);
+        /* Slot a "GDB Debugger" submenu under Tools so the debug
+         * actions aren't cluttering the Edit menu.  moo_ui_xml's
+         * markup syntax supports nested <item> blocks — an item
+         * with children is treated as a submenu. */
+        moo_ui_xml_insert_markup (xml, plugin->ui_merge_id,
+            "Editor/Menubar/Tools/ToolsMenu", -1,
+            "<item name=\"MooGdb\" _label=\"_GDB Debugger\">"
+            "  <item action=\"DebugStart\"/>"
+            "  <item action=\"DebugContinue\"/>"
+            "  <separator/>"
+            "  <item action=\"DebugStepOver\"/>"
+            "  <item action=\"DebugStepInto\"/>"
+            "  <item action=\"DebugStepOut\"/>"
+            "  <separator/>"
+            "  <item action=\"DebugPause\"/>"
+            "  <item action=\"DebugStop\"/>"
+            "  <separator/>"
+            "  <item action=\"DebugToggleBreakpoint\"/>"
+            "  <separator/>"
+            "  <item action=\"DebugConfigure\"/>"
+            "  <item action=\"DebugTestConnection\"/>"
+            "</item>");
     }
 
     g_type_class_unref (klass);
