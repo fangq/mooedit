@@ -547,7 +547,14 @@ moo_gdb_session_pause (MooGdbSession *s)
 
 /* Decode a `bkpt={number="N",fullname="...",file="...",line="L",...}`
  * value into (number, file, line) and emit "breakpoint-added".
- * `bkpt_val` may be NULL — we just return without firing. */
+ * `bkpt_val` may be NULL — we just return without firing.
+ *
+ * Pending breakpoints (set via -break-insert -f before any binary
+ * has been loaded) come back without fullname/file/line; gdb stuffs
+ * the original location into `original-location="file:line"`
+ * instead.  Parse that fallback so the UI's placeholder
+ * (registered under the same file:line key it requested) can still
+ * find a match. */
 static void
 emit_bp_added_from_bkpt (MooGdbSession *s, MooGdbMiValue *bkpt_val)
 {
@@ -556,6 +563,10 @@ emit_bp_added_from_bkpt (MooGdbSession *s, MooGdbMiValue *bkpt_val)
     int   number = -1;
     const char *file = NULL;
     int   line = 0;
+    /* Buffer for the parsed-from-original-location filename — must
+     * outlive the signal emission below. */
+    char  file_buf[1024];
+    file_buf[0] = '\0';
 
     v = moo_gdb_mi_value_tuple_get (bkpt_val, "number");
     if (v) {
@@ -571,8 +582,33 @@ emit_bp_added_from_bkpt (MooGdbSession *s, MooGdbMiValue *bkpt_val)
         if (ls) line = atoi (ls);
     }
 
-    if (number >= 0)
-        g_signal_emit (s, signals[SIG_BP_ADDED], 0, number, file, line);
+    /* Fallback for pending breakpoints. */
+    if (!file) {
+        v = moo_gdb_mi_value_tuple_get (bkpt_val, "original-location");
+        if (v) {
+            const char *orig = moo_gdb_mi_value_string (v);
+            if (orig) {
+                const char *colon = strrchr (orig, ':');
+                if (colon && colon > orig
+                    && (gsize)(colon - orig) < sizeof file_buf)
+                {
+                    memcpy (file_buf, orig, colon - orig);
+                    file_buf[colon - orig] = '\0';
+                    file = file_buf;
+                    if (line <= 0)
+                        line = atoi (colon + 1);
+                }
+            }
+        }
+    }
+
+    /* Still no file — gdb gave us a function-name breakpoint or
+     * similar location we can't easily map to a margin mark.  Drop
+     * silently rather than crash downstream consumers that key by
+     * (file, line). */
+    if (number < 0 || !file) return;
+
+    g_signal_emit (s, signals[SIG_BP_ADDED], 0, number, file, line);
 }
 
 static void

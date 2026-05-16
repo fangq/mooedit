@@ -199,6 +199,13 @@ lookup_bp (MooGdbWin *win, const char *file, int line)
 static void
 register_bp (MooGdbWin *win, GdbBreakpoint *bp)
 {
+    /* bp->file must be non-NULL — g_str_hash requires a real C
+     * string.  Caller is expected to filter NULL paths before
+     * calling us; this is a belt-and-braces guard. */
+    if (!bp->file) {
+        free_bp (bp);
+        return;
+    }
     GHashTable *line_tbl = (GHashTable *)
         g_hash_table_lookup (win->bp_by_file, bp->file);
     if (!line_tbl) {
