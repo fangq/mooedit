@@ -706,10 +706,49 @@ moo_gdb_win_start (MooGdbWin *win)
             }
         }
     }
-    if (target) {
-        moo_gdb_session_set_target (s, target);
+
+    /* Verify the inferred target exists & is executable before
+     * sending anything to gdb — otherwise -file-exec-and-symbols
+     * fails silently and the user sees a cascade of "No symbol
+     * table is loaded" / "The program is not being run" errors
+     * with no clue where to look.  Loud, actionable error in the
+     * console is much friendlier. */
+    if (!target || !*target) {
+        console_append (win,
+            "Cannot start: no target binary configured.  "
+            "Use Edit → Configure Debug Target... or save the active "
+            "document so its filename can be used as the target.\n",
+            "error");
         g_free (target);
+        return;
     }
+    if (!g_file_test (target, G_FILE_TEST_IS_REGULAR)) {
+        char *msg = g_strdup_printf (
+            "Cannot start: target binary `%s` does not exist.\n"
+            "Either compile it (`gcc -g -O0 source.c -o %s`) or "
+            "set a different binary via Edit → Configure Debug Target...\n",
+            target, target);
+        console_append (win, msg, "error");
+        g_free (msg);
+        g_free (target);
+        return;
+    }
+    if (!g_file_test (target, G_FILE_TEST_IS_EXECUTABLE)) {
+        char *msg = g_strdup_printf (
+            "Warning: target `%s` is not marked executable — "
+            "gdb may refuse to run it.\n", target);
+        console_append (win, msg, "error");
+    }
+
+    /* Log the actual target so the user can verify the heuristic
+     * picked the right binary. */
+    {
+        char *msg = g_strdup_printf ("Loading target: %s\n", target);
+        console_append (win, msg, "log");
+        g_free (msg);
+    }
+    moo_gdb_session_set_target (s, target);
+    g_free (target);
 
     /* Apply optional cwd and argv. */
     if (win->cfg_cwd && *win->cfg_cwd)
