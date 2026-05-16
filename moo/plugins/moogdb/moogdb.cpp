@@ -149,11 +149,14 @@ moo_gdb_plugin_init (MooGdbPlugin *plugin)
         "closure-callback", debug_toggle_bp_cb,
         nullptr);
 
+    /* F5 is medit's Reload — don't take it.  Ctrl+F5 is a common
+     * IDE convention for "Start Debugging" (matches VS Code's
+     * "Run without debugging" key) and is free in medit. */
     moo_window_class_new_action (klass, "DebugStart", NULL,
         "display-name",     _("Start Debugging"),
         "label",            _("_Start Debugging"),
         "tooltip",          _("Run the current target under gdb"),
-        "default-accel",    "F5",
+        "default-accel",    "<ctrl>F5",
         "closure-callback", debug_start_cb,
         nullptr);
 
@@ -161,7 +164,7 @@ moo_gdb_plugin_init (MooGdbPlugin *plugin)
         "display-name",     _("Continue"),
         "label",            _("_Continue"),
         "tooltip",          _("Continue execution until the next stop"),
-        "default-accel",    "<shift>F5",
+        "default-accel",    "<ctrl>F8",
         "closure-callback", debug_continue_cb,
         nullptr);
 
