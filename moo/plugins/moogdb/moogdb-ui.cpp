@@ -248,6 +248,11 @@ attach_visual_mark (G_GNUC_UNUSED MooGdbWin *win, GdbBreakpoint *bp)
         /* line is 1-based in our model; MooTextBuffer expects 0-based */
         moo_text_buffer_add_line_mark (MOO_TEXT_BUFFER (buf),
                                        bp->mark, bp->line - 1);
+        /* MooTextView's left gutter doesn't display marks unless
+         * the show-line-marks property is on (the default is off).
+         * Turn it on for the view we just dropped a mark in so the
+         * gutter actually renders the red dot. */
+        g_object_set (view, "show-line-marks", TRUE, NULL);
         break;
     }
     moo_edit_array_free (docs);
@@ -316,6 +321,7 @@ set_exec_mark (MooGdbWin *win, const char *file, int line)
     moo_line_mark_set_stock_id (win->exec_mark, "gtk-go-forward");
     moo_text_buffer_add_line_mark (MOO_TEXT_BUFFER (buf),
                                    win->exec_mark, line - 1);
+    g_object_set (view, "show-line-marks", TRUE, NULL);
 
     /* Scroll the view so the user can actually see where we
      * stopped.  moo_edit_window_set_active_doc focuses the right
