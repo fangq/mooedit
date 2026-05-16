@@ -989,11 +989,11 @@ wiki_process_line (WikiCtx *ctx, const char *line)
 
                 char *inlined = wiki_inline (ctx, display);
                 /* Prefix the rendered heading text with the section
-                 * number so the body shows "1.2 Title" in front of the
-                 * H2/H3 chrome — matches how Habitat's <toc> + heading
-                 * numbering looks. */
+                 * number plus a trailing dot so the body shows
+                 * "1.2. Title" in front of the H2/H3 chrome.  Mirrors
+                 * Habitat's TOC + heading numbering style. */
                 char *heading_text = number
-                    ? g_strdup_printf ("%s %s", number, inlined)
+                    ? g_strdup_printf ("%s. %s", number, inlined)
                     : g_strdup (inlined);
 
                 if (anchor)
@@ -1362,9 +1362,10 @@ wiki_to_html (const char *src)
                 if (li_open)
                     g_string_append (toc, "</li>\n");
                 g_string_append_printf (toc,
-                    "<li><a href=\"#%s\">%s %s</a>",
+                    "<li><a href=\"#%s\">%s%s %s</a>",
                     e->anchor,
                     e->number ? e->number : "",
+                    e->number ? "." : "",
                     e->title);
                 li_open = TRUE;
             }

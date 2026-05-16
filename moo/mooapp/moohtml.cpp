@@ -2169,13 +2169,13 @@ make_li_number (int     count,
         case OL_LOWER_ROMAN:
             g_warning ("implement me");
         case OL_NUM:
-            return g_strdup_printf (" %d. ", count);
+            return g_strdup_printf ("%d. ", count);
         case OL_LOWER_ALPHA:
             g_return_val_if_fail (count <= 26, nullptr);
-            return g_strdup_printf (" %c. ", count - 1 + 'a');
+            return g_strdup_printf ("%c. ", count - 1 + 'a');
         case OL_UPPER_ALPHA:
             g_return_val_if_fail (count <= 26, nullptr);
-            return g_strdup_printf (" %c. ", count - 1 + 'A');
+            return g_strdup_printf ("%c. ", count - 1 + 'A');
     }
 
     g_return_val_if_reached (nullptr);
@@ -2620,9 +2620,25 @@ out:
  */
 
 typedef struct {
-    GPtrArray *cells;     /* char * per cell (utf-8) */
+    char *text;       /* pango markup; g_free-owned */
+    int   colspan;    /* >= 1 */
+    int   rowspan;    /* >= 1 */
+    gboolean is_header;
+} TableCell;
+
+typedef struct {
+    GPtrArray *cells;     /* TableCell* per cell */
     gboolean   is_header; /* came from <thead> or had any <th> */
 } TableRow;
+
+static void
+table_cell_free (gpointer p)
+{
+    TableCell *c = (TableCell *) p;
+    if (!c) return;
+    g_free (c->text);
+    g_free (c);
+}
 
 static void
 table_row_free (gpointer p)
@@ -2715,7 +2731,7 @@ table_collect_rows (xmlNode *elm, GPtrArray *rows, gboolean inside_thead)
         if (IS_NAMED_ELM_ (child, "tr"))
         {
             TableRow *row = g_new0 (TableRow, 1);
-            row->cells     = g_ptr_array_new_with_free_func (g_free);
+            row->cells     = g_ptr_array_new_with_free_func (table_cell_free);
             row->is_header = inside_thead;
 
             for (xmlNode *c = child->children; c != nullptr; c = c->next)
@@ -2729,7 +2745,29 @@ table_collect_rows (xmlNode *elm, GPtrArray *rows, gboolean inside_thead)
                     GString *m = g_string_new (NULL);
                     xml_cell_to_pango (c, m);
                     g_strstrip (m->str);
-                    g_ptr_array_add (row->cells, g_string_free (m, FALSE));
+
+                    TableCell *cell = g_new0 (TableCell, 1);
+                    cell->text      = g_string_free (m, FALSE);
+                    cell->colspan   = 1;
+                    cell->rowspan   = 1;
+                    cell->is_header = IS_NAMED_ELM_ (c, "th") || inside_thead;
+
+                    xmlChar *cs = xmlGetProp (c, (const xmlChar *) "colspan");
+                    if (cs)
+                    {
+                        int v = atoi ((const char *) cs);
+                        if (v > 1) cell->colspan = v;
+                        xmlFree (cs);
+                    }
+                    xmlChar *rs = xmlGetProp (c, (const xmlChar *) "rowspan");
+                    if (rs)
+                    {
+                        int v = atoi ((const char *) rs);
+                        if (v > 1) cell->rowspan = v;
+                        xmlFree (rs);
+                    }
+
+                    g_ptr_array_add (row->cells, cell);
                 }
             }
             g_ptr_array_add (rows, row);
@@ -2813,12 +2851,18 @@ process_table_elm (GtkTextView *view,
         return;
     }
 
-    /* Column count = max cell count across all rows. */
+    /* Column count = max of (sum of colspans in row) across rows. */
     for (guint r = 0; r < rows->len; r++)
     {
         TableRow *row = (TableRow *) rows->pdata[r];
-        if (row->cells->len > ncols)
-            ncols = row->cells->len;
+        guint sum = 0;
+        for (guint i = 0; i < row->cells->len; i++)
+        {
+            TableCell *cell = (TableCell *) row->cells->pdata[i];
+            sum += cell->colspan;
+        }
+        if (sum > ncols)
+            ncols = sum;
     }
     if (ncols == 0)
     {
@@ -2826,10 +2870,10 @@ process_table_elm (GtkTextView *view,
         return;
     }
 
-    /* Build the grid: one GtkLabel per cell, attached at (col, row).
-     * Plain-text content via xmlNodeGetContent — we already collected
-     * that in table_collect_rows.  Rich Markdown inside cells (links,
-     * bold) is sacrificed here in exchange for real cell borders. */
+    /* Build the grid: one GtkLabel per cell, attached at (col, row)
+     * with width/height taken from colspan/rowspan.  A `covered` map
+     * tracks (col, row) positions already claimed by a rowspan from
+     * an earlier row so the next cell skips over them. */
     grid = gtk_grid_new ();
     gtk_style_context_add_class (gtk_widget_get_style_context (grid),
                                  "moo-md-table");
@@ -2838,45 +2882,51 @@ process_table_elm (GtkTextView *view,
                                     GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     gtk_grid_set_row_spacing (GTK_GRID (grid), 0);
     gtk_grid_set_column_spacing (GTK_GRID (grid), 0);
-    /* Keep the grid at its natural size — let the text view scroll
-     * around it rather than expanding to fill the viewport. */
     gtk_widget_set_halign (grid, GTK_ALIGN_START);
     gtk_widget_set_valign (grid, GTK_ALIGN_START);
     gtk_widget_set_hexpand (grid, FALSE);
     gtk_widget_set_vexpand (grid, FALSE);
-    /* Don't take focus on click — otherwise GtkTextView keeps
-     * scrolling the grid into view and the widget straddles the
-     * viewport, causing an oscillation. */
     gtk_widget_set_can_focus (grid, FALSE);
+
+    /* covered[row * ncols + col] — TRUE iff that slot is claimed by
+     * a rowspan from an earlier row.  We never need to mark slots in
+     * the *current* row from cells in the same row, since cells in a
+     * row are emitted left-to-right and the colspan just bumps the
+     * next-cell column counter. */
+    gboolean *covered = g_new0 (gboolean, rows->len * ncols);
 
     for (guint r = 0; r < rows->len; r++)
     {
         TableRow *row = (TableRow *) rows->pdata[r];
-        for (guint c = 0; c < ncols; c++)
+        guint     col = 0;
+        for (guint i = 0; i < row->cells->len; i++)
         {
-            const char *cell = c < row->cells->len
-                ? (const char *) row->cells->pdata[c] : "";
+            TableCell *cell = (TableCell *) row->cells->pdata[i];
+
+            /* Skip slots already taken by an earlier row's rowspan. */
+            while (col < ncols && covered[r * ncols + col])
+                col++;
+            if (col >= ncols)
+                break;
+
+            int width  = cell->colspan;
+            int height = cell->rowspan;
+            if (col + width > ncols)
+                width = ncols - col;
+            if (r + height > rows->len)
+                height = rows->len - r;
+
             GtkWidget *label = gtk_label_new (NULL);
-            gtk_label_set_markup (GTK_LABEL (label), cell);
-            /* halign=FILL so the label spans the column width and the
-             * CSS border draws around the full cell rectangle (not
-             * just the text); valign stays START to avoid the
-             * height-for-width over-allocation that FILL+wrap caused
-             * earlier.  Text inside the label is still left-aligned
-             * via gtk_label_set_xalign. */
+            gtk_label_set_markup (GTK_LABEL (label),
+                                  cell->text ? cell->text : "");
             gtk_label_set_xalign (GTK_LABEL (label), 0.0);
             gtk_label_set_yalign (GTK_LABEL (label), 0.5);
             gtk_widget_set_halign (label, GTK_ALIGN_FILL);
             gtk_widget_set_valign (label, GTK_ALIGN_FILL);
             gtk_widget_set_hexpand (label, TRUE);
             gtk_widget_set_vexpand (label, FALSE);
-            /* Labels are focusable + selectable so the user can click
-             * to focus and drag-select cell text.  Each label is
-             * single-line and fits in the viewport, so the auto
-             * scroll-to-focus doesn't oscillate the way it did when
-             * the whole grid was the focus target. */
             gtk_label_set_selectable (GTK_LABEL (label), TRUE);
-            if (row->is_header)
+            if (cell->is_header || row->is_header)
                 gtk_style_context_add_class (
                     gtk_widget_get_style_context (label), "moo-md-th");
             gtk_style_context_add_provider (
@@ -2884,9 +2934,18 @@ process_table_elm (GtkTextView *view,
                 GTK_STYLE_PROVIDER (table_css_provider ()),
                 GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
             gtk_widget_show (label);
-            gtk_grid_attach (GTK_GRID (grid), label, c, r, 1, 1);
+            gtk_grid_attach (GTK_GRID (grid), label,
+                             col, r, width, height);
+
+            /* Mark every (row, col) slot the cell spans as covered. */
+            for (int dr = 0; dr < height; dr++)
+                for (int dc = 0; dc < width; dc++)
+                    covered[(r + dr) * ncols + (col + dc)] = TRUE;
+
+            col += width;
         }
     }
+    g_free (covered);
     gtk_widget_show (grid);
 
     /* Embed the grid into the text view at a child anchor.  Tracked via
