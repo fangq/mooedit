@@ -388,17 +388,26 @@ wiki_extract_block (WikiCtx *ctx, const char *src,
             {
                 gsize body_len = end - body;
                 char *inner    = g_strndup (body, body_len);
+                /* HTML-escape inner content before stashing.  <pre>
+                 * and <nowiki> bodies bypass the per-line escape
+                 * pass, but they still end up in the final HTML
+                 * stream; if we don't escape "<q.fang at e.com>"
+                 * here libxml2 sees it as an unknown tag and warns.
+                 * The "<pre>" wrapper itself stays unescaped so the
+                 * block renders as preformatted text. */
+                char *escaped  = wiki_quote_html (inner);
                 char *to_save;
                 char *placeholder;
                 if (wrap_with)
                     to_save = g_strdup_printf ("<%s>%s</%s>",
-                                               wrap_with, inner, wrap_with);
+                                               wrap_with, escaped, wrap_with);
                 else
-                    to_save = g_strdup (inner);
+                    to_save = g_strdup (escaped);
                 placeholder = wiki_save_raw (ctx, to_save);
                 g_string_append (out, placeholder);
                 g_free (placeholder);
                 g_free (to_save);
+                g_free (escaped);
                 g_free (inner);
                 p = end + close_len;
                 continue;
@@ -868,6 +877,36 @@ wiki_process_line (WikiCtx *ctx, const char *line)
                 wiki_close_all_blocks (ctx);
                 g_string_append (ctx->out, "\x01TOC\x01\n");
                 return;
+            }
+        }
+    }
+
+    /* ---- Block-level placeholder: a line that's just
+     * \x01<digits>\x01 (optionally surrounded by whitespace) is a
+     * stashed protected-region marker (<pre>/<nowiki>/<code>) from
+     * Phase 1.  When restored in Phase 4 the content typically has
+     * its own block-level tag (e.g. <pre>...</pre>), so we mustn't
+     * wrap it in <p> — otherwise libxml2 reports "<pre> inside <p>"
+     * and closes the paragraph prematurely.  Emit on its own line at
+     * block level. */
+    {
+        const char *q = line;
+        while (*q == ' ' || *q == '\t') q++;
+        if (*q == '\x01')
+        {
+            const char *r = q + 1;
+            while (*r >= '0' && *r <= '9') r++;
+            if (r > q + 1 && *r == '\x01')
+            {
+                const char *tail = r + 1;
+                while (*tail == ' ' || *tail == '\t') tail++;
+                if (*tail == '\0')
+                {
+                    wiki_close_all_blocks (ctx);
+                    g_string_append_len (ctx->out, q, r + 1 - q);
+                    g_string_append_c (ctx->out, '\n');
+                    return;
+                }
             }
         }
     }
@@ -1622,7 +1661,14 @@ detect_preview_type (MooEditView *view, const char *first_line)
                     kind = PREVIEW_MARKDOWN;
                 else if (g_ascii_strcasecmp (ext, ".wiki") == 0
                          || g_ascii_strcasecmp (ext, ".wp") == 0
-                         || g_ascii_strcasecmp (ext, ".usemod") == 0)
+                         || g_ascii_strcasecmp (ext, ".usemod") == 0
+                         /* .txt is the de-facto Habitat convention —
+                          * plain-text README / NEWS / CHANGELOG files
+                          * often use the wiki dialect.  Users who'd
+                          * rather see the placeholder can drop a
+                          * <!-- markdown --> marker on line 1 (or
+                          * leave the pane hidden). */
+                         || g_ascii_strcasecmp (ext, ".txt") == 0)
                     kind = PREVIEW_WIKI;
             }
             g_free (filename);
@@ -1701,9 +1747,20 @@ page_preview_render (PagePreviewWindowPlugin *plugin, MooEditView *view_hint)
         /* md4c writes only the <body> contents; we already provided
          * the envelope.  MD_DIALECT_GITHUB enables tables,
          * strikethrough, task-lists and autolinks. */
+        /* MD_DIALECT_GITHUB enables tables/strikethrough/task lists/
+         * autolinks.  ADD MD_FLAG_NOHTMLBLOCKS | MD_FLAG_NOHTMLSPANS
+         * to disable raw HTML passthrough — real-world README files
+         * often contain things like "<param1>" or "<q.fang at e.com>"
+         * which md4c would otherwise emit verbatim, leaving libxml2
+         * to choke on the resulting unbalanced tags.  Note: this also
+         * disables intentional inline HTML; the preview is just a
+         * preview, so the trade-off is worth it. */
+        unsigned md_flags = MD_DIALECT_GITHUB
+                            | MD_FLAG_NOHTMLBLOCKS
+                            | MD_FLAG_NOHTMLSPANS;
         int rc = md_html (text, (MD_SIZE) strlen (text),
                           md4c_output_cb, html,
-                          MD_DIALECT_GITHUB, 0);
+                          md_flags, 0);
         if (rc != 0)
         {
             g_string_truncate (html, 0);
@@ -1860,8 +1917,14 @@ page_preview_window_plugin_create (PagePreviewWindowPlugin *plugin)
      * it creates per-element don't set any paragraph margins.  Adding view-
      * level defaults gives every paragraph a few pixels of breathing room
      * (overridable per-tag, which is what headings and <pre> already do). */
-    gtk_text_view_set_pixels_above_lines (GTK_TEXT_VIEW (html), 3);
-    gtk_text_view_set_pixels_below_lines (GTK_TEXT_VIEW (html), 3);
+    /* Keep view-level pixels-above/below small so list items and
+     * other line-by-line content (headings, etc.) don't get bloated
+     * vertically.  Paragraph-level spacing is added in process_p_elm
+     * by emitting an extra forced newline at the end of each <p>;
+     * that gives one blank-line gap between paragraphs without
+     * affecting <li>/<dt>/<dd> rendering. */
+    gtk_text_view_set_pixels_above_lines (GTK_TEXT_VIEW (html), 2);
+    gtk_text_view_set_pixels_below_lines (GTK_TEXT_VIEW (html), 2);
     gtk_text_view_set_pixels_inside_wrap (GTK_TEXT_VIEW (html), 2);
     gtk_text_view_set_left_margin   (GTK_TEXT_VIEW (html), 10);
     gtk_text_view_set_right_margin  (GTK_TEXT_VIEW (html), 10);

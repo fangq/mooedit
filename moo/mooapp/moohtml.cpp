@@ -1957,9 +1957,25 @@ process_p_elm (GtkTextView    *view,
                MooHtmlTag     *current,
                GtkTextIter    *iter)
 {
-    moo_html_new_line (view, buffer, iter, current, FALSE);
-    process_elm_body (view, buffer, elm, current, iter);
-    moo_html_new_line (view, buffer, iter, current, FALSE);
+    /* Force-create a per-paragraph tag carrying pixels-above-lines /
+     * pixels-below-lines.  GTK applies those only to the first/last
+     * line of a paragraph, so they show up as the visible gap
+     * BETWEEN paragraphs — without inflating spacing of every list
+     * item / heading / code line which all use the view-level
+     * default.  Created with mask=0 + force=TRUE so the tag inherits
+     * the parent's style without adding any extra mask attributes. */
+    MooHtmlAttr p_attr;
+    MooHtmlTag *p_tag;
+    memset (&p_attr, 0, sizeof p_attr);
+    p_tag = moo_html_create_tag (view, &p_attr, current, TRUE);
+    g_object_set (G_OBJECT (p_tag),
+                  "pixels-above-lines", 8,
+                  "pixels-below-lines", 8,
+                  NULL);
+
+    moo_html_new_line (view, buffer, iter, p_tag, FALSE);
+    process_elm_body (view, buffer, elm, p_tag, iter);
+    moo_html_new_line (view, buffer, iter, p_tag, FALSE);
 }
 
 
@@ -2234,8 +2250,11 @@ process_ol_elm (GtkTextView    *view,
             parse_int ((char*) value, &count);
 
             number = make_li_number (count, list_type);
-            /* Four spaces of indent per nesting level beyond the first. */
-            indent = (data->list_depth - 1) * 4;
+            /* Four-space base indent + four more per nesting level
+             * (so top-level items sit at column 4 — gives the bullet
+             * room to breathe against the left margin and matches
+             * the visual offset users expect from a list block). */
+            indent = data->list_depth * 4;
             prefix = g_strdup_printf ("%*s%s", indent, "", number);
             had_new_line = data->new_line;
 
@@ -2311,7 +2330,7 @@ process_li_elm (GtkTextView    *view,
     /* list_depth==0 means this <li> was processed outside a <ul>/<ol>
      * (malformed HTML); fall back to a sane default rather than crash. */
     depth = data->list_depth > 0 ? data->list_depth : 1;
-    indent = (depth - 1) * 4;
+    indent = depth * 4;
     prefix = g_strdup_printf ("%*s%s ", indent, "",
                               bullets[(depth - 1) % G_N_ELEMENTS (bullets)]);
 
@@ -2526,7 +2545,13 @@ process_span_elm (GtkTextView *view, GtkTextBuffer *buffer, xmlNode *elm,
  * theme-supplied separator is a single faint pixel, easy to miss in
  * a long document; force a more visible thickness here.  The
  * "wikiline-thick" class is used by the wiki preview for 6+-dash
- * rules so they read as a heavier divider. */
+ * rules so they read as a heavier divider.
+ *
+ * No CSS `margin` here — GtkTextView allocates the widget by its
+ * natural size and any extra margin triggers "Negative content
+ * height" warnings during size-allocate.  We get visual breathing
+ * room around the rule from the surrounding paragraph spacing in
+ * the text view instead. */
 static GtkCssProvider *
 moo_hr_css_provider (void)
 {
@@ -2538,7 +2563,6 @@ moo_hr_css_provider (void)
             "separator.moo-hr { "
             "  min-height: 2px; "
             "  background-color: alpha(currentColor, 0.45); "
-            "  margin: 6px 0; "
             "}\n"
             "separator.moo-hr.wikiline-thick { "
             "  min-height: 4px; "
@@ -2851,8 +2875,12 @@ static const char TABLE_CSS[] =
     ".moo-md-blockquote { "
     "  border-left: 4px solid alpha(currentColor, 0.35); "
     "  background: alpha(currentColor, 0.06); "
-    "  padding: 6px 12px; "
-    "  margin: 4px 0; "
+    /* 8 pt left gap between the border and the text (≈ 11 px),
+     * matching the user-visible "padding: 8pt" Habitat ships with.
+     * Vertical padding stays smaller so the block doesn't grow tall
+     * for short single-paragraph quotes. */
+    "  padding: 8px 8pt 8px 8pt; "
+    "  margin: 6px 0; "
     "  min-height: 24px; "
     "}\n"
     ".moo-md-blockquote label { "
