@@ -1708,6 +1708,8 @@ static void process_table_elm   (GtkTextView *view, GtkTextBuffer *buffer, xmlNo
                                  MooHtmlTag *parent, GtkTextIter *iter);
 static void process_tr_elm      (GtkTextView *view, GtkTextBuffer *buffer, xmlNode *elm,
                                  MooHtmlTag *parent, GtkTextIter *iter);
+static GtkCssProvider *table_css_provider (void);
+static void            xml_cell_to_pango   (xmlNode *elm, GString *out);
 
 
 static void
@@ -1879,35 +1881,56 @@ process_elm_body (GtkTextView    *view,
         }
         else if (IS_NAMED_ELM_ (child, "blockquote"))
         {
-            /* Render <blockquote> as a left-indented italic block with
-             * a visible left bar (▎) at the start of each contained
-             * paragraph.  The markdown preview plugin paints a soft
-             * background on MOO_HTML_BLOCKQUOTE tags; the bar character
-             * itself is the closest text-mode substitute for GitHub's
-             * left border. */
-            MooHtmlAttr bq_attr;
-            MooHtmlTag *bq_tag;
-            memset (&bq_attr, 0, sizeof bq_attr);
-            bq_attr.mask        = MOO_HTML_LEFT_MARGIN | MOO_HTML_BLOCKQUOTE
-                                  | MOO_HTML_ITALIC;
-            bq_attr.left_margin = 12;
-            bq_tag = moo_html_create_tag (view, &bq_attr, current, FALSE);
+            /* Render <blockquote> as a widget anchor: a single GtkLabel
+             * with Pango markup, wrapped in a CSS-styled container that
+             * draws a continuous left border across all wrapped lines.
+             * The "▎" character trick only painted the bar on the first
+             * line of each paragraph — a widget with border-left gets
+             * it right.  Rich content inside blockquotes (links, code)
+             * survives via the same Pango-markup pass used for table
+             * cells. */
+            GString            *m   = g_string_new (NULL);
+            GtkWidget          *box = gtk_event_box_new ();
+            GtkWidget          *lbl = gtk_label_new (NULL);
+            GtkTextChildAnchor *bq_anchor;
+            MooHtmlData        *bq_data = moo_html_get_data (view);
+
+            xml_cell_to_pango (child, m);
+            /* Trim any leading/trailing whitespace from the markup so
+             * the widget doesn't show stray blank lines. */
+            g_strstrip (m->str);
+
+            gtk_label_set_markup (GTK_LABEL (lbl), m->str);
+            gtk_label_set_xalign (GTK_LABEL (lbl), 0.0);
+            gtk_label_set_yalign (GTK_LABEL (lbl), 0.0);
+            gtk_label_set_line_wrap (GTK_LABEL (lbl), TRUE);
+            gtk_label_set_line_wrap_mode (GTK_LABEL (lbl), PANGO_WRAP_WORD_CHAR);
+            gtk_label_set_selectable (GTK_LABEL (lbl), TRUE);
+            gtk_widget_set_halign (lbl, GTK_ALIGN_FILL);
+            gtk_widget_set_valign (lbl, GTK_ALIGN_START);
+            gtk_widget_show (lbl);
+
+            gtk_container_add (GTK_CONTAINER (box), lbl);
+            gtk_style_context_add_class (gtk_widget_get_style_context (box),
+                                         "moo-md-blockquote");
+            gtk_style_context_add_provider (
+                gtk_widget_get_style_context (box),
+                GTK_STYLE_PROVIDER (table_css_provider ()),
+                GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+            gtk_widget_set_halign (box, GTK_ALIGN_FILL);
+            gtk_widget_set_valign (box, GTK_ALIGN_START);
+            gtk_widget_set_hexpand (box, TRUE);
+            gtk_widget_set_vexpand (box, FALSE);
+            gtk_widget_set_can_focus (box, FALSE);
+            gtk_widget_show (box);
 
             moo_html_new_line (view, buffer, iter, current, FALSE);
-            for (xmlNode *bq = child->children; bq != nullptr; bq = bq->next)
-            {
-                if (!IS_ELEMENT (bq))
-                    continue;
-                moo_html_new_line (view, buffer, iter, bq_tag, FALSE);
-                /* ▎ U+258E (left one-quarter block) + space */
-                moo_html_insert_verbatim (view, buffer, iter, bq_tag,
-                                          "\xe2\x96\x8e ");
-                if (IS_NAMED_ELM_ (bq, "p"))
-                    process_elm_body (view, buffer, bq, bq_tag, iter);
-                else
-                    process_elm_body (view, buffer, bq, bq_tag, iter);
-            }
-            moo_html_new_line (view, buffer, iter, bq_tag, FALSE);
+            bq_anchor = gtk_text_buffer_create_child_anchor (buffer, iter);
+            gtk_text_view_add_child_at_anchor (view, box, bq_anchor);
+            bq_data->rulers = g_slist_prepend (bq_data->rulers, box);
+            moo_html_new_line (view, buffer, iter, current, TRUE);
+
+            g_string_free (m, TRUE);
         }
 
         else if (IS_ELEMENT (child))
@@ -2610,6 +2633,75 @@ table_row_free (gpointer p)
     g_free (r);
 }
 
+/* Walk a cell node's children and emit Pango markup so that simple
+ * inline HTML (<code>, <strong>, <em>, <a>) survives into the
+ * GtkLabel.  Anything we don't recognise falls through as plain text.
+ * The result is owned by caller (g_free). */
+static void
+xml_cell_to_pango (xmlNode *elm, GString *out)
+{
+    for (xmlNode *c = elm->children; c != nullptr; c = c->next)
+    {
+        if (IS_TEXT (c))
+        {
+            char *esc = g_markup_escape_text ((const char *) c->content, -1);
+            g_string_append (out, esc);
+            g_free (esc);
+        }
+        else if (!IS_ELEMENT (c))
+        {
+            continue;
+        }
+        else if (IS_NAMED_ELM_ (c, "code") || IS_NAMED_ELM_ (c, "tt"))
+        {
+            g_string_append (out, "<tt>");
+            xml_cell_to_pango (c, out);
+            g_string_append (out, "</tt>");
+        }
+        else if (IS_NAMED_ELM_ (c, "strong") || IS_NAMED_ELM_ (c, "b"))
+        {
+            g_string_append (out, "<b>");
+            xml_cell_to_pango (c, out);
+            g_string_append (out, "</b>");
+        }
+        else if (IS_NAMED_ELM_ (c, "em") || IS_NAMED_ELM_ (c, "i"))
+        {
+            g_string_append (out, "<i>");
+            xml_cell_to_pango (c, out);
+            g_string_append (out, "</i>");
+        }
+        else if (IS_NAMED_ELM_ (c, "u"))
+        {
+            g_string_append (out, "<u>");
+            xml_cell_to_pango (c, out);
+            g_string_append (out, "</u>");
+        }
+        else if (IS_NAMED_ELM_ (c, "a"))
+        {
+            xmlChar *href = xmlGetProp (c, (const xmlChar *) "href");
+            if (href)
+            {
+                char *esc = g_markup_escape_text ((const char *) href, -1);
+                g_string_append_printf (out,
+                    "<span foreground=\"#1a73e8\" underline=\"single\">");
+                xml_cell_to_pango (c, out);
+                g_string_append (out, "</span>");
+                g_free (esc);
+                xmlFree (href);
+            }
+            else
+            {
+                xml_cell_to_pango (c, out);
+            }
+        }
+        else
+        {
+            /* Unknown inline element — emit its text content verbatim. */
+            xml_cell_to_pango (c, out);
+        }
+    }
+}
+
 /* Collect <tr> rows under `elm`, recursing through <thead>/<tbody>/<tfoot>.
  * inside_thead tracks whether we're descended from a <thead>. */
 static void
@@ -2634,11 +2726,10 @@ table_collect_rows (xmlNode *elm, GPtrArray *rows, gboolean inside_thead)
                     row->is_header = TRUE;
                 if (IS_NAMED_ELM_ (c, "td") || IS_NAMED_ELM_ (c, "th"))
                 {
-                    xmlChar *txt = xmlNodeGetContent (c);
-                    char    *s   = g_strdup (txt ? (const char *) txt : "");
-                    g_strstrip (s);
-                    g_ptr_array_add (row->cells, s);
-                    if (txt) xmlFree (txt);
+                    GString *m = g_string_new (NULL);
+                    xml_cell_to_pango (c, m);
+                    g_strstrip (m->str);
+                    g_ptr_array_add (row->cells, g_string_free (m, FALSE));
                 }
             }
             g_ptr_array_add (rows, row);
@@ -2658,14 +2749,34 @@ table_collect_rows (xmlNode *elm, GPtrArray *rows, gboolean inside_thead)
  * every cell and accept the 2-px-thick interior lines.  Header cells
  * get a slightly darker background. */
 static const char TABLE_CSS[] =
-    "grid.moo-md-table { padding: 0; margin: 4px 0; }\n"
+    /* min-height on the grid + cells prevents GTK from running a
+     * size-allocate pass where allocation < (border+padding), which
+     * produces "Negative content height" warnings during early
+     * layout in GtkTextView. */
+    "grid.moo-md-table { padding: 0; margin: 4px 0; min-height: 24px; }\n"
     "grid.moo-md-table > label { "
     "  padding: 4px 10px; "
+    "  min-height: 16px; "
+    "  min-width: 8px; "
     "  border: 1px solid alpha(currentColor, 0.35); "
     "}\n"
     "grid.moo-md-table > label.moo-md-th { "
     "  font-weight: bold; "
     "  background: alpha(currentColor, 0.08); "
+    "}\n"
+    /* Blockquote: continuous left bar across all wrapped lines via
+     * border-left on the container.  font-style on the inner label
+     * gives the italic look. */
+    ".moo-md-blockquote { "
+    "  border-left: 4px solid alpha(currentColor, 0.35); "
+    "  background: alpha(currentColor, 0.06); "
+    "  padding: 6px 12px; "
+    "  margin: 4px 0; "
+    "  min-height: 24px; "
+    "}\n"
+    ".moo-md-blockquote label { "
+    "  font-style: italic; "
+    "  color: alpha(currentColor, 0.75); "
     "}\n";
 
 static GtkCssProvider *
@@ -2745,7 +2856,8 @@ process_table_elm (GtkTextView *view,
         {
             const char *cell = c < row->cells->len
                 ? (const char *) row->cells->pdata[c] : "";
-            GtkWidget *label = gtk_label_new (cell);
+            GtkWidget *label = gtk_label_new (NULL);
+            gtk_label_set_markup (GTK_LABEL (label), cell);
             /* halign=FILL so the label spans the column width and the
              * CSS border draws around the full cell rectangle (not
              * just the text); valign stays START to avoid the
