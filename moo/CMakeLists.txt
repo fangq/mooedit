@@ -982,11 +982,8 @@ endif()
 if(MOO_BUILD_TERMINAL)
     list(APPEND _plugins_sources plugins/mooterminal.c)
 endif()
-if(MOO_BUILD_MARKDOWN)
-    list(APPEND _plugins_sources plugins/moomarkdown.cpp)
-endif()
-if(MOO_BUILD_WIKI)
-    list(APPEND _plugins_sources plugins/moowiki.cpp)
+if(MOO_BUILD_MARKDOWN OR MOO_BUILD_WIKI)
+    list(APPEND _plugins_sources plugins/moopagepreview.cpp)
 endif()
 
 # ════════════════════════════════════════════════════════════════════════════

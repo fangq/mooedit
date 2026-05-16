@@ -22,11 +22,8 @@
 #ifdef HAVE_VTE
 extern "C" gboolean _moo_terminal_plugin_init(void);
 #endif
-#ifdef MOO_BUILD_MARKDOWN
-extern "C" gboolean _moo_markdown_plugin_init(void);
-#endif
-#ifdef MOO_BUILD_WIKI
-extern "C" gboolean _moo_wiki_plugin_init(void);
+#if defined(MOO_BUILD_MARKDOWN) || defined(MOO_BUILD_WIKI)
+extern "C" gboolean _moo_page_preview_plugin_init(void);
 #endif
 
 void
@@ -48,13 +45,9 @@ moo_plugin_init (void)
 #ifdef MOO_BUILD_CTAGS
     _moo_ctags_plugin_init ();
 #endif
-#ifdef MOO_BUILD_MARKDOWN
-    if (!moo_getenv_bool ("MOO_DISABLE_MARKDOWN"))
-        _moo_markdown_plugin_init ();
-#endif
-#ifdef MOO_BUILD_WIKI
-    if (!moo_getenv_bool ("MOO_DISABLE_WIKI"))
-        _moo_wiki_plugin_init ();
+#if defined(MOO_BUILD_MARKDOWN) || defined(MOO_BUILD_WIKI)
+    if (!moo_getenv_bool ("MOO_DISABLE_PAGE_PREVIEW"))
+        _moo_page_preview_plugin_init ();
 #endif
     moo_plugin_read_dirs ();
     _moo_user_tools_plugin_init ();

@@ -1,73 +1,37 @@
 /*
- *   moowiki.cpp
+ *   moopagepreview.cpp
  *
- *   In-editor Wiki preview pane.  Renders Habitat / UseMod-style wiki
- *   syntax to HTML and feeds it through MooHtml — the same widget used
- *   by the Markdown preview.  The wiki-to-HTML converter is implemented
- *   in-tree so there's no external library to find; everything compiles
- *   into medit itself.
+ *   Unified in-editor "Page Preview" side pane.  Picks a renderer per
+ *   document based on filename and (optionally) a first-line marker:
+ *
+ *     *.md / *.markdown / *.mdx              → Markdown (md4c)
+ *     *.wiki / *.wp / *.usemod               → Wiki (in-tree converter)
+ *     first line "<!-- markdown -->"         → Markdown (Habitat marker)
+ *     first line "<!-- wiki -->"             → Wiki
+ *     anything else                          → no preview (placeholder)
+ *
+ *   Markdown rendering needs md4c+md4c-html at build time; if
+ *   MOO_BUILD_MARKDOWN isn't defined the markdown branch shows
+ *   "Markdown preview not available in this build" while wiki keeps
+ *   working.  Wiki rendering is entirely in-tree (no external lib),
+ *   compiled in unless MOO_BUILD_WIKI was explicitly disabled.  If
+ *   neither is set the whole file compiles to a no-op
+ *   _moo_page_preview_plugin_init() so plugin-builtin.cpp can call it
+ *   unconditionally.
  *
  *   ─────────── Wiki syntax: attribution ───────────────────────────────
  *
- *   The syntax and rendering rules implemented below are a clean-room C
- *   reimplementation of a pragmatic subset of the wiki dialect used by
- *   Habitat, taken from its Perl renderer module:
+ *   The wiki dialect implemented here is a clean-room C reimplementation
+ *   of a pragmatic subset of Habitat's Render.pm:
  *
- *       Habitat / habitat/lib/Habitat/Render.pm
  *       https://github.com/fangq/habitat
+ *       Copyright (C) 2009, 2010, 2014  Qianqian Fang
+ *           <fangq (at) nmr.mgh.harvard.edu>   (GPL v2)
  *
- *   Habitat is Copyright (C) 2009, 2010, 2014  Qianqian Fang
- *       <fangq (at) nmr.mgh.harvard.edu>   (GPL v2)
- *
- *   Habitat itself descends from UseModWiki 1.0 (Sep 2003) by
- *       Clifford A. Adams <caadams@usemod.com>   and
- *       Sunir Shah        <sunir@sunir.org>     (GPL),
- *   which was derived from AtisWiki 0.3 (Markus Denker, 1998), which
- *   was based on Peter Merel's CVWiki patches and Ward Cunningham's
- *   original WikiWikiWeb.  All upstream copyrights are preserved by
- *   reference; this file ships under medit's LGPL terms.
- *
- *   ─────────── Supported syntax (subset of Habitat) ───────────────────
- *
- *     Inline:
- *       '''bold'''                  <strong>
- *       ''italic''                  <em>
- *       `code`                      <code>
- *       <b>/<i>/<strong>/<em>/<tt>  passthrough
- *       <br>                        <br>
- *       [[Page]]                    <a href="Page">Page</a>
- *       [[Page|text]]               <a href="Page">text</a>
- *       [[Page#anchor]]             <a href="Page#anchor">Page#anchor</a>
- *       [url text]                  <a href="url">text</a>
- *       [url]                       <a href="url">[N]</a>
- *       http://...                  autolink
- *       WikiWord                    <a href="WikiWord">WikiWord</a>
- *       \  (end of line)            line continuation
- *
- *     Block:
- *       = H1 =  ... ====== H6 ======
- *       * item / ** sub                       unordered list
- *       # item / ## sub                       ordered list
- *       ; term : def                          definition list
- *       : indented text                       indented (dl/dd)
- *       (leading space/tab)                   preformatted
- *       ----                                  horizontal rule
- *       ||cell||cell||                        table row
- *       !!cell!!cell!!                        table header row
- *       <nowiki>...</nowiki>                  literal, no markup
- *       <pre>...</pre> / <code>...</code>     preformatted (multi-line)
- *
- *   Many of Habitat's deeper features (templates, transclusion,
- *   inter-site Site:Page links, RFC/ISBN autolinks, named anchors,
- *   raw <html> blocks, page-local regex rules, the TOC and tree
- *   generators, etc.) are intentionally NOT implemented here — they
- *   either need the live %Pages/filesystem layer or are easier to
- *   skip for a preview pane.  Unrecognised wiki constructs fall
- *   through as their HTML-escaped text rather than being mangled.
- *
- *   When MOO_BUILD_WIKI is not defined the whole file compiles to a
- *   no-op _moo_wiki_plugin_init() so plugin-builtin.cpp can call it
- *   unconditionally.
+ *   Habitat descends from UseModWiki 1.0 by Clifford A. Adams and
+ *   Sunir Shah, which goes back through AtisWiki 0.3 (Markus Denker,
+ *   1998) to Ward Cunningham's WikiWikiWeb.  Upstream copyrights are
+ *   preserved by reference.
  *
  *   Copyright (C) 2026 — part of medit.
  *
@@ -87,33 +51,61 @@
 #include "mooutils/mooi18n.h"
 #include "mooutils/mooprefs.h"
 
-#define WIKI_PLUGIN_ID "WikiPreview"
-#define WIKI_SHOW_PREF "Plugins/WikiPreview/show"
+#define PAGE_PREVIEW_PLUGIN_ID "PagePreview"
 
-#ifdef MOO_BUILD_WIKI
+/* Persistent pref controlling whether the preview pane should be shown
+ * the moment a window opens.  TRUE by default (the pane is small and
+ * the renderer no-ops cheaply for non-Markdown buffers); set to FALSE
+ * for users who'd rather have it stay hidden until they trigger it via
+ * View → Panes → Page Preview.  The pane is still registered in
+ * the PanesMenu regardless, so per-window show/hide is always one menu
+ * click away. */
+#define PAGE_PREVIEW_SHOW_PREF "Plugins/PagePreview/show"
+
+#if defined(MOO_BUILD_MARKDOWN) || defined(MOO_BUILD_WIKI)
 
 #include <gtk/gtk.h>
 #include <string.h>
+#ifdef MOO_BUILD_MARKDOWN
+#include <md4c-html.h>
+#endif
 #include "mooapp/moohtml.h"
 #include "mooedit/mooeditview.h"
 
 typedef struct {
     MooPlugin parent;
-} WikiPlugin;
+} PagePreviewPlugin;
 
 typedef struct {
     MooWinPlugin parent;
-    MooPane     *pane;
-    GtkWidget   *html_view;
+    MooPane     *pane;          /* registered side-pane */
+    GtkWidget   *html_view;     /* MooHtml widget */
 
-    gulong         notify_active_doc_id;
-    GtkTextBuffer *current_buffer;
-    gulong         buffer_changed_id;
-    guint          render_timeout_id;
-} WikiWindowPlugin;
+    /* Live-preview state — tracked so we can disconnect on doc switch
+     * and on plugin teardown without dangling-handler crashes. */
+    gulong       notify_active_doc_id;  /* on the MooEditWindow */
+    GtkTextBuffer *current_buffer;      /* whichever buffer "changed" is connected to */
+    gulong       buffer_changed_id;     /* handler id on current_buffer */
+    guint        render_timeout_id;     /* g_timeout source for debounce */
+} PagePreviewWindowPlugin;
 
-#define WIKI_DEBOUNCE_MS 200
+/* How long the user has to be idle (no edits) before we re-render the
+ * preview.  200 ms feels live without slamming md4c on every keystroke.
+ * Cheap to tune later if users want lower-latency feedback. */
+#define PAGE_PREVIEW_DEBOUNCE_MS 200
 
+#ifdef MOO_BUILD_MARKDOWN
+/* md4c invokes this for every chunk of generated HTML.  Append into
+ * the GString the caller passed via userdata.  Inlined for clarity —
+ * the callback is hot but the work is tiny. */
+static void
+md4c_output_cb (const MD_CHAR *text, MD_SIZE size, void *userdata)
+{
+    g_string_append_len ((GString *) userdata, text, size);
+}
+#endif /* MOO_BUILD_MARKDOWN */
+
+#ifdef MOO_BUILD_WIKI
 /* ════════════════════════════════════════════════════════════════════════
  * Wiki → HTML converter
  *
@@ -1170,22 +1162,257 @@ wiki_to_html (const char *src)
     g_slist_free_full (ctx.blocks, g_free);
     return result;
 }
+#endif /* MOO_BUILD_WIKI */
 
-/* ════════════════════════════════════════════════════════════════════════
- * Plugin lifecycle (mirrors moomarkdown.cpp closely)
- * ════════════════════════════════════════════════════════════════════════
- */
+/* Markdown-specific tag styling — applied after every MooHtml load so
+ * the Markdown preview pane has its own visual identity (theme-aware
+ * link colour, subtle code/pre backgrounds, slightly coloured headings)
+ * without touching how the About dialog renders.
+ *
+ * MooHtml's tags are mostly anonymous; we identify each kind by the
+ * narrow predicates added to moohtml.h.  Theme awareness reuses the
+ * same luma-based picker we already use for spell-check underlines. */
+typedef struct {
+    GdkRGBA link;
+    GdkRGBA code_bg;       /* background for inline <code> and <pre>   */
+    GdkRGBA code_fg;       /* foreground for code (a touch dimmer)     */
+    GdkRGBA heading_fg;    /* shared colour for H1/H2 (others: theme)  */
+    GdkRGBA hr_fg;
+    GdkRGBA quote_bg;      /* soft background for <blockquote>         */
+    GdkRGBA quote_fg;      /* dimmer text inside <blockquote>          */
+    GdkRGBA table_bg;      /* soft background for tables               */
+} PagePreviewPalette;
 
 static void
-wiki_render (WikiWindowPlugin *plugin, MooEditView *view_hint)
+page_preview_pick_palette (GtkWidget *html_view, PagePreviewPalette *p)
+{
+    GtkStyleContext *ctx = gtk_widget_get_style_context (html_view);
+    GdkRGBA bg = { 1.0, 1.0, 1.0, 1.0 };
+    double  luma;
+
+    gtk_style_context_save (ctx);
+    gtk_style_context_add_class (ctx, GTK_STYLE_CLASS_VIEW);
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+    gtk_style_context_get_background_color (ctx,
+        gtk_style_context_get_state (ctx), &bg);
+    G_GNUC_END_IGNORE_DEPRECATIONS
+    gtk_style_context_restore (ctx);
+
+    luma = 0.299 * bg.red + 0.587 * bg.green + 0.114 * bg.blue;
+    if (luma <= 0.5)
+    {
+        /* Dark theme: punchy accents on a near-black background. */
+        gdk_rgba_parse (&p->link,       "#7eb6ff");   /* light blue */
+        gdk_rgba_parse (&p->code_bg,    "#2b2b2b");   /* slightly lighter than bg */
+        gdk_rgba_parse (&p->code_fg,    "#e6e6e6");
+        gdk_rgba_parse (&p->heading_fg, "#9cdcfe");   /* cyan-blue (VS-Code-ish) */
+        gdk_rgba_parse (&p->hr_fg,      "#444444");
+        gdk_rgba_parse (&p->quote_bg,   "#1e2227");   /* faint panel tint */
+        gdk_rgba_parse (&p->quote_fg,   "#a8b1bd");   /* muted grey-blue */
+        gdk_rgba_parse (&p->table_bg,   "#1e2227");   /* same as quote */
+    }
+    else
+    {
+        /* Light theme: deeper colours so they read on white. */
+        gdk_rgba_parse (&p->link,       "#1a73e8");   /* Google-style blue */
+        gdk_rgba_parse (&p->code_bg,    "#f5f5f5");   /* very light grey */
+        gdk_rgba_parse (&p->code_fg,    "#222222");
+        gdk_rgba_parse (&p->heading_fg, "#1a1a1a");   /* near-black, lets size carry */
+        gdk_rgba_parse (&p->hr_fg,      "#cccccc");
+        gdk_rgba_parse (&p->quote_bg,   "#f6f8fa");   /* GitHub-ish faint panel */
+        gdk_rgba_parse (&p->quote_fg,   "#586069");   /* GitHub-ish muted text */
+        gdk_rgba_parse (&p->table_bg,   "#fafbfc");   /* even softer than quote */
+    }
+}
+
+/* Iterate every tag in the preview buffer's table and override its
+ * properties based on its element kind.  Idempotent — every render
+ * call rebuilds the buffer, so this just paints over MooHtml's
+ * fresh tags.  Called from page_preview_render() right after the load. */
+static void
+page_preview_restyle_tags (GtkWidget *html_view)
+{
+    GtkTextBuffer   *buf   = gtk_text_view_get_buffer (GTK_TEXT_VIEW (html_view));
+    GtkTextTagTable *table = gtk_text_buffer_get_tag_table (buf);
+    PagePreviewPalette  pal;
+
+    page_preview_pick_palette (html_view, &pal);
+
+    gtk_text_tag_table_foreach (
+        table,
+        [](GtkTextTag *tag, gpointer data) {
+            const PagePreviewPalette *p = (const PagePreviewPalette *) data;
+            int h;
+
+            if (_moo_html_tag_is_link (tag))
+            {
+                /* High-contrast underlined link — matches the GitHub
+                 * preview, where every link gets a single line below. */
+                g_object_set (tag,
+                              "foreground-rgba", &p->link,
+                              "underline",       PANGO_UNDERLINE_SINGLE,
+                              NULL);
+            }
+
+            if ((h = _moo_html_tag_get_heading (tag)) > 0)
+            {
+                /* Lift H1/H2 with a coloured tint; H3+ rely on size +
+                 * weight alone to avoid a rainbow effect. */
+                if (h <= 2)
+                    g_object_set (tag, "foreground-rgba", &p->heading_fg, NULL);
+            }
+
+            if (_moo_html_tag_is_pre (tag))
+            {
+                /* <pre> block — tight line-to-line spacing inside the
+                 * code block (pixels-above/below-lines apply to *every*
+                 * line, so anything > a couple of px adds a visible gap
+                 * between consecutive code lines).  The block-edge
+                 * padding above and below the whole block comes from
+                 * the blank lines around <pre> in the parsed HTML. */
+                g_object_set (tag,
+                              "paragraph-background-rgba", &p->code_bg,
+                              "foreground-rgba",           &p->code_fg,
+                              "left-margin",                6,
+                              "right-margin",               6,
+                              "pixels-above-lines",         1,
+                              "pixels-below-lines",         1,
+                              "pixels-inside-wrap",         0,
+                              "scale",                      0.92,
+                              NULL);
+            }
+            else if (_moo_html_tag_is_table (tag))
+            {
+                /* Tables render as column-aligned monospace text with a
+                 * thin under-header rule; the faint background plus a
+                 * left indent make the block read as a tabular unit. */
+                g_object_set (tag,
+                              "paragraph-background-rgba", &p->table_bg,
+                              "left-margin",               16,
+                              "right-margin",              16,
+                              "scale",                     0.92,
+                              "pixels-above-lines",        2,
+                              "pixels-below-lines",        2,
+                              NULL);
+            }
+            else if (_moo_html_tag_is_monospace (tag))
+            {
+                /* Inline <code> — span-background only (not whole para). */
+                g_object_set (tag,
+                              "background-rgba", &p->code_bg,
+                              "foreground-rgba", &p->code_fg,
+                              "scale",           0.92,
+                              NULL);
+            }
+
+            if (_moo_html_tag_is_blockquote (tag))
+            {
+                /* GitHub-style: indented, italic, muted text on a faint
+                 * paragraph background.  left-margin already came from
+                 * the MOO_HTML_LEFT_MARGIN flag in the tag's attr. */
+                g_object_set (tag,
+                              "paragraph-background-rgba", &p->quote_bg,
+                              "foreground-rgba",           &p->quote_fg,
+                              "style",                     PANGO_STYLE_ITALIC,
+                              "pixels-above-lines",        4,
+                              "pixels-below-lines",        4,
+                              NULL);
+            }
+        },
+        &pal);
+}
+
+/* Per-buffer renderer kind, picked once per render call. */
+typedef enum {
+    PREVIEW_NONE,
+    PREVIEW_MARKDOWN,
+    PREVIEW_WIKI
+} PreviewKind;
+
+/* Decide whether `view`'s buffer should be rendered as Markdown, Wiki,
+ * or neither.  Two sources, in priority order:
+ *   1. First-line marker  <!-- markdown -->  or  <!-- wiki -->
+ *   2. Filename extension (.md/.markdown/.mdx → md, .wiki/.wp/.usemod → wiki)
+ * Anything else returns PREVIEW_NONE so the pane shows an
+ * informational placeholder rather than misrendering arbitrary text. */
+static PreviewKind
+detect_preview_type (MooEditView *view, const char *first_line)
+{
+    /* 1. First-line marker beats everything (lets users override the
+     *    detection for e.g. a .txt file containing markdown). */
+    if (first_line)
+    {
+        /* Skip leading whitespace. */
+        const char *p = first_line;
+        while (*p == ' ' || *p == '\t') p++;
+        if (g_ascii_strncasecmp (p, "<!--", 4) == 0)
+        {
+            p += 4;
+            while (*p == ' ' || *p == '\t') p++;
+            if (g_ascii_strncasecmp (p, "markdown", 8) == 0)
+                return PREVIEW_MARKDOWN;
+            if (g_ascii_strncasecmp (p, "wiki", 4) == 0)
+                return PREVIEW_WIKI;
+        }
+    }
+
+    /* 2. Filename extension. */
+    MooEdit *doc = view ? moo_edit_view_get_doc (view) : NULL;
+    if (doc)
+    {
+        char *filename = moo_edit_get_filename (doc);
+        if (filename)
+        {
+            const char *base = strrchr (filename, '/');
+            base = base ? base + 1 : filename;
+            const char *ext = strrchr (base, '.');
+            PreviewKind kind = PREVIEW_NONE;
+            if (ext)
+            {
+                if (g_ascii_strcasecmp (ext, ".md") == 0
+                    || g_ascii_strcasecmp (ext, ".markdown") == 0
+                    || g_ascii_strcasecmp (ext, ".mdx") == 0)
+                    kind = PREVIEW_MARKDOWN;
+                else if (g_ascii_strcasecmp (ext, ".wiki") == 0
+                         || g_ascii_strcasecmp (ext, ".wp") == 0
+                         || g_ascii_strcasecmp (ext, ".usemod") == 0)
+                    kind = PREVIEW_WIKI;
+            }
+            g_free (filename);
+            return kind;
+        }
+    }
+
+    return PREVIEW_NONE;
+}
+
+/* Set the pane's body to an informational placeholder when there's
+ * nothing to render.  The placeholder is plain HTML so MooHtml's
+ * existing styling handles it for free. */
+static void
+page_preview_set_placeholder (PagePreviewWindowPlugin *plugin,
+                              const char              *message)
+{
+    char *html = g_strdup_printf (
+        "<html><body><p><i>%s</i></p></body></html>", message);
+    _moo_html_load_memory (GTK_TEXT_VIEW (plugin->html_view),
+                           html, strlen (html), NULL, "UTF-8");
+    g_free (html);
+}
+
+/* Convert the active document's buffer text to HTML using whichever
+ * renderer matches the document type (Markdown via md4c, or Wiki via
+ * the in-tree converter), then load it into the MooHtml widget.
+ * No-op when there's no active doc or the pane was never built. */
+static void
+page_preview_render (PagePreviewWindowPlugin *plugin, MooEditView *view_hint)
 {
     MooEditWindow *window;
     MooEditView   *view;
     GtkTextBuffer *buffer;
     GtkTextIter    start, end;
-    char          *wiki;
-    char          *html;
-    GString       *wrapped;
+    char          *text;
+    PreviewKind    kind;
 
     if (plugin == NULL || plugin->html_view == NULL)
         return;
@@ -1197,46 +1424,110 @@ wiki_render (WikiWindowPlugin *plugin, MooEditView *view_hint)
 
     buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
     gtk_text_buffer_get_bounds (buffer, &start, &end);
-    wiki = gtk_text_buffer_get_text (buffer, &start, &end, FALSE);
-    if (wiki == NULL)
+    text = gtk_text_buffer_get_text (buffer, &start, &end, FALSE);
+    if (text == NULL)
         return;
 
-    html = wiki_to_html (wiki);
-    g_free (wiki);
+    /* Sniff the first line for an in-document marker. */
+    const char *nl = strchr (text, '\n');
+    char *first_line = nl ? g_strndup (text, nl - text) : g_strdup (text);
+    kind = detect_preview_type (view, first_line);
+    g_free (first_line);
 
-    /* MooHtml expects a complete document; wrap our body fragment. */
-    wrapped = g_string_sized_new (strlen (html) + 32);
-    g_string_append (wrapped, "<html><body>");
-    g_string_append (wrapped, html);
-    g_string_append (wrapped, "</body></html>");
-    g_free (html);
+    if (kind == PREVIEW_NONE)
+    {
+        page_preview_set_placeholder (plugin,
+            "No preview for this file type.&nbsp; "
+            "Open a .md, .markdown, .wiki, or .wp file, "
+            "or start the document with "
+            "&lt;!-- markdown --&gt; / &lt;!-- wiki --&gt; to force a renderer.");
+        g_free (text);
+        return;
+    }
+
+    GString *html = g_string_sized_new (strlen (text) * 2 + 64);
+    g_string_append (html, "<html><body>");
+
+    if (kind == PREVIEW_MARKDOWN)
+    {
+#ifdef MOO_BUILD_MARKDOWN
+        /* md4c writes only the <body> contents; we already provided
+         * the envelope.  MD_DIALECT_GITHUB enables tables,
+         * strikethrough, task-lists and autolinks. */
+        int rc = md_html (text, (MD_SIZE) strlen (text),
+                          md4c_output_cb, html,
+                          MD_DIALECT_GITHUB, 0);
+        if (rc != 0)
+        {
+            g_string_truncate (html, 0);
+            g_string_append (html,
+                "<html><body><p><i>Markdown rendering failed.</i></p></body></html>");
+        }
+        else
+        {
+            g_string_append (html, "</body></html>");
+        }
+#else
+        g_string_truncate (html, 0);
+        g_string_append (html,
+            "<html><body><p><i>Markdown preview not available — "
+            "medit was built without md4c.</i></p></body></html>");
+#endif
+    }
+    else /* PREVIEW_WIKI */
+    {
+#ifdef MOO_BUILD_WIKI
+        char *wiki_html = wiki_to_html (text);
+        g_string_append (html, wiki_html);
+        g_free (wiki_html);
+        g_string_append (html, "</body></html>");
+#else
+        g_string_truncate (html, 0);
+        g_string_append (html,
+            "<html><body><p><i>Wiki preview not available — "
+            "medit was built without MOO_BUILD_WIKI.</i></p></body></html>");
+#endif
+    }
 
     _moo_html_load_memory (GTK_TEXT_VIEW (plugin->html_view),
-                           wrapped->str, wrapped->len, NULL, "UTF-8");
-    g_string_free (wrapped, TRUE);
+                           html->str, html->len, NULL, "UTF-8");
+    /* The palette restyle is renderer-agnostic — same theme-aware
+     * colours and per-tag overrides apply to both md and wiki output. */
+    page_preview_restyle_tags (plugin->html_view);
+
+    g_string_free (html, TRUE);
+    g_free (text);
 }
 
+/* Debounce-timer callback.  Render once and clear the slot so the next
+ * "buffer changed" can arm a fresh timer. */
 static gboolean
-wiki_render_timeout (gpointer data)
+page_preview_render_timeout (gpointer data)
 {
-    WikiWindowPlugin *plugin = (WikiWindowPlugin *) data;
+    PagePreviewWindowPlugin *plugin = (PagePreviewWindowPlugin *) data;
     plugin->render_timeout_id = 0;
-    wiki_render (plugin, NULL);
+    page_preview_render (plugin, NULL);
     return G_SOURCE_REMOVE;
 }
 
+/* GtkTextBuffer "changed" signal handler.  Reset the debounce timer
+ * so multiple rapid edits coalesce into a single render once the user
+ * pauses. */
 static void
-wiki_on_buffer_changed (G_GNUC_UNUSED GtkTextBuffer *buffer, gpointer data)
+page_preview_on_buffer_changed (G_GNUC_UNUSED GtkTextBuffer *buffer,
+                            gpointer                     data)
 {
-    WikiWindowPlugin *plugin = (WikiWindowPlugin *) data;
+    PagePreviewWindowPlugin *plugin = (PagePreviewWindowPlugin *) data;
     if (plugin->render_timeout_id != 0)
         g_source_remove (plugin->render_timeout_id);
     plugin->render_timeout_id =
-        g_timeout_add (WIKI_DEBOUNCE_MS, wiki_render_timeout, plugin);
+        g_timeout_add (PAGE_PREVIEW_DEBOUNCE_MS, page_preview_render_timeout, plugin);
 }
 
+/* (Re-)wire the "changed" handler onto whichever buffer is current for
+ * the window's active doc.  Tolerates NULL doc (just disconnects). */
 static void
-wiki_rewire_buffer_signal (WikiWindowPlugin *plugin)
+page_preview_rewire_buffer_signal (PagePreviewWindowPlugin *plugin)
 {
     MooEditWindow *window = MOO_WIN_PLUGIN (plugin)->window;
     MooEditView   *view;
@@ -1246,7 +1537,10 @@ wiki_rewire_buffer_signal (WikiWindowPlugin *plugin)
     if (view != NULL)
         buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
 
-    if (plugin->current_buffer && plugin->buffer_changed_id)
+    if (buffer == plugin->current_buffer)
+        return;     /* nothing to do — already wired to this buffer */
+
+    if (plugin->current_buffer != NULL && plugin->buffer_changed_id != 0)
     {
         g_signal_handler_disconnect (plugin->current_buffer,
                                      plugin->buffer_changed_id);
@@ -1255,33 +1549,44 @@ wiki_rewire_buffer_signal (WikiWindowPlugin *plugin)
     plugin->current_buffer = buffer;
     if (buffer != NULL)
         plugin->buffer_changed_id = g_signal_connect (
-            buffer, "changed", G_CALLBACK (wiki_on_buffer_changed), plugin);
+            buffer, "changed",
+            G_CALLBACK (page_preview_on_buffer_changed), plugin);
 }
 
+/* MooEditWindow "notify::active-doc" handler.  Re-wire to the new doc's
+ * buffer and trigger an immediate render (no debounce — switching docs
+ * isn't typing). */
 static void
-wiki_on_active_doc_notify (G_GNUC_UNUSED GObject *window,
-                            G_GNUC_UNUSED GParamSpec *pspec,
-                            gpointer data)
+page_preview_on_active_doc_notify (G_GNUC_UNUSED GObject *window,
+                                G_GNUC_UNUSED GParamSpec *pspec,
+                                gpointer data)
 {
-    WikiWindowPlugin *plugin = (WikiWindowPlugin *) data;
-    wiki_rewire_buffer_signal (plugin);
-    wiki_render (plugin, NULL);
+    PagePreviewWindowPlugin *plugin = (PagePreviewWindowPlugin *) data;
+    page_preview_rewire_buffer_signal (plugin);
+    page_preview_render (plugin, NULL);
 }
 
 static gboolean
-wiki_window_plugin_create (WikiWindowPlugin *plugin)
+page_preview_window_plugin_create (PagePreviewWindowPlugin *plugin)
 {
     MooEditWindow *window = MOO_WIN_PLUGIN (plugin)->window;
-    GtkWidget     *scroll, *html;
+    GtkWidget     *scroll;
+    GtkWidget     *html;
     MooPaneLabel  *label;
 
-    html = (GtkWidget *) g_object_new (MOO_TYPE_HTML, NULL);
+    /* MooHtml is a GtkTextView subclass that renders simplified HTML
+     * into a GtkTextBuffer using tags — perfect for a no-WebKit preview.
+     * Wrap in a GtkScrolledWindow so long documents are scrollable. */
+    html   = (GtkWidget *) g_object_new (MOO_TYPE_HTML, NULL);
     gtk_text_view_set_editable      (GTK_TEXT_VIEW (html), FALSE);
     gtk_text_view_set_cursor_visible (GTK_TEXT_VIEW (html), FALSE);
     gtk_text_view_set_wrap_mode      (GTK_TEXT_VIEW (html), GTK_WRAP_WORD_CHAR);
-    gtk_widget_set_size_request      (html, 360, -1);
+    gtk_widget_set_size_request (html, 360, -1);   /* sensible default width */
 
-    /* Same 120% font bump as markdown preview. */
+    /* Bump the base font 1.2× so the preview reads at a comfortable
+     * size next to the source editor.  Applied via CSS on this widget
+     * only so other GtkTextViews in the window stay unaffected.  Per-
+     * tag scale overrides (headings, code) compound on top of this. */
     {
         static GtkCssProvider *fp = NULL;
         if (fp == NULL)
@@ -1296,6 +1601,10 @@ wiki_window_plugin_create (WikiWindowPlugin *plugin)
             GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     }
 
+    /* Open up line spacing — MooHtml's default is tight because the tags
+     * it creates per-element don't set any paragraph margins.  Adding view-
+     * level defaults gives every paragraph a few pixels of breathing room
+     * (overridable per-tag, which is what headings and <pre> already do). */
     gtk_text_view_set_pixels_above_lines (GTK_TEXT_VIEW (html), 3);
     gtk_text_view_set_pixels_below_lines (GTK_TEXT_VIEW (html), 3);
     gtk_text_view_set_pixels_inside_wrap (GTK_TEXT_VIEW (html), 2);
@@ -1313,91 +1622,108 @@ wiki_window_plugin_create (WikiWindowPlugin *plugin)
     gtk_container_add (GTK_CONTAINER (scroll), html);
     gtk_widget_show_all (scroll);
 
+    /* The icon-name field is the GTK stock icon shown next to the pane
+     * label; "text-x-generic" is the freedesktop icon for plain text
+     * which renders fine on every theme (Adwaita / Default / etc.). */
     label = moo_pane_label_new ("text-x-generic", NULL,
-                                _("Wiki Preview"),
-                                _("Wiki Preview"));
+                                _("Page Preview"),
+                                _("Page Preview"));
     plugin->pane = moo_edit_window_add_pane (window,
-                                             WIKI_PLUGIN_ID,
+                                             PAGE_PREVIEW_PLUGIN_ID,
                                              scroll, label,
                                              MOO_PANE_POS_RIGHT);
     moo_pane_label_free (label);
 
     plugin->html_view = html;
 
-    if (moo_prefs_get_bool (WIKI_SHOW_PREF))
-        moo_edit_window_show_pane (window, WIKI_PLUGIN_ID);
+    /* Honour the user's "show on open" preference.  When FALSE the
+     * pane is still registered (so it appears in View → Panes →
+     * Page Preview), it just doesn't auto-open. */
+    if (moo_prefs_get_bool (PAGE_PREVIEW_SHOW_PREF))
+        moo_edit_window_show_pane (window, PAGE_PREVIEW_PLUGIN_ID);
 
+    /* Wire live-preview signals:
+     *   * notify::active-doc on the window → re-target our buffer
+     *     "changed" handler when the user switches tabs.
+     *   * "changed" on the active doc's buffer → schedule a debounced
+     *     re-render.
+     * Both are torn down in page_preview_window_plugin_destroy. */
     plugin->notify_active_doc_id = g_signal_connect (
         window, "notify::active-doc",
-        G_CALLBACK (wiki_on_active_doc_notify), plugin);
+        G_CALLBACK (page_preview_on_active_doc_notify), plugin);
+    page_preview_rewire_buffer_signal (plugin);
 
-    wiki_rewire_buffer_signal (plugin);
-    wiki_render (plugin, NULL);
+    /* Initial render of whatever's currently the active document. */
+    page_preview_render (plugin, NULL);
     return TRUE;
 }
 
 static void
-wiki_window_plugin_destroy (WikiWindowPlugin *plugin)
+page_preview_window_plugin_destroy (PagePreviewWindowPlugin *plugin)
 {
     MooEditWindow *window = MOO_WIN_PLUGIN (plugin)->window;
 
+    /* Live-preview teardown: cancel pending render, drop signal handlers. */
     if (plugin->render_timeout_id != 0)
     {
         g_source_remove (plugin->render_timeout_id);
         plugin->render_timeout_id = 0;
     }
-    if (plugin->current_buffer && plugin->buffer_changed_id)
+    if (plugin->current_buffer != NULL && plugin->buffer_changed_id != 0)
     {
         g_signal_handler_disconnect (plugin->current_buffer,
                                      plugin->buffer_changed_id);
         plugin->buffer_changed_id = 0;
-        plugin->current_buffer    = NULL;
     }
-    if (plugin->notify_active_doc_id)
+    plugin->current_buffer = NULL;
+    if (plugin->notify_active_doc_id != 0)
     {
         g_signal_handler_disconnect (window, plugin->notify_active_doc_id);
         plugin->notify_active_doc_id = 0;
     }
-    moo_edit_window_remove_pane (window, WIKI_PLUGIN_ID);
+
+    /* The pane owns the scrolled window which owns the MooHtml; removing
+     * it from the paned tears the whole subtree down via GTK ref drops. */
+    moo_edit_window_remove_pane (window, PAGE_PREVIEW_PLUGIN_ID);
     plugin->pane      = NULL;
     plugin->html_view = NULL;
 }
 
 static gboolean
-wiki_plugin_init (G_GNUC_UNUSED WikiPlugin *plugin)
+page_preview_plugin_init (G_GNUC_UNUSED PagePreviewPlugin *plugin)
 {
-    moo_prefs_new_key_bool (WIKI_SHOW_PREF, TRUE);
+    moo_prefs_new_key_bool (PAGE_PREVIEW_SHOW_PREF, TRUE);
     return TRUE;
 }
 
 static void
-wiki_plugin_deinit (G_GNUC_UNUSED WikiPlugin *plugin)
+page_preview_plugin_deinit (G_GNUC_UNUSED PagePreviewPlugin *plugin)
 {
 }
 
-MOO_PLUGIN_DEFINE_INFO (wiki,
-                        "Wiki Preview",
-                        "Live Wiki preview side pane",
+MOO_PLUGIN_DEFINE_INFO (page_preview,
+                        "Page Preview",
+                        "Live Markdown preview side pane",
                         "medit project",
                         MOO_VERSION)
 
-MOO_WIN_PLUGIN_DEFINE (Wiki, wiki)
+MOO_WIN_PLUGIN_DEFINE (PagePreview, page_preview)
 
-MOO_PLUGIN_DEFINE (Wiki, wiki,
+MOO_PLUGIN_DEFINE (PagePreview, page_preview,
                    NULL, NULL, NULL, NULL, NULL,
-                   wiki_window_plugin_get_type (),
+                   page_preview_window_plugin_get_type (),
                    0)
 
-#endif /* MOO_BUILD_WIKI */
+#endif /* MOO_BUILD_MARKDOWN */
 
 extern "C" gboolean
-_moo_wiki_plugin_init (void)
+_moo_page_preview_plugin_init (void)
 {
-#ifdef MOO_BUILD_WIKI
+#ifdef MOO_BUILD_MARKDOWN
     MooPluginParams params = { TRUE, TRUE };
-    return moo_plugin_register (WIKI_PLUGIN_ID,
-                                wiki_plugin_get_type (),
-                                &wiki_plugin_info,
+    return moo_plugin_register (PAGE_PREVIEW_PLUGIN_ID,
+                                page_preview_plugin_get_type (),
+                                &page_preview_plugin_info,
                                 &params);
 #else
     return FALSE;
