@@ -1736,6 +1736,14 @@ page_preview_render (PagePreviewWindowPlugin *plugin, MooEditView *view_hint)
 #endif
     }
 
+    /* Optional debug dump — set MOO_PAGE_PREVIEW_DUMP_HTML to a
+     * filename to capture the post-conversion HTML.  Useful when
+     * tracking down rendering surprises (mismatched tags, missing
+     * <hr>, etc.) without rebuilding the renderer. */
+    const char *dump_path = g_getenv ("MOO_PAGE_PREVIEW_DUMP_HTML");
+    if (dump_path && *dump_path)
+        g_file_set_contents (dump_path, html->str, html->len, NULL);
+
     _moo_html_load_memory (GTK_TEXT_VIEW (plugin->html_view),
                            html->str, html->len, NULL, "UTF-8");
     /* The palette restyle is renderer-agnostic — same theme-aware
