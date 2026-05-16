@@ -38,6 +38,11 @@ struct _MooGdbSession {
      * be routed back to the issuer. */
     guint             next_token;
     GHashTable       *pending;   /* token (GINT) → ResponseCB struct */
+
+    /* Most-recent variable snapshot, refreshed automatically after
+     * every *stopped event.  Each element is a MooGdbLocal*; freed
+     * with the session. */
+    GPtrArray        *locals;
 };
 
 G_DEFINE_TYPE (MooGdbSession, moo_gdb_session, G_TYPE_OBJECT)
@@ -63,6 +68,7 @@ enum {
     SIG_BP_ADDED,
     SIG_BP_REMOVED,
     SIG_ERROR,
+    SIG_LOCALS_CHANGED,
     SIG_EXITED,
     N_SIGNALS
 };
@@ -83,8 +89,23 @@ static void  on_version_reply (MooGdbSession *s,
                                gpointer        user_data);
 static void  emit_bp_added_from_bkpt (MooGdbSession *s,
                                        MooGdbMiValue *bkpt_val);
+static void  request_locals_refresh   (MooGdbSession *s);
+static void  on_locals_reply          (MooGdbSession *s,
+                                        MooGdbMiRecord *r,
+                                        gpointer        user_data);
 
 /* ── Life-cycle ───────────────────────────────────────────────────── */
+
+static void
+free_local (gpointer p)
+{
+    MooGdbLocal *l = (MooGdbLocal *) p;
+    if (!l) return;
+    g_free (l->name);
+    g_free (l->type);
+    g_free (l->value);
+    g_free (l);
+}
 
 static void
 moo_gdb_session_init (MooGdbSession *s)
@@ -94,6 +115,7 @@ moo_gdb_session_init (MooGdbSession *s)
     s->pending     = g_hash_table_new_full (g_direct_hash, g_direct_equal,
                                              NULL, g_free);
     s->cancellable = g_cancellable_new ();
+    s->locals      = g_ptr_array_new_with_free_func (free_local);
 }
 
 static void
@@ -111,8 +133,16 @@ moo_gdb_session_finalize (GObject *object)
     g_clear_object (&s->cancellable);
     /* gdb_in is owned by gdb; don't unref. */
     g_hash_table_destroy (s->pending);
+    if (s->locals) g_ptr_array_free (s->locals, TRUE);
     g_free (s->version);
     G_OBJECT_CLASS (moo_gdb_session_parent_class)->finalize (object);
+}
+
+GPtrArray *
+moo_gdb_session_get_locals (MooGdbSession *s)
+{
+    g_return_val_if_fail (MOO_IS_GDB_SESSION (s), NULL);
+    return s->locals;
 }
 
 static void
@@ -176,6 +206,15 @@ moo_gdb_session_class_init (MooGdbSessionClass *klass)
         "breakpoint-removed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
         0, NULL, NULL, g_cclosure_marshal_VOID__INT,
         G_TYPE_NONE, 1, G_TYPE_INT);
+
+    /* "locals-changed" :: ()
+     * Fires after a *stopped event once the auto-issued
+     * -stack-list-variables reply has been parsed.  Consumers
+     * call moo_gdb_session_get_locals to read the new snapshot. */
+    signals[SIG_LOCALS_CHANGED] = g_signal_new (
+        "locals-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+        0, NULL, NULL, g_cclosure_marshal_VOID__VOID,
+        G_TYPE_NONE, 0);
 
     /* "error" :: (const char *msg)
      * Fired when gdb responds with `^error,msg="..."`.  Useful for
@@ -439,6 +478,11 @@ dispatch_record (MooGdbSession *s, MooGdbMiRecord *r)
             set_state (s, MOO_GDB_STATE_STOPPED);
             g_signal_emit (s, signals[SIG_STOPPED], 0,
                            reason, file, line, func);
+            /* Auto-refresh the locals snapshot so the panel can
+             * update without each consumer needing to wire up its
+             * own -stack-list-variables.  Cheap when there are no
+             * locals (e.g. stopped in glibc with no debug info). */
+            request_locals_refresh (s);
         }
         break;
     }
@@ -699,4 +743,57 @@ on_version_reply (MooGdbSession *s, MooGdbMiRecord *r,
     const char *klass = moo_gdb_mi_record_class (r);
     if (klass && !strcmp (klass, "done") && !s->version)
         s->version = g_strdup ("(see console output)");
+}
+
+/* ── Locals refresh ──────────────────────────────────────────────── */
+
+static void
+request_locals_refresh (MooGdbSession *s)
+{
+    /* --simple-values asks gdb to fill in `value` for scalar types
+     * and omit it for aggregates (struct / array / union).  Phase
+     * 4a doesn't drill into aggregates; commit 9b can add
+     * -var-create for that. */
+    send_command (s,
+                  "-stack-list-variables --simple-values",
+                  on_locals_reply, NULL);
+}
+
+static void
+on_locals_reply (MooGdbSession *s, MooGdbMiRecord *r,
+                 G_GNUC_UNUSED gpointer user_data)
+{
+    /* Expected shape:
+     *   ^done,variables=[{name="x",type="int",value="10"},
+     *                    {name="argv",type="char **",value="0x..."},
+     *                    {name="argc",type="int",value="1"}, ...]
+     * with `value` and/or `type` optionally missing per cell. */
+    g_ptr_array_set_size (s->locals, 0);
+
+    const char *klass = moo_gdb_mi_record_class (r);
+    if (klass && !strcmp (klass, "done")) {
+        MooGdbMiValue *vars = moo_gdb_mi_record_field (r, "variables");
+        if (vars) {
+            guint n = moo_gdb_mi_value_list_len (vars);
+            for (guint i = 0; i < n; i++) {
+                MooGdbMiValue *cell = moo_gdb_mi_value_list_nth (vars, i);
+                if (!cell) continue;
+                MooGdbLocal *l = g_new0 (MooGdbLocal, 1);
+                MooGdbMiValue *v;
+                v = moo_gdb_mi_value_tuple_get (cell, "name");
+                if (v) l->name  = g_strdup (moo_gdb_mi_value_string (v));
+                v = moo_gdb_mi_value_tuple_get (cell, "type");
+                if (v) l->type  = g_strdup (moo_gdb_mi_value_string (v));
+                v = moo_gdb_mi_value_tuple_get (cell, "value");
+                if (v) l->value = g_strdup (moo_gdb_mi_value_string (v));
+                if (!l->name) {
+                    free_local (l);
+                    continue;
+                }
+                g_ptr_array_add (s->locals, l);
+            }
+        }
+    }
+
+    g_signal_emit (s, signals[SIG_LOCALS_CHANGED], 0);
 }

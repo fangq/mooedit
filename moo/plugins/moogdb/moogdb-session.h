@@ -62,6 +62,20 @@ void           moo_gdb_session_quit      (MooGdbSession *session);
 void           moo_gdb_session_send_raw  (MooGdbSession *s,
                                           const char    *cmd);
 
+/* One local variable in the current stack frame.  Returned by
+ * moo_gdb_session_get_locals as borrowed pointers — the session
+ * owns the storage and recycles it on the next *stopped. */
+typedef struct {
+    char *name;   /* always non-NULL */
+    char *type;   /* may be NULL for --simple-values output */
+    char *value;  /* may be NULL for aggregates we didn't drill into */
+} MooGdbLocal;
+
+/* Snapshot of the variables in the current frame after the most
+ * recent *stopped event.  Transfer-none.  Empty if the session
+ * hasn't stopped yet (or the inferior has no locals at this PC). */
+GPtrArray     *moo_gdb_session_get_locals (MooGdbSession *s);
+
 /* Set the target executable to debug.  May be called before or
  * after start(); the path is forwarded to gdb via `-file-exec-and-
  * symbols`.  Safe to set NULL (clears the current target). */
@@ -135,6 +149,11 @@ const char    *moo_gdb_session_get_version (MooGdbSession *session);
  *
  *   "breakpoint-removed"  :: (int number)
  *       breakpoint identified by `number` was removed.
+ *
+ *   "locals-changed"      :: ()
+ *       moo_gdb_session_get_locals now returns a fresh snapshot.
+ *       Fires after every *stopped event once the auto-requested
+ *       -stack-list-variables reply has been parsed.
  *
  *   "exited"              :: ()
  *       gdb has terminated.  The session is no longer usable.

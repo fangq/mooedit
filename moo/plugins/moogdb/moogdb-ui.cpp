@@ -182,7 +182,104 @@ struct _MooGdbWin {
     char          *cfg_target;
     char          *cfg_args;
     char          *cfg_cwd;
+
+    /* Locals pane: a GtkTreeView showing the current frame's
+     * variables.  Populated from moo_gdb_session_get_locals each
+     * time the session emits "locals-changed".  Lives on the
+     * right side, alongside any future stack / watch panels. */
+    GtkWidget     *locals_pane;
+    GtkListStore  *locals_store;
 };
+
+/* ── Locals pane ─────────────────────────────────────────────────── */
+
+#define MOO_GDB_LOCALS_PANE_ID  "MooGdbLocals"
+
+/* List-store columns. */
+enum {
+    LOCALS_COL_NAME,
+    LOCALS_COL_TYPE,
+    LOCALS_COL_VALUE,
+    LOCALS_N_COLS
+};
+
+/* Build the locals tree-view widget and add it as a right-side
+ * pane.  Each row is (name, type, value) — type may be blank
+ * (`-stack-list-variables --simple-values` doesn't include type
+ * for some cells), value may be blank for aggregates we haven't
+ * drilled into. */
+static void
+build_locals_pane (MooGdbWin *win)
+{
+    GtkWidget *scroll = gtk_scrolled_window_new (NULL, NULL);
+    gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroll),
+                                    GTK_POLICY_AUTOMATIC,
+                                    GTK_POLICY_AUTOMATIC);
+
+    GtkListStore *store = gtk_list_store_new (LOCALS_N_COLS,
+                                              G_TYPE_STRING,
+                                              G_TYPE_STRING,
+                                              G_TYPE_STRING);
+
+    GtkWidget *view = gtk_tree_view_new_with_model (GTK_TREE_MODEL (store));
+    gtk_tree_view_set_headers_visible (GTK_TREE_VIEW (view), TRUE);
+    g_object_unref (store);   /* tree view holds its own ref */
+
+    /* Three text columns; the value column is the widest so make
+     * it expand and ellipsize at the end so very long pointer
+     * dumps don't blow up the pane width. */
+    struct { int idx; const char *label; gboolean expand; } cols[] = {
+        { LOCALS_COL_NAME,  "Name",  FALSE },
+        { LOCALS_COL_TYPE,  "Type",  FALSE },
+        { LOCALS_COL_VALUE, "Value", TRUE  },
+    };
+    for (int i = 0; i < (int) G_N_ELEMENTS (cols); i++) {
+        GtkCellRenderer *r = gtk_cell_renderer_text_new ();
+        if (cols[i].expand)
+            g_object_set (r, "ellipsize", PANGO_ELLIPSIZE_END, NULL);
+        GtkTreeViewColumn *c = gtk_tree_view_column_new_with_attributes (
+            cols[i].label, r, "text", cols[i].idx, NULL);
+        gtk_tree_view_column_set_resizable (c, TRUE);
+        gtk_tree_view_column_set_expand    (c, cols[i].expand);
+        gtk_tree_view_append_column (GTK_TREE_VIEW (view), c);
+    }
+
+    gtk_container_add (GTK_CONTAINER (scroll), view);
+    gtk_widget_show_all (scroll);
+
+    MooPaneLabel *label = moo_pane_label_new ("system-search", NULL,
+                                              _("Locals"),
+                                              _("Local Variables"));
+    moo_edit_window_add_pane (win->window, MOO_GDB_LOCALS_PANE_ID,
+                              scroll, label, MOO_PANE_POS_RIGHT);
+    moo_pane_label_free (label);
+
+    win->locals_pane  = scroll;
+    win->locals_store = store;
+}
+
+/* Session "locals-changed" handler.  Read the current snapshot and
+ * push each entry into the list-store. */
+static void
+on_locals_changed (MooGdbSession *s, gpointer user_data)
+{
+    MooGdbWin *win = (MooGdbWin *) user_data;
+    if (!win->locals_store) return;
+    gtk_list_store_clear (win->locals_store);
+
+    GPtrArray *locals = moo_gdb_session_get_locals (s);
+    if (!locals) return;
+    for (guint i = 0; i < locals->len; i++) {
+        MooGdbLocal *l = (MooGdbLocal *) locals->pdata[i];
+        GtkTreeIter it;
+        gtk_list_store_append (win->locals_store, &it);
+        gtk_list_store_set (win->locals_store, &it,
+            LOCALS_COL_NAME,  l->name  ? l->name  : "",
+            LOCALS_COL_TYPE,  l->type  ? l->type  : "",
+            LOCALS_COL_VALUE, l->value ? l->value : "(complex)",
+            -1);
+    }
+}
 
 /* ── Console pane ─────────────────────────────────────────────────── */
 
@@ -630,6 +727,8 @@ ensure_session (MooGdbWin *win)
                       G_CALLBACK (on_target_signal), win);
     g_signal_connect (win->session, "error",
                       G_CALLBACK (on_console_error), win);
+    g_signal_connect (win->session, "locals-changed",
+                      G_CALLBACK (on_locals_changed), win);
     GError *err = NULL;
     if (!moo_gdb_session_start (win->session, NULL, &err)) {
         g_warning ("[gdb] failed to spawn gdb: %s",
@@ -882,6 +981,11 @@ moo_gdb_win_new (MooEditWindow *window)
         "GDB Console — type a command and press Enter, "
         "or use Ctrl+F5 to start debugging.\n", "log");
 
+    /* Locals pane lives on the right side; auto-populated from the
+     * session's "locals-changed" signal which fires after every
+     * *stopped event. */
+    build_locals_pane (win);
+
     /* Note: gutter-click breakpoint toggling and doc-loaded
      * re-attach were tried via an emission hook on
      * line-mark-clicked + a connect on a doc-loaded editor signal,
@@ -900,6 +1004,8 @@ moo_gdb_win_free (MooGdbWin *win)
 
     if (win->console_pane)
         moo_edit_window_remove_pane (win->window, MOO_GDB_CONSOLE_PANE_ID);
+    if (win->locals_pane)
+        moo_edit_window_remove_pane (win->window, MOO_GDB_LOCALS_PANE_ID);
 
     clear_exec_mark (win);
 
