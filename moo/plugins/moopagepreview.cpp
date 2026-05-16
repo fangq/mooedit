@@ -130,6 +130,9 @@ typedef struct {
     int   level;     /* 1..6, matches <hN> */
     char *title;     /* g_strdup'd display text (no leading "# ") */
     char *anchor;    /* g_strdup'd slug for href="#..." */
+    char *number;    /* hierarchical section number "1.2.3" — built at
+                      * heading-emit time so both the rendered <hN> and
+                      * the TOC entry use the same string */
 } WikiTocEntry;
 
 typedef struct {
@@ -150,7 +153,142 @@ typedef struct {
      * Both the heading anchor (== # …) and the inline [#name] register
      * here. */
     GHashTable *anchors_seen;
+
+    /* Per-level counters for hierarchical "1.2.3"-style section
+     * numbers on "== # Heading ==".  Index 0 is unused (heading levels
+     * are 1-based); on each numbered heading at level N we increment
+     * heading_counters[N] and reset heading_counters[N+1..6]. */
+    int heading_counters[7];
+
+    /* List-nesting state.  Held separately from the generic block
+     * stack because HTML5 requires nested <ul>/<ol> to live inside
+     * the parent's <li>, not as a direct child of the outer list.
+     * list_stack[i] is the kind ('u' / 'o' / 'd') of the i-th open
+     * list, list_li_open[i] is TRUE iff that level has an unclosed
+     * <li>/<dd> we're waiting to close. */
+    GArray *list_stack;     /* char per element */
+    GArray *list_li_open;   /* gboolean per element */
 } WikiCtx;
+
+/* ── List state-machine helpers ──────────────────────────────────────
+ * The state-machine emits proper HTML5 nesting: each deeper level
+ * lives inside the closest open <li>, and <li>s are closed lazily
+ * (when the next sibling arrives or the list closes) so a nested
+ * inner list can be inserted without first closing the outer item.
+ */
+
+static const char *
+list_tag_for_kind (char k)
+{
+    return k == 'u' ? "ul" : k == 'o' ? "ol" : "dl";
+}
+
+/* True iff we currently have any open list block. */
+static gboolean
+wiki_in_list (WikiCtx *ctx)
+{
+    return ctx->list_stack->len > 0;
+}
+
+/* Close the current list down to the target depth (or below, if
+ * `target` is less than the current depth).  After this call the
+ * list stack has exactly `target` entries. */
+static void
+wiki_list_close_to (WikiCtx *ctx, int target)
+{
+    while ((int) ctx->list_stack->len > target)
+    {
+        int      idx       = ctx->list_stack->len - 1;
+        char     kind      = g_array_index (ctx->list_stack, char,     idx);
+        gboolean li_open   = g_array_index (ctx->list_li_open, gboolean, idx);
+        const char *tag    = list_tag_for_kind (kind);
+        const char *li_tag = (kind == 'd') ? "dd" : "li";
+
+        if (li_open)
+            g_string_append_printf (ctx->out, "</%s>\n", li_tag);
+        g_string_append_printf (ctx->out, "</%s>\n", tag);
+
+        g_array_remove_index (ctx->list_stack, idx);
+        g_array_remove_index (ctx->list_li_open, idx);
+
+        /* The inner list lived inside the parent's <li> — that <li>
+         * stays open across the inner block, so close it now too. */
+        if ((int) ctx->list_stack->len > 0
+            && (int) ctx->list_stack->len >= target)
+        {
+            int      pidx = ctx->list_stack->len - 1;
+            char     pk   = g_array_index (ctx->list_stack, char, pidx);
+            const char *p_li = (pk == 'd') ? "dd" : "li";
+            if (g_array_index (ctx->list_li_open, gboolean, pidx))
+            {
+                g_string_append_printf (ctx->out, "</%s>\n", p_li);
+                g_array_index (ctx->list_li_open, gboolean, pidx) = FALSE;
+            }
+        }
+    }
+}
+
+/* Open list levels until depth matches the new target.  When pushing
+ * a level inside an already-open <li> we don't close that <li> —
+ * leaving the inner list as a nested child of the item. */
+static void
+wiki_list_push_to (WikiCtx *ctx, char kind, int target)
+{
+    while ((int) ctx->list_stack->len < target)
+    {
+        int      idx     = ctx->list_stack->len;
+        const char *tag  = list_tag_for_kind (kind);
+        if (idx > 0)
+        {
+            gboolean prev_li = g_array_index (ctx->list_li_open,
+                                              gboolean, idx - 1);
+            if (!prev_li)
+            {
+                /* Need a placeholder <li> so the nested list isn't a
+                 * direct child of <ul>/<ol> (which HTML5 rejects). */
+                char pk = g_array_index (ctx->list_stack, char, idx - 1);
+                const char *p_li = (pk == 'd') ? "dd" : "li";
+                g_string_append_printf (ctx->out, "<%s>", p_li);
+                g_array_index (ctx->list_li_open, gboolean, idx - 1) = TRUE;
+            }
+        }
+        g_string_append_printf (ctx->out, "<%s>\n", tag);
+        char k = kind;
+        gboolean lo = FALSE;
+        g_array_append_val (ctx->list_stack, k);
+        g_array_append_val (ctx->list_li_open, lo);
+    }
+}
+
+/* Emit a single list item at the given (kind, depth).  Handles
+ * close-to-depth, open-to-depth, kind-change, and the "close
+ * previous sibling <li>" step. */
+static void
+wiki_list_item (WikiCtx *ctx, char kind, int depth,
+                const char *open_tag, const char *content)
+{
+    /* If at this depth the current kind doesn't match, drop down so
+     * we re-open with the new kind. */
+    if ((int) ctx->list_stack->len >= depth
+        && g_array_index (ctx->list_stack, char, depth - 1) != kind)
+    {
+        wiki_list_close_to (ctx, depth - 1);
+    }
+
+    if ((int) ctx->list_stack->len > depth)
+        wiki_list_close_to (ctx, depth);
+    if ((int) ctx->list_stack->len < depth)
+        wiki_list_push_to (ctx, kind, depth);
+
+    int idx = depth - 1;
+    const char *li_tag = (kind == 'd') ? "dd" : "li";
+    if (g_array_index (ctx->list_li_open, gboolean, idx))
+        g_string_append_printf (ctx->out, "</%s>\n", li_tag);
+    g_string_append_printf (ctx->out, "%s%s",
+                             open_tag ? open_tag : "<li>",
+                             content);
+    g_array_index (ctx->list_li_open, gboolean, idx) = TRUE;
+}
 
 static void
 wiki_toc_entry_free (gpointer p)
@@ -159,6 +297,7 @@ wiki_toc_entry_free (gpointer p)
     if (!e) return;
     g_free (e->title);
     g_free (e->anchor);
+    g_free (e->number);
     g_free (e);
 }
 
@@ -657,6 +796,9 @@ wiki_close_all_blocks (WikiCtx *ctx)
         g_string_append (ctx->out, "</p>\n");
         ctx->in_para = FALSE;
     }
+    /* Close any open list/dl first so the inner <li>/<dd> closes
+     * before the surrounding non-list block stack. */
+    wiki_list_close_to (ctx, 0);
     wiki_close_to_depth (ctx, 0);
 }
 
@@ -669,35 +811,10 @@ wiki_open_block (WikiCtx *ctx, const char *tag, int depth)
     g_array_append_val (ctx->block_depth, depth);
 }
 
-/* Reconcile current block stack with the desired (kind,depth) stack
- * implied by the new line.  Close mismatched blocks and open new ones
- * as needed.  `kind` is the inner tag (ul/ol/dl); we open one block
- * per depth level so nested lists render correctly. */
-static void
-wiki_match_list_depth (WikiCtx *ctx, const char *kind, int depth)
-{
-    /* Close anything that doesn't share the kind at its depth. */
-    guint i = 0;
-    GSList *l = ctx->blocks;
-    while (l && i < (guint) depth)
-    {
-        const char *cur = (const char *) l->data;
-        if (strcmp (cur, kind) != 0)
-        {
-            wiki_close_to_depth (ctx, i);
-            break;
-        }
-        l = l->next;
-        i++;
-    }
-    /* Close deeper levels regardless. */
-    wiki_close_to_depth (ctx, depth - 0);
-    /* But we want exactly `depth` blocks of `kind` open. */
-    if ((int) g_slist_length (ctx->blocks) > depth)
-        wiki_close_to_depth (ctx, depth);
-    while ((int) g_slist_length (ctx->blocks) < depth)
-        wiki_open_block (ctx, kind, g_slist_length (ctx->blocks) + 1);
-}
+/* wiki_match_list_depth removed — replaced by wiki_list_item /
+ * wiki_list_close_to / wiki_list_push_to which produce HTML5-valid
+ * nested-list markup (with each inner <ul> wrapped in the parent's
+ * <li> rather than as a direct child of the outer <ul>). */
 
 /* Emit a single line's content, with paragraph wrapping and inline
  * rules applied.  Caller has already classified the line as plain
@@ -755,16 +872,27 @@ wiki_process_line (WikiCtx *ctx, const char *line)
         }
     }
 
-    /* ---- Horizontal rule ---- */
+    /* ---- Horizontal rule ----
+     * Habitat: 4+ dashes = thin rule, 6+ = thick rule.  Trim trailing
+     * whitespace before counting (a stray space after the dashes is
+     * common and shouldn't break detection). */
     if (line[0] == '-' && line[1] == '-' && line[2] == '-' && line[3] == '-')
     {
-        gboolean all_dash = TRUE;
-        for (const char *p = line; *p; p++)
+        gsize       len      = strlen (line);
+        const char *trim_end = line + len;
+        while (trim_end > line && (trim_end[-1] == ' ' || trim_end[-1] == '\t'))
+            trim_end--;
+        gboolean all_dash = (trim_end > line);
+        for (const char *p = line; p < trim_end; p++)
             if (*p != '-') { all_dash = FALSE; break; }
         if (all_dash)
         {
+            int dash_count = (int) (trim_end - line);
             wiki_close_all_blocks (ctx);
-            g_string_append (ctx->out, "<hr>\n");
+            if (dash_count >= 6)
+                g_string_append (ctx->out, "<hr class=\"wikiline-thick\">\n");
+            else
+                g_string_append (ctx->out, "<hr>\n");
             return;
         }
     }
@@ -819,6 +947,7 @@ wiki_process_line (WikiCtx *ctx, const char *line)
                 }
 
                 char *anchor = NULL;
+                char *number = NULL;   /* "1.2.3" prefix for == # … == */
                 if (in_toc)
                 {
                     anchor = wiki_slugify (display);
@@ -827,14 +956,46 @@ wiki_process_line (WikiCtx *ctx, const char *line)
                                                    ctx->anchor_seq);
                     ctx->anchor_seq++;
 
+                    /* Build hierarchical section number.  Bump our
+                     * level's counter, reset deeper levels, then
+                     * format counters[1..level] skipping leading zeros
+                     * (so a document that starts at H2 still numbers
+                     * "1." rather than "0.1."). */
+                    ctx->heading_counters[level]++;
+                    for (int j = level + 1; j <= 6; j++)
+                        ctx->heading_counters[j] = 0;
+                    GString *numbuf = g_string_new (NULL);
+                    gboolean started = FALSE;
+                    for (int j = 1; j <= level; j++)
+                    {
+                        if (!started && ctx->heading_counters[j] == 0)
+                            continue;
+                        g_string_append_printf (numbuf,
+                            started ? ".%d" : "%d",
+                            ctx->heading_counters[j]);
+                        started = TRUE;
+                    }
+                    if (numbuf->len == 0)
+                        g_string_append_c (numbuf, '1');
+                    number = g_string_free (numbuf, FALSE);
+
                     WikiTocEntry *e = g_new0 (WikiTocEntry, 1);
                     e->level  = level;
                     e->title  = g_strdup (display);
                     e->anchor = g_strdup (anchor);
+                    e->number = g_strdup (number);
                     g_ptr_array_add (ctx->toc, e);
                 }
 
                 char *inlined = wiki_inline (ctx, display);
+                /* Prefix the rendered heading text with the section
+                 * number so the body shows "1.2 Title" in front of the
+                 * H2/H3 chrome — matches how Habitat's <toc> + heading
+                 * numbering looks. */
+                char *heading_text = number
+                    ? g_strdup_printf ("%s %s", number, inlined)
+                    : g_strdup (inlined);
+
                 if (anchor)
                 {
                     /* Skip the <a name> if a previous heading or
@@ -842,22 +1003,25 @@ wiki_process_line (WikiCtx *ctx, const char *line)
                     if (g_hash_table_contains (ctx->anchors_seen, anchor))
                     {
                         g_string_append_printf (ctx->out,
-                            "<h%d>%s</h%d>\n", level, inlined, level);
+                            "<h%d>%s</h%d>\n",
+                            level, heading_text, level);
                     }
                     else
                     {
                         g_string_append_printf (ctx->out,
                             "<h%d><a name=\"%s\"></a>%s</h%d>\n",
-                            level, anchor, inlined, level);
+                            level, anchor, heading_text, level);
                         g_hash_table_add (ctx->anchors_seen,
                                            g_strdup (anchor));
                     }
                 }
                 else
                     g_string_append_printf (ctx->out, "<h%d>%s</h%d>\n",
-                                             level, inlined, level);
+                                             level, heading_text, level);
+                g_free (heading_text);
                 g_free (inlined);
                 g_free (anchor);
+                g_free (number);
                 g_free (title);
                 return;
             }
@@ -879,9 +1043,9 @@ wiki_process_line (WikiCtx *ctx, const char *line)
                 g_string_append (ctx->out, "</p>\n");
                 ctx->in_para = FALSE;
             }
-            wiki_match_list_depth (ctx, ch == '*' ? "ul" : "ol", depth);
             char *inlined = wiki_inline (ctx, content);
-            g_string_append_printf (ctx->out, "<li>%s</li>\n", inlined);
+            wiki_list_item (ctx, ch == '*' ? 'u' : 'o', depth,
+                            "<li>", inlined);
             g_free (inlined);
             return;
         }
@@ -904,9 +1068,9 @@ wiki_process_line (WikiCtx *ctx, const char *line)
                 g_string_append (ctx->out, "</p>\n");
                 ctx->in_para = FALSE;
             }
-            wiki_match_list_depth (ctx, "dl", depth);
-            g_string_append_printf (ctx->out, "<dt>%s</dt><dd>%s</dd>\n",
-                                     t, d);
+            char *combined = g_strdup_printf ("<dt>%s</dt><dd>%s", t, d);
+            wiki_list_item (ctx, 'd', depth, "", combined);
+            g_free (combined);
             g_free (t); g_free (d); g_free (term); g_free (def);
             return;
         }
@@ -923,8 +1087,7 @@ wiki_process_line (WikiCtx *ctx, const char *line)
             g_string_append (ctx->out, "</p>\n");
             ctx->in_para = FALSE;
         }
-        wiki_match_list_depth (ctx, "dl", depth);
-        g_string_append_printf (ctx->out, "<dd>%s</dd>\n", inlined);
+        wiki_list_item (ctx, 'd', depth, "<dd>", inlined);
         g_free (inlined);
         return;
     }
@@ -933,36 +1096,95 @@ wiki_process_line (WikiCtx *ctx, const char *line)
     if ((line[0] == '|' && line[1] == '|')
         || (line[0] == '!' && line[1] == '!'))
     {
-        const char  *sep  = (line[0] == '|') ? "||" : "!!";
-        const char  *cell_tag = (line[0] == '|') ? "td" : "th";
-        gsize        sep_len = 2;
-        const char  *p = line + sep_len;
+        char         sep_char = line[0];          /* '|' or '!'         */
+        const char  *cell_tag = (sep_char == '|') ? "td" : "th";
+
         if (ctx->in_para) {
             g_string_append (ctx->out, "</p>\n");
             ctx->in_para = FALSE;
         }
+        if (wiki_in_list (ctx))
+            wiki_list_close_to (ctx, 0);
         /* Open <table> if not already in one */
         if (!ctx->blocks || strcmp ((char *) ctx->blocks->data, "table") != 0)
         {
             wiki_close_all_blocks (ctx);
             wiki_open_block (ctx, "table", 1);
         }
+
+        /* Parse the row from left to right.  Each cell is preceded by
+         * a run of `sep_char` pairs; the run length divided by 2 is
+         * the colspan for the next cell.  An underscore run "_+"
+         * right after the cell-separator gives rowspan.  Habitat's
+         * regex from Render.pm:
+         *   ((\|\|)+)(\_*) → colspan = length($1)/2,
+         *                    rowspan = length($3)
+         */
+        const char *p = line;
+        gboolean    first_cell = TRUE;
         g_string_append (ctx->out, "<tr>");
         while (*p)
         {
-            const char *end = strstr (p, sep);
-            if (!end) end = p + strlen (p);
-            char *cell    = g_strndup (p, end - p);
+            /* Consume the run of sep_char pairs.  Count pairs. */
+            int pair_count = 0;
+            while (p[0] == sep_char && p[1] == sep_char)
+            {
+                pair_count++;
+                p += 2;
+            }
+            if (pair_count == 0)
+                break;        /* not at a separator — malformed row */
+
+            /* Underscore prefix on the next cell → rowspan. */
+            int rowspan = 0;
+            while (*p == '_')
+            {
+                rowspan++;
+                p++;
+            }
+
+            /* The cell content runs until the next run of sep_char
+             * pairs (or end-of-line). */
+            const char *cell_start = p;
+            while (*p)
+            {
+                if (p[0] == sep_char && p[1] == sep_char)
+                    break;
+                p++;
+            }
+            const char *cell_end = p;
+
+            /* The pair count we just consumed describes the cell
+             * AFTER it (the one we're about to emit), unless we're at
+             * the very start of the line — in that case the pair
+             * count of the leading "||" is just the row marker and a
+             * colspan>1 still belongs to the first cell.  This matches
+             * Habitat's semantics. */
+            int colspan = pair_count;     /* default: the consumed run */
+            if (first_cell && colspan == 1)
+                colspan = 1;
+            first_cell = FALSE;
+
+            /* If we're at end-of-line (cell_start == cell_end and
+             * there's nothing after), this is the terminal "||" — no
+             * cell to emit. */
+            if (cell_start == cell_end && *cell_end == '\0')
+                break;
+
+            char *cell    = g_strndup (cell_start, cell_end - cell_start);
             char *trimmed = g_strstrip (cell);
             char *inlined = wiki_inline (ctx, trimmed);
-            g_string_append_printf (ctx->out, "<%s>%s</%s>",
-                                     cell_tag, inlined, cell_tag);
+            g_string_append_printf (ctx->out, "<%s", cell_tag);
+            if (colspan > 1)
+                g_string_append_printf (ctx->out, " colspan=\"%d\"",
+                                         colspan);
+            if (rowspan > 1)
+                g_string_append_printf (ctx->out, " rowspan=\"%d\"",
+                                         rowspan);
+            g_string_append_printf (ctx->out, ">%s</%s>",
+                                     inlined, cell_tag);
             g_free (inlined);
             g_free (cell);
-            if (*end == '\0') break;
-            p = end + sep_len;
-            /* trailing empty cell after final sep? skip */
-            if (*p == '\0' || (*p == ' ' && !*(p + 1))) break;
         }
         g_string_append (ctx->out, "</tr>\n");
         return;
@@ -986,7 +1208,10 @@ wiki_process_line (WikiCtx *ctx, const char *line)
     }
 
     /* ---- Default: paragraph text ---- */
-    /* If we were in a non-paragraph block, close it first. */
+    /* If we were in a list or other non-paragraph block, close it
+     * first so a paragraph after a list doesn't get adopted into it. */
+    if (wiki_in_list (ctx))
+        wiki_list_close_to (ctx, 0);
     if (ctx->blocks && strcmp ((char *) ctx->blocks->data, "pre") == 0)
         wiki_close_all_blocks (ctx);
     if (ctx->blocks
@@ -1010,6 +1235,8 @@ wiki_to_html (const char *src)
     ctx.anchor_seq   = 1;
     ctx.anchors_seen = g_hash_table_new_full (g_str_hash, g_str_equal,
                                                g_free, NULL);
+    ctx.list_stack   = g_array_new (FALSE, FALSE, sizeof (char));
+    ctx.list_li_open = g_array_new (FALSE, FALSE, sizeof (gboolean));
 
     /* Phase 1: pull out protected regions BEFORE HTML-escaping.  These
      * are the only places where we honour literal HTML; everything else
@@ -1076,16 +1303,34 @@ wiki_to_html (const char *src)
         }
         else
         {
+            /* Find the shallowest heading level used by the document so
+             * we can shift it to TOC depth 1 — keeps a document that
+             * starts at H2 from showing a dummy "level-1" bullet above
+             * every entry.  Heading numbers were already computed at
+             * emit time using the raw levels, and we preserve those
+             * as-is regardless of the depth normalization. */
+            int min_level = 6;
+            for (guint i = 0; i < ctx.toc->len; i++)
+            {
+                WikiTocEntry *e = (WikiTocEntry *) ctx.toc->pdata[i];
+                if (e->level < min_level) min_level = e->level;
+            }
+            if (min_level < 1) min_level = 1;
+
             int      depth   = 0;
             gboolean li_open = FALSE;
+
             g_string_append (toc,
                 "<div class=\"wiki-toc\"><b>Contents</b>\n");
             for (guint i = 0; i < ctx.toc->len; i++)
             {
                 WikiTocEntry *e = (WikiTocEntry *) ctx.toc->pdata[i];
+                int eff_level = e->level - min_level + 1;
+                if (eff_level < 1) eff_level = 1;
+                if (eff_level > 6) eff_level = 6;
 
                 /* Pop deeper levels. */
-                while (depth > e->level)
+                while (depth > eff_level)
                 {
                     if (li_open)
                     {
@@ -1094,15 +1339,12 @@ wiki_to_html (const char *src)
                     }
                     g_string_append (toc, "</ul>\n");
                     depth--;
-                    if (depth > 0)
+                    if (depth >= eff_level)
                         g_string_append (toc, "</li>\n");
                 }
 
-                /* Push to entry's level.  Deeper <ul>s nest inside the
-                 * currently-open <li>; if there's no open <li> at this
-                 * depth (e.g. document starts at H3 with no H2) we
-                 * insert a placeholder <li> as wrapper. */
-                while (depth < e->level)
+                /* Push to entry's effective level. */
+                while (depth < eff_level)
                 {
                     if (li_open)
                     {
@@ -1116,12 +1358,14 @@ wiki_to_html (const char *src)
                     depth++;
                 }
 
-                /* Close any previous sibling <li> at this level. */
+                /* Close previous sibling <li> at this level. */
                 if (li_open)
                     g_string_append (toc, "</li>\n");
                 g_string_append_printf (toc,
-                    "<li><a href=\"#%s\">%s</a>",
-                    e->anchor, e->title);
+                    "<li><a href=\"#%s\">%s %s</a>",
+                    e->anchor,
+                    e->number ? e->number : "",
+                    e->title);
                 li_open = TRUE;
             }
             if (li_open)
@@ -1159,6 +1403,8 @@ wiki_to_html (const char *src)
     g_ptr_array_free (ctx.toc, TRUE);
     g_hash_table_destroy (ctx.anchors_seen);
     g_array_free (ctx.block_depth, TRUE);
+    g_array_free (ctx.list_stack, TRUE);
+    g_array_free (ctx.list_li_open, TRUE);
     g_slist_free_full (ctx.blocks, g_free);
     return result;
 }
