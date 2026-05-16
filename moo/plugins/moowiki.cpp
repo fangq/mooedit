@@ -152,6 +152,12 @@ typedef struct {
      * end when wiki_to_html post-processes the buffer for <toc> markers. */
     GPtrArray  *toc;          /* of WikiTocEntry*, owned */
     int         anchor_seq;   /* dedupe counter for duplicate heading slugs */
+
+    /* Set of anchor names already emitted so a stray duplicate
+     * "[#name]" doesn't trip libxml2's "ID already defined" warning.
+     * Both the heading anchor (== # …) and the inline [#name] register
+     * here. */
+    GHashTable *anchors_seen;
 } WikiCtx;
 
 static void
@@ -415,7 +421,9 @@ wiki_inline (WikiCtx *ctx, const char *text)
         /* Named anchor: [#Anchor] (Habitat NamedAnchors).  Emits an
          * empty <a name="..."> in place so later [[Page#Anchor]] /
          * [url#Anchor] references resolve to it within the rendered
-         * preview.  Doesn't show any visible glyph. */
+         * preview.  Doesn't show any visible glyph.  Duplicate uses of
+         * the same name silently drop the second/third anchor so we
+         * don't trip libxml2's "ID already defined" warning. */
         if (p[0] == '[' && p[1] == '#')
         {
             const char *body  = p + 2;
@@ -423,10 +431,16 @@ wiki_inline (WikiCtx *ctx, const char *text)
             if (close && close > body)
             {
                 char *name = g_strndup (body, close - body);
-                char *raw  = g_strdup_printf ("<a name=\"%s\"></a>", name);
-                char *ph   = wiki_save_raw (ctx, raw);
-                g_string_append (out, ph);
-                g_free (ph); g_free (raw); g_free (name);
+                if (!g_hash_table_contains (ctx->anchors_seen, name))
+                {
+                    char *raw = g_strdup_printf ("<a name=\"%s\"></a>", name);
+                    char *ph  = wiki_save_raw (ctx, raw);
+                    g_string_append (out, ph);
+                    g_free (ph); g_free (raw);
+                    g_hash_table_add (ctx->anchors_seen,
+                                       g_strdup (name));
+                }
+                g_free (name);
                 p = close + 1;
                 continue;
             }
@@ -728,6 +742,27 @@ wiki_process_line (WikiCtx *ctx, const char *line)
         return;
     }
 
+    /* ---- <toc> marker on its own line — handled as a block so it
+     * doesn't get wrapped in <p> (which would make libxml2 reject the
+     * generated nested-list TOC).  After Phase 2 the marker reaches
+     * us as "&lt;toc&gt;"; replace it with a sentinel that survives
+     * the rest of the pipeline and gets expanded in Phase 5. */
+    {
+        const char *q = line;
+        while (*q == ' ' || *q == '\t') q++;
+        if (g_ascii_strncasecmp (q, "&lt;toc&gt;", 11) == 0)
+        {
+            const char *tail = q + 11;
+            while (*tail == ' ' || *tail == '\t') tail++;
+            if (*tail == '\0')
+            {
+                wiki_close_all_blocks (ctx);
+                g_string_append (ctx->out, "\x01TOC\x01\n");
+                return;
+            }
+        }
+    }
+
     /* ---- Horizontal rule ---- */
     if (line[0] == '-' && line[1] == '-' && line[2] == '-' && line[3] == '-')
     {
@@ -809,9 +844,23 @@ wiki_process_line (WikiCtx *ctx, const char *line)
 
                 char *inlined = wiki_inline (ctx, display);
                 if (anchor)
-                    g_string_append_printf (ctx->out,
-                        "<h%d><a name=\"%s\"></a>%s</h%d>\n",
-                        level, anchor, inlined, level);
+                {
+                    /* Skip the <a name> if a previous heading or
+                     * inline [#anchor] already registered this name. */
+                    if (g_hash_table_contains (ctx->anchors_seen, anchor))
+                    {
+                        g_string_append_printf (ctx->out,
+                            "<h%d>%s</h%d>\n", level, inlined, level);
+                    }
+                    else
+                    {
+                        g_string_append_printf (ctx->out,
+                            "<h%d><a name=\"%s\"></a>%s</h%d>\n",
+                            level, anchor, inlined, level);
+                        g_hash_table_add (ctx->anchors_seen,
+                                           g_strdup (anchor));
+                    }
+                }
                 else
                     g_string_append_printf (ctx->out, "<h%d>%s</h%d>\n",
                                              level, inlined, level);
@@ -967,6 +1016,8 @@ wiki_to_html (const char *src)
     ctx.link_counter = 0;
     ctx.toc          = g_ptr_array_new_with_free_func (wiki_toc_entry_free);
     ctx.anchor_seq   = 1;
+    ctx.anchors_seen = g_hash_table_new_full (g_str_hash, g_str_equal,
+                                               g_free, NULL);
 
     /* Phase 1: pull out protected regions BEFORE HTML-escaping.  These
      * are the only places where we honour literal HTML; everything else
@@ -1016,68 +1067,96 @@ wiki_to_html (const char *src)
     char *result = g_string_free (ctx.out, FALSE);
     result = wiki_restore_saved (&ctx, result);
 
-    /* Phase 5: build the TOC and splice it in at every <toc> marker
-     * (case-insensitive, anywhere in the output).  Habitat writes
-     * "<toc>" near the top of pages; we accept any number of them and
-     * replace each with the generated nested-list TOC.  Empty TOC
-     * (no "== # …" headings found) reduces to a single italic note,
-     * matching what users expect for a "no entries" placeholder. */
+    /* Phase 5: build the TOC and splice it in at the \x01TOC\x01
+     * sentinels left behind by the line processor.  Nested-list HTML
+     * has to wrap inner <ul>s inside the previous <li> (HTML5 doesn't
+     * accept <ul> as a direct child of <ul>), which makes building it
+     * from a flat (level, title) list mildly awkward — see the
+     * deferred-close state machine below. */
     {
         GString *toc = g_string_new (NULL);
         if (ctx.toc->len == 0)
         {
             g_string_append (toc,
-                "<p><em>(table of contents: no marked headings)</em></p>\n");
+                "<div class=\"wiki-toc\"><em>"
+                "(no headings marked for the table of contents — use "
+                "<code>== # Title ==</code>)</em></div>\n");
         }
         else
         {
-            int current_level = 0;
-            g_string_append (toc, "<div class=\"wiki-toc\"><b>Contents</b>\n");
+            int      depth   = 0;
+            gboolean li_open = FALSE;
+            g_string_append (toc,
+                "<div class=\"wiki-toc\"><b>Contents</b>\n");
             for (guint i = 0; i < ctx.toc->len; i++)
             {
                 WikiTocEntry *e = (WikiTocEntry *) ctx.toc->pdata[i];
-                while (current_level < e->level)
+
+                /* Pop deeper levels. */
+                while (depth > e->level)
                 {
-                    g_string_append (toc, "<ul>\n");
-                    current_level++;
-                }
-                while (current_level > e->level)
-                {
+                    if (li_open)
+                    {
+                        g_string_append (toc, "</li>\n");
+                        li_open = FALSE;
+                    }
                     g_string_append (toc, "</ul>\n");
-                    current_level--;
+                    depth--;
+                    if (depth > 0)
+                        g_string_append (toc, "</li>\n");
                 }
+
+                /* Push to entry's level.  Deeper <ul>s nest inside the
+                 * currently-open <li>; if there's no open <li> at this
+                 * depth (e.g. document starts at H3 with no H2) we
+                 * insert a placeholder <li> as wrapper. */
+                while (depth < e->level)
+                {
+                    if (li_open)
+                    {
+                        g_string_append (toc, "<ul>\n");
+                        li_open = FALSE;
+                    }
+                    else if (depth == 0)
+                        g_string_append (toc, "<ul>\n");
+                    else
+                        g_string_append (toc, "<li><ul>\n");
+                    depth++;
+                }
+
+                /* Close any previous sibling <li> at this level. */
+                if (li_open)
+                    g_string_append (toc, "</li>\n");
                 g_string_append_printf (toc,
-                    "<li><a href=\"#%s\">%s</a></li>\n",
+                    "<li><a href=\"#%s\">%s</a>",
                     e->anchor, e->title);
+                li_open = TRUE;
             }
-            while (current_level > 0)
+            if (li_open)
+                g_string_append (toc, "</li>\n");
+            while (depth > 0)
             {
                 g_string_append (toc, "</ul>\n");
-                current_level--;
+                depth--;
+                if (depth > 0)
+                    g_string_append (toc, "</li>\n");
             }
             g_string_append (toc, "</div>\n");
         }
 
-        /* Case-insensitive replace of all "<toc>" markers — accept
-         * "&lt;toc&gt;" too in case it survived HTML-escape. */
+        /* Replace each "\x01TOC\x01" sentinel with the rendered TOC.
+         * The sentinel was emitted as a block (not inside <p>) so the
+         * inner <div>/<ul> aren't trapped in an inline context. */
         GString *out2 = g_string_sized_new (strlen (result) + toc->len);
-        const char *p = result;
-        while (*p)
+        for (const char *p = result; *p; )
         {
-            if (g_ascii_strncasecmp (p, "<toc>", 5) == 0)
+            if (strncmp (p, "\x01TOC\x01", 5) == 0)
             {
                 g_string_append (out2, toc->str);
                 p += 5;
             }
-            else if (g_ascii_strncasecmp (p, "&lt;toc&gt;", 11) == 0)
-            {
-                g_string_append (out2, toc->str);
-                p += 11;
-            }
             else
-            {
                 g_string_append_c (out2, *p++);
-            }
         }
         g_string_free (toc, TRUE);
         g_free (result);
@@ -1086,6 +1165,7 @@ wiki_to_html (const char *src)
 
     g_ptr_array_free (ctx.saved, TRUE);
     g_ptr_array_free (ctx.toc, TRUE);
+    g_hash_table_destroy (ctx.anchors_seen);
     g_array_free (ctx.block_depth, TRUE);
     g_slist_free_full (ctx.blocks, g_free);
     return result;
