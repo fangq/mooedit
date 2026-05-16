@@ -18,6 +18,11 @@
 #include "plugins/moogdb/moogdb-ui.h"
 #include "plugins/moogdb/moogdb-session.h"
 
+#include "mooedit/mooeditor.h"
+#include "mooedit/mooeditview.h"
+#include "mooedit/mootextview.h"
+#include "mooedit/mootextbuffer.h"
+#include "mooedit/moolinemark.h"
 #include "mooutils/mooi18n.h"
 #include <string.h>
 
@@ -127,4 +132,325 @@ moo_gdb_ui_test_connection (MooEditWindow *window)
         g_free (msg);
         if (err) g_error_free (err);
     }
+}
+
+/* ═════════════ Per-window state + breakpoint margin ═════════════════
+ *
+ * MooGdbWin holds one MooGdbSession (lazily created on first use)
+ * plus a `breakpoints` table keyed by canonical file path.  Each
+ * value is a GHashTable<int line -> Breakpoint*>, where Breakpoint
+ * carries the gdb-assigned number plus the MooLineMark that shows
+ * the red dot in the gutter.
+ */
+
+typedef struct {
+    int          number;       /* -1 until -break-insert reply arrives */
+    char        *file;
+    int          line;
+    MooLineMark *mark;         /* visual mark in the gutter (or NULL) */
+} GdbBreakpoint;
+
+struct _MooGdbWin {
+    MooEditWindow *window;
+    MooGdbSession *session;        /* lazily created */
+    GHashTable    *bp_by_file;     /* char* -> GHashTable<int, GdbBreakpoint*> */
+    GHashTable    *bp_by_number;   /* int   -> GdbBreakpoint* (borrowed) */
+    gulong         line_mark_handler_id;
+    gulong         doc_loaded_handler_id;
+    gulong         bp_added_handler_id;
+    gulong         bp_removed_handler_id;
+};
+
+static void
+free_bp (gpointer p)
+{
+    GdbBreakpoint *bp = (GdbBreakpoint *) p;
+    if (!bp) return;
+    g_free (bp->file);
+    if (bp->mark)
+        g_object_unref (bp->mark);
+    g_free (bp);
+}
+
+static void
+free_file_table (gpointer p)
+{
+    g_hash_table_destroy ((GHashTable *) p);
+}
+
+/* Look up an existing breakpoint at file:line, or NULL. */
+static GdbBreakpoint *
+lookup_bp (MooGdbWin *win, const char *file, int line)
+{
+    if (!win->bp_by_file || !file) return NULL;
+    GHashTable *line_tbl = (GHashTable *)
+        g_hash_table_lookup (win->bp_by_file, file);
+    if (!line_tbl) return NULL;
+    return (GdbBreakpoint *)
+        g_hash_table_lookup (line_tbl, GINT_TO_POINTER (line));
+}
+
+static void
+register_bp (MooGdbWin *win, GdbBreakpoint *bp)
+{
+    GHashTable *line_tbl = (GHashTable *)
+        g_hash_table_lookup (win->bp_by_file, bp->file);
+    if (!line_tbl) {
+        line_tbl = g_hash_table_new_full (g_direct_hash, g_direct_equal,
+                                          NULL, free_bp);
+        g_hash_table_insert (win->bp_by_file, g_strdup (bp->file), line_tbl);
+    }
+    g_hash_table_insert (line_tbl, GINT_TO_POINTER (bp->line), bp);
+    if (bp->number >= 0)
+        g_hash_table_insert (win->bp_by_number,
+                              GINT_TO_POINTER (bp->number), bp);
+}
+
+/* Find the open MooEditView showing `file` (if any) and place a red
+ * dot in its gutter at `line`.  Safe to call before/after the
+ * actual file is loaded — we'll re-place on doc-loaded events too. */
+static void
+attach_visual_mark (G_GNUC_UNUSED MooGdbWin *win, GdbBreakpoint *bp)
+{
+    if (bp->mark) return;
+    MooEditor *editor = moo_editor_instance ();
+    MooEditArray *docs = moo_editor_get_docs (editor);
+    if (!docs) return;
+    for (guint i = 0; i < docs->n_elms; i++) {
+        MooEdit *doc = docs->elms[i];
+        char *fn = moo_edit_get_filename (doc);
+        gboolean match = fn && !strcmp (fn, bp->file);
+        g_free (fn);
+        if (!match) continue;
+        MooEditView *view = moo_edit_get_view (doc);
+        if (!view) continue;
+        GtkTextBuffer *buf = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
+        if (!MOO_IS_TEXT_BUFFER (buf)) continue;
+
+        bp->mark = (MooLineMark *) g_object_new (MOO_TYPE_LINE_MARK,
+            "visible", TRUE, (const char *) NULL);
+        moo_line_mark_set_stock_id (bp->mark, "gtk-stop");
+        /* line is 1-based in our model; MooTextBuffer expects 0-based */
+        moo_text_buffer_add_line_mark (MOO_TEXT_BUFFER (buf),
+                                       bp->mark, bp->line - 1);
+        break;
+    }
+}
+
+static void
+detach_visual_mark (GdbBreakpoint *bp)
+{
+    if (!bp->mark) return;
+    MooTextBuffer *buf = moo_line_mark_get_buffer (bp->mark);
+    if (buf)
+        moo_text_buffer_delete_line_mark (buf, bp->mark);
+    g_object_unref (bp->mark);
+    bp->mark = NULL;
+}
+
+/* Session "breakpoint-added" handler — gdb gave us a number; if we
+ * have a pending placeholder at file:line, fill in its number and
+ * register it in the by-number table for fast removal. */
+static void
+on_session_bp_added (G_GNUC_UNUSED MooGdbSession *s,
+                     int number, const char *file, int line,
+                     gpointer user_data)
+{
+    MooGdbWin *win = (MooGdbWin *) user_data;
+    GdbBreakpoint *bp = lookup_bp (win, file, line);
+    if (!bp) {
+        /* Created via gdb console / =breakpoint-created with no prior
+         * UI request — synthesize a record so the gutter mark shows. */
+        bp = g_new0 (GdbBreakpoint, 1);
+        bp->number = number;
+        bp->file   = g_strdup (file);
+        bp->line   = line;
+        register_bp (win, bp);
+        attach_visual_mark (win, bp);
+        return;
+    }
+    bp->number = number;
+    g_hash_table_insert (win->bp_by_number, GINT_TO_POINTER (number), bp);
+    attach_visual_mark (win, bp);
+}
+
+static void
+on_session_bp_removed (G_GNUC_UNUSED MooGdbSession *s,
+                       int number, gpointer user_data)
+{
+    MooGdbWin *win = (MooGdbWin *) user_data;
+    GdbBreakpoint *bp = (GdbBreakpoint *)
+        g_hash_table_lookup (win->bp_by_number, GINT_TO_POINTER (number));
+    if (!bp) return;
+    detach_visual_mark (bp);
+    GHashTable *line_tbl = (GHashTable *)
+        g_hash_table_lookup (win->bp_by_file, bp->file);
+    g_hash_table_remove (win->bp_by_number, GINT_TO_POINTER (number));
+    /* line_tbl's free_bp destructor frees the entry. */
+    if (line_tbl)
+        g_hash_table_remove (line_tbl, GINT_TO_POINTER (bp->line));
+}
+
+/* Lazy session create — used when the user toggles a breakpoint
+ * before they've launched the debugger.  Just enough state to track
+ * breakpoints; -exec-run + execution control comes from Phase 5. */
+static MooGdbSession *
+ensure_session (MooGdbWin *win)
+{
+    if (win->session) return win->session;
+    win->session = moo_gdb_session_new ();
+    win->bp_added_handler_id = g_signal_connect (
+        win->session, "breakpoint-added",
+        G_CALLBACK (on_session_bp_added), win);
+    win->bp_removed_handler_id = g_signal_connect (
+        win->session, "breakpoint-removed",
+        G_CALLBACK (on_session_bp_removed), win);
+    GError *err = NULL;
+    if (!moo_gdb_session_start (win->session, NULL, &err)) {
+        g_warning ("[gdb] failed to spawn gdb: %s",
+                   err ? err->message : "(unknown)");
+        if (err) g_error_free (err);
+        g_object_unref (win->session);
+        win->session = NULL;
+    }
+    return win->session;
+}
+
+void
+moo_gdb_win_toggle_bp (MooGdbWin *win, const char *file, int line)
+{
+    g_return_if_fail (win != NULL && file != NULL && line > 0);
+    GdbBreakpoint *existing = lookup_bp (win, file, line);
+    if (existing) {
+        if (existing->number >= 0 && win->session)
+            moo_gdb_session_break_remove (win->session, existing->number);
+        else {
+            /* Not yet registered with gdb (race between toggle and
+             * insert reply).  Just drop the local visual + record. */
+            detach_visual_mark (existing);
+            GHashTable *line_tbl = (GHashTable *)
+                g_hash_table_lookup (win->bp_by_file, file);
+            if (line_tbl)
+                g_hash_table_remove (line_tbl, GINT_TO_POINTER (line));
+        }
+        return;
+    }
+
+    /* New breakpoint — placeholder entry so future on_session_bp_added
+     * can find it by (file,line). */
+    GdbBreakpoint *bp = g_new0 (GdbBreakpoint, 1);
+    bp->number = -1;
+    bp->file   = g_strdup (file);
+    bp->line   = line;
+    register_bp (win, bp);
+    attach_visual_mark (win, bp);
+
+    MooGdbSession *s = ensure_session (win);
+    if (s)
+        moo_gdb_session_break_add (s, file, line);
+}
+
+/* MooTextView "line-mark-clicked" signal handler.  Convert the
+ * clicked (view, line) into (file, line) and forward to toggle_bp. */
+static gboolean
+on_line_mark_clicked (MooTextView *tview, int line, MooGdbWin *win)
+{
+    /* The MooTextView in medit is wrapped by a MooEditView; the
+     * doc gives us the filename.  Walk up: view is the MooEditView. */
+    if (!MOO_IS_EDIT_VIEW (tview))
+        return FALSE;
+    MooEdit *doc = moo_edit_view_get_doc (MOO_EDIT_VIEW (tview));
+    if (!doc) return FALSE;
+    char *file = moo_edit_get_filename (doc);
+    if (!file) return FALSE;
+    /* line argument is 0-based; our model uses 1-based. */
+    moo_gdb_win_toggle_bp (win, file, line + 1);
+    g_free (file);
+    return TRUE;
+}
+
+/* On editor "doc-loaded" we may need to re-attach a previously
+ * registered breakpoint's visual mark — it was created before the
+ * file's buffer was visible. */
+static void
+on_doc_loaded (G_GNUC_UNUSED MooEditor *editor, MooEdit *doc,
+               MooGdbWin *win)
+{
+    char *file = moo_edit_get_filename (doc);
+    if (!file) return;
+    GHashTable *line_tbl = (GHashTable *)
+        g_hash_table_lookup (win->bp_by_file, file);
+    g_free (file);
+    if (!line_tbl) return;
+    GHashTableIter it;
+    gpointer key, val;
+    g_hash_table_iter_init (&it, line_tbl);
+    while (g_hash_table_iter_next (&it, &key, &val))
+        attach_visual_mark (win, (GdbBreakpoint *) val);
+}
+
+MooGdbWin *
+moo_gdb_win_new (MooEditWindow *window)
+{
+    MooGdbWin *win = g_new0 (MooGdbWin, 1);
+    win->window      = window;
+    win->bp_by_file  = g_hash_table_new_full (g_str_hash, g_str_equal,
+                                               g_free, free_file_table);
+    win->bp_by_number = g_hash_table_new (g_direct_hash, g_direct_equal);
+
+    /* Catch line-mark-clicked on every editor view that lives in
+     * this window.  Connecting once at the class level keeps the
+     * code small at the cost of routing every click through one
+     * handler — fine for Phase 3. */
+    GObjectClass *vklass = (GObjectClass *) g_type_class_peek (
+        MOO_TYPE_EDIT_VIEW);
+    (void) vklass;
+    /* Per-instance signal connection on existing views + new views
+     * via the editor's doc-list-changed signal would be the proper
+     * approach.  For now we connect at the class-default level,
+     * meaning every MooTextView instance fires our handler.  The
+     * handler short-circuits on non-MOO_EDIT_VIEW objects. */
+    win->line_mark_handler_id = g_signal_add_emission_hook (
+        g_signal_lookup ("line-mark-clicked", MOO_TYPE_TEXT_VIEW),
+        0,
+        [](GSignalInvocationHint *, guint, const GValue *params,
+           gpointer user_data) -> gboolean {
+            MooGdbWin *w = (MooGdbWin *) user_data;
+            MooTextView *tview = MOO_TEXT_VIEW (g_value_get_object (&params[0]));
+            int          line  = g_value_get_int    (&params[1]);
+            on_line_mark_clicked (tview, line, w);
+            /* TRUE → stay subscribed */
+            return TRUE;
+        },
+        win, NULL);
+
+    MooEditor *editor = moo_editor_instance ();
+    win->doc_loaded_handler_id = g_signal_connect (
+        editor, "after-doc-loaded",
+        G_CALLBACK (on_doc_loaded), win);
+
+    return win;
+}
+
+void
+moo_gdb_win_free (MooGdbWin *win)
+{
+    if (!win) return;
+
+    if (win->line_mark_handler_id)
+        g_signal_remove_emission_hook (
+            g_signal_lookup ("line-mark-clicked", MOO_TYPE_TEXT_VIEW),
+            win->line_mark_handler_id);
+
+    MooEditor *editor = moo_editor_instance ();
+    if (win->doc_loaded_handler_id)
+        g_signal_handler_disconnect (editor, win->doc_loaded_handler_id);
+
+    if (win->session) {
+        moo_gdb_session_quit (win->session);
+        g_object_unref (win->session);
+    }
+    g_hash_table_destroy (win->bp_by_file);
+    g_hash_table_destroy (win->bp_by_number);
+    g_free (win);
 }

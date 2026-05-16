@@ -59,6 +59,8 @@ enum {
     SIG_LOG_OUTPUT,
     SIG_RUNNING,
     SIG_STOPPED,
+    SIG_BP_ADDED,
+    SIG_BP_REMOVED,
     SIG_EXITED,
     N_SIGNALS
 };
@@ -77,6 +79,8 @@ static void  set_state        (MooGdbSession *s, MooGdbState st);
 static void  on_version_reply (MooGdbSession *s,
                                MooGdbMiRecord *r,
                                gpointer        user_data);
+static void  emit_bp_added_from_bkpt (MooGdbSession *s,
+                                       MooGdbMiValue *bkpt_val);
 
 /* ── Life-cycle ───────────────────────────────────────────────────── */
 
@@ -147,6 +151,20 @@ moo_gdb_session_class_init (MooGdbSessionClass *klass)
         G_TYPE_STRING,    /* file    (canonical path, may be NULL) */
         G_TYPE_INT,       /* line    (1-based, 0 if unknown) */
         G_TYPE_STRING);   /* function (may be NULL) */
+
+    /* "breakpoint-added" :: (int number, const char *file, int line)
+     * Fires for both the synchronous reply to -break-insert and the
+     * async =breakpoint-created notification (gdb sends both for
+     * the same insert; consumers should dedupe by number). */
+    signals[SIG_BP_ADDED] = g_signal_new (
+        "breakpoint-added", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+        0, NULL, NULL, NULL,
+        G_TYPE_NONE, 3, G_TYPE_INT, G_TYPE_STRING, G_TYPE_INT);
+
+    signals[SIG_BP_REMOVED] = g_signal_new (
+        "breakpoint-removed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+        0, NULL, NULL, g_cclosure_marshal_VOID__INT,
+        G_TYPE_NONE, 1, G_TYPE_INT);
 
     signals[SIG_EXITED] = g_signal_new (
         "exited", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
@@ -372,8 +390,29 @@ dispatch_record (MooGdbSession *s, MooGdbMiRecord *r)
         }
         break;
     }
+    case MOO_GDB_MI_NOTIFY: {
+        const char *klass = moo_gdb_mi_record_class (r);
+        if (!klass) break;
+        if (!strcmp (klass, "breakpoint-created")
+            || !strcmp (klass, "breakpoint-modified"))
+        {
+            MooGdbMiValue *bkpt = moo_gdb_mi_record_field (r, "bkpt");
+            emit_bp_added_from_bkpt (s, bkpt);
+        }
+        else if (!strcmp (klass, "breakpoint-deleted"))
+        {
+            MooGdbMiValue *idv = moo_gdb_mi_record_field (r, "id");
+            if (idv) {
+                const char *idstr = moo_gdb_mi_value_string (idv);
+                if (idstr)
+                    g_signal_emit (s, signals[SIG_BP_REMOVED],
+                                   0, atoi (idstr));
+            }
+        }
+        break;
+    }
     default:
-        /* STATUS / NOTIFY / TARGET — wired in later commits. */
+        /* STATUS / TARGET — wired in later commits. */
         break;
     }
 }
@@ -442,6 +481,77 @@ moo_gdb_session_continue (MooGdbSession *s)
 {
     g_return_if_fail (MOO_IS_GDB_SESSION (s));
     send_command (s, "-exec-continue", NULL, NULL);
+}
+
+/* ── Breakpoints ──────────────────────────────────────────────────── */
+
+/* Decode a `bkpt={number="N",fullname="...",file="...",line="L",...}`
+ * value into (number, file, line) and emit "breakpoint-added".
+ * `bkpt_val` may be NULL — we just return without firing. */
+static void
+emit_bp_added_from_bkpt (MooGdbSession *s, MooGdbMiValue *bkpt_val)
+{
+    if (!bkpt_val) return;
+    MooGdbMiValue *v;
+    int   number = -1;
+    const char *file = NULL;
+    int   line = 0;
+
+    v = moo_gdb_mi_value_tuple_get (bkpt_val, "number");
+    if (v) {
+        const char *ns = moo_gdb_mi_value_string (v);
+        if (ns) number = atoi (ns);
+    }
+    v = moo_gdb_mi_value_tuple_get (bkpt_val, "fullname");
+    if (!v) v = moo_gdb_mi_value_tuple_get (bkpt_val, "file");
+    if (v) file = moo_gdb_mi_value_string (v);
+    v = moo_gdb_mi_value_tuple_get (bkpt_val, "line");
+    if (v) {
+        const char *ls = moo_gdb_mi_value_string (v);
+        if (ls) line = atoi (ls);
+    }
+
+    if (number >= 0)
+        g_signal_emit (s, signals[SIG_BP_ADDED], 0, number, file, line);
+}
+
+static void
+on_break_insert_reply (MooGdbSession *s, MooGdbMiRecord *r,
+                       G_GNUC_UNUSED gpointer user_data)
+{
+    const char *klass = moo_gdb_mi_record_class (r);
+    if (!klass || strcmp (klass, "done") != 0) return;
+    MooGdbMiValue *bkpt = moo_gdb_mi_record_field (r, "bkpt");
+    emit_bp_added_from_bkpt (s, bkpt);
+}
+
+void
+moo_gdb_session_break_add (MooGdbSession *s, const char *file, int line)
+{
+    g_return_if_fail (MOO_IS_GDB_SESSION (s));
+    g_return_if_fail (file != NULL && line > 0);
+    /* -break-insert FILE:LINE.  Shell-quote the path so spaces /
+     * special chars survive the trip to gdb's CLI parser. */
+    char *qfile = g_shell_quote (file);
+    char *cmd   = g_strdup_printf ("-break-insert %s:%d", qfile, line);
+    send_command (s, cmd, on_break_insert_reply, NULL);
+    g_free (cmd);
+    g_free (qfile);
+}
+
+void
+moo_gdb_session_break_remove (MooGdbSession *s, int number)
+{
+    g_return_if_fail (MOO_IS_GDB_SESSION (s));
+    g_return_if_fail (number >= 0);
+    char *cmd = g_strdup_printf ("-break-delete %d", number);
+    send_command (s, cmd, NULL, NULL);
+    g_free (cmd);
+    /* gdb sends =breakpoint-deleted async on success; that's the
+     * primary signal path — we emit "breakpoint-removed" from the
+     * NOTIFY branch of the dispatcher.  Emit it locally too in case
+     * the deletion races: harmless if duplicated. */
+    g_signal_emit (s, signals[SIG_BP_REMOVED], 0, number);
 }
 
 /* ── -gdb-version reply ───────────────────────────────────────────── */

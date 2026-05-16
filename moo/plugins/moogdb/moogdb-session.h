@@ -76,6 +76,14 @@ void           moo_gdb_session_set_cwd    (MooGdbSession *s,
 void           moo_gdb_session_run        (MooGdbSession *s);
 void           moo_gdb_session_continue   (MooGdbSession *s);
 
+/* Breakpoints.  Returns the gdb-assigned number async via the
+ * "breakpoint-added" signal — there's no synchronous return value
+ * because the -break-insert reply may not arrive immediately. */
+void           moo_gdb_session_break_add  (MooGdbSession *s,
+                                           const char    *file,
+                                           int            line);
+void           moo_gdb_session_break_remove(MooGdbSession *s, int number);
+
 /* State accessors ---------------------------------------------------- */
 
 MooGdbState    moo_gdb_session_get_state (MooGdbSession *session);
@@ -96,11 +104,21 @@ const char    *moo_gdb_session_get_version (MooGdbSession *session);
  *   "log-output"     :: (const char *line)
  *       gdb's own internal log lines (&"..." MI record).
  *
- *   "exited"         :: ()
- *       gdb has terminated.  The session is no longer usable.
+ *   "running"             :: ()
+ *       fired on the *running async record.
  *
- * Phase-2 signals — "stopped", "breakpoint-added", "breakpoint-removed",
- * "running" — will be added when execution control lands.
+ *   "stopped"             :: (reason, file, line, function)
+ *       carries the file/line/function gdb reported in the
+ *       *stopped record's frame={...} field.  All strings borrowed.
+ *
+ *   "breakpoint-added"    :: (int number, const char *file, int line)
+ *       -break-insert succeeded.
+ *
+ *   "breakpoint-removed"  :: (int number)
+ *       breakpoint identified by `number` was removed.
+ *
+ *   "exited"              :: ()
+ *       gdb has terminated.  The session is no longer usable.
  */
 
 G_END_DECLS

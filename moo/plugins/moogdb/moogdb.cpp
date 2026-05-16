@@ -50,6 +50,7 @@ typedef struct {
 
 typedef struct {
     MooWinPlugin parent;
+    MooGdbWin   *win;     /* per-window breakpoint state + session */
 } MooGdbWindowPlugin;
 
 /* Menu callback wired to "DebugTestConnection".  Forwarded straight
@@ -62,19 +63,18 @@ debug_test_connection_cb (MooEditWindow *window)
 }
 
 static gboolean
-moo_gdb_window_plugin_create (G_GNUC_UNUSED MooGdbWindowPlugin *plugin)
+moo_gdb_window_plugin_create (MooGdbWindowPlugin *plugin)
 {
-    /* Phase 1 has no per-window state — the menu action lives on the
-     * MooWindowClass so every editor window picks it up automatically.
-     * Returning TRUE keeps the window-plugin alive (we'll need it for
-     * the breakpoint margin in commit 3). */
+    MooEditWindow *window = MOO_WIN_PLUGIN (plugin)->window;
+    plugin->win = moo_gdb_win_new (window);
     return TRUE;
 }
 
 static void
-moo_gdb_window_plugin_destroy (G_GNUC_UNUSED MooGdbWindowPlugin *plugin)
+moo_gdb_window_plugin_destroy (MooGdbWindowPlugin *plugin)
 {
-    /* Nothing yet. */
+    moo_gdb_win_free (plugin->win);
+    plugin->win = NULL;
 }
 
 static gboolean
