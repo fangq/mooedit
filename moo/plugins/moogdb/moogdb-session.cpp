@@ -590,10 +590,13 @@ moo_gdb_session_break_add (MooGdbSession *s, const char *file, int line)
 {
     g_return_if_fail (MOO_IS_GDB_SESSION (s));
     g_return_if_fail (file != NULL && line > 0);
-    /* -break-insert FILE:LINE.  Shell-quote the path so spaces /
-     * special chars survive the trip to gdb's CLI parser. */
+    /* -break-insert -f FILE:LINE — the -f flag makes the breakpoint
+     * "pending": gdb accepts it even if no symbol table is loaded
+     * yet and resolves it later when the inferior gets loaded.
+     * Shell-quote the path so spaces / special chars survive the
+     * trip to gdb's CLI parser. */
     char *qfile = g_shell_quote (file);
-    char *cmd   = g_strdup_printf ("-break-insert %s:%d", qfile, line);
+    char *cmd   = g_strdup_printf ("-break-insert -f %s:%d", qfile, line);
     send_command (s, cmd, on_break_insert_reply, NULL);
     g_free (cmd);
     g_free (qfile);
