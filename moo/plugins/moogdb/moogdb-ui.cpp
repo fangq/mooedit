@@ -24,6 +24,7 @@
 #include "mooedit/mootextbuffer.h"
 #include "mooedit/moolinemark.h"
 #include "mooutils/mooi18n.h"
+#include "mooutils/moodialogs.h"
 #include <string.h>
 
 typedef struct {
@@ -350,6 +351,19 @@ on_session_exited (G_GNUC_UNUSED MooGdbSession *s, gpointer user_data)
     clear_exec_mark (win);
 }
 
+static void
+on_session_error (G_GNUC_UNUSED MooGdbSession *s, const char *msg,
+                  gpointer user_data)
+{
+    MooGdbWin *win = (MooGdbWin *) user_data;
+    if (!msg) return;
+    /* Lightweight surfacing — full console panel arrives in
+     * commit 7.  Until then, show a dialog so the user sees that
+     * the most recent command failed (otherwise gdb errors
+     * vanish silently into the parsed-but-ignored result stream). */
+    moo_error_dialog (_("GDB Error"), msg, GTK_WIDGET (win->window));
+}
+
 /* Session "breakpoint-added" handler — gdb gave us a number; if we
  * have a pending placeholder at file:line, fill in its number and
  * register it in the by-number table for fast removal. */
@@ -414,6 +428,8 @@ ensure_session (MooGdbWin *win)
                       G_CALLBACK (on_session_running), win);
     g_signal_connect (win->session, "exited",
                       G_CALLBACK (on_session_exited), win);
+    g_signal_connect (win->session, "error",
+                      G_CALLBACK (on_session_error), win);
     GError *err = NULL;
     if (!moo_gdb_session_start (win->session, NULL, &err)) {
         g_warning ("[gdb] failed to spawn gdb: %s",
@@ -503,6 +519,8 @@ void moo_gdb_win_step_into (MooGdbWin *win)
     { if (win && win->session) moo_gdb_session_step_into  (win->session); }
 void moo_gdb_win_step_out  (MooGdbWin *win)
     { if (win && win->session) moo_gdb_session_step_out   (win->session); }
+void moo_gdb_win_pause     (MooGdbWin *win)
+    { if (win && win->session) moo_gdb_session_pause      (win->session); }
 void moo_gdb_win_stop      (MooGdbWin *win)
     { if (win && win->session) { moo_gdb_session_quit (win->session); } }
 

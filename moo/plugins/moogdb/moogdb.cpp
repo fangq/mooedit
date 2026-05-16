@@ -86,6 +86,7 @@ DEFINE_FORWARD (debug_continue_cb,  moo_gdb_win_continue)
 DEFINE_FORWARD (debug_step_over_cb, moo_gdb_win_step_over)
 DEFINE_FORWARD (debug_step_into_cb, moo_gdb_win_step_into)
 DEFINE_FORWARD (debug_step_out_cb,  moo_gdb_win_step_out)
+DEFINE_FORWARD (debug_pause_cb,     moo_gdb_win_pause)
 DEFINE_FORWARD (debug_stop_cb,      moo_gdb_win_stop)
 
 static void
@@ -188,6 +189,15 @@ moo_gdb_plugin_init (MooGdbPlugin *plugin)
         "closure-callback", debug_step_out_cb,
         nullptr);
 
+    moo_window_class_new_action (klass, "DebugPause", NULL,
+        "display-name",     _("Pause"),
+        "label",            _("_Pause Execution"),
+        "tooltip",          _("Send SIGINT to the running inferior "
+                              "so it stops at its current line"),
+        "default-accel",    "F6",
+        "closure-callback", debug_pause_cb,
+        nullptr);
+
     moo_window_class_new_action (klass, "DebugStop", NULL,
         "display-name",     _("Stop Debugging"),
         "label",            _("Sto_p Debugging"),
@@ -208,6 +218,7 @@ moo_gdb_plugin_init (MooGdbPlugin *plugin)
             "DebugStepOver",
             "DebugStepInto",
             "DebugStepOut",
+            "DebugPause",
             "DebugStop",
             "DebugToggleBreakpoint",
         };

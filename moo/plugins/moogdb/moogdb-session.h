@@ -78,6 +78,10 @@ void           moo_gdb_session_continue   (MooGdbSession *s);
 void           moo_gdb_session_step_over  (MooGdbSession *s);   /* -exec-next   */
 void           moo_gdb_session_step_into  (MooGdbSession *s);   /* -exec-step   */
 void           moo_gdb_session_step_out   (MooGdbSession *s);   /* -exec-finish */
+/* Send SIGINT to the inferior so the user can break into a hung
+ * program.  After this fires the user gets the usual *stopped
+ * notification with reason="signal-received". */
+void           moo_gdb_session_pause      (MooGdbSession *s);   /* -exec-interrupt */
 
 /* Breakpoints.  Returns the gdb-assigned number async via the
  * "breakpoint-added" signal — there's no synchronous return value

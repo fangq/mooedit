@@ -53,6 +53,7 @@ void       moo_gdb_win_continue (MooGdbWin     *win);
 void       moo_gdb_win_step_over(MooGdbWin     *win);
 void       moo_gdb_win_step_into(MooGdbWin     *win);
 void       moo_gdb_win_step_out (MooGdbWin     *win);
+void       moo_gdb_win_pause    (MooGdbWin     *win);
 void       moo_gdb_win_stop     (MooGdbWin     *win);
 
 G_END_DECLS

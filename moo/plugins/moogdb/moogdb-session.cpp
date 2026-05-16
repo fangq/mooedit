@@ -61,6 +61,7 @@ enum {
     SIG_STOPPED,
     SIG_BP_ADDED,
     SIG_BP_REMOVED,
+    SIG_ERROR,
     SIG_EXITED,
     N_SIGNALS
 };
@@ -165,6 +166,17 @@ moo_gdb_session_class_init (MooGdbSessionClass *klass)
         "breakpoint-removed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
         0, NULL, NULL, g_cclosure_marshal_VOID__INT,
         G_TYPE_NONE, 1, G_TYPE_INT);
+
+    /* "error" :: (const char *msg)
+     * Fired when gdb responds with `^error,msg="..."`.  Useful for
+     * surfacing problems like "No such file or directory" from a
+     * -file-exec-and-symbols, or "function not defined" from a
+     * -break-insert.  Stay tolerant — error is per-command, not a
+     * session-fatal state. */
+    signals[SIG_ERROR] = g_signal_new (
+        "error", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+        0, NULL, NULL, g_cclosure_marshal_VOID__STRING,
+        G_TYPE_NONE, 1, G_TYPE_STRING);
 
     signals[SIG_EXITED] = g_signal_new (
         "exited", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
@@ -325,6 +337,16 @@ dispatch_record (MooGdbSession *s, MooGdbMiRecord *r)
     MooGdbMiKind k = moo_gdb_mi_record_kind (r);
     switch (k) {
     case MOO_GDB_MI_RESULT: {
+        const char *klass = moo_gdb_mi_record_class (r);
+        /* Surface gdb-reported errors so the UI can flag them.  The
+         * msg field of ^error,msg="..." carries a human-readable
+         * description; we forward it verbatim. */
+        if (klass && !strcmp (klass, "error")) {
+            MooGdbMiValue *msg = moo_gdb_mi_record_field (r, "msg");
+            const char *mstr = msg ? moo_gdb_mi_value_string (msg) : NULL;
+            g_signal_emit (s, signals[SIG_ERROR], 0,
+                           mstr ? mstr : "(unknown gdb error)");
+        }
         int tok = moo_gdb_mi_record_token (r);
         if (tok >= 0) {
             PendingEntry *pe = (PendingEntry *)
@@ -507,6 +529,18 @@ moo_gdb_session_step_out (MooGdbSession *s)
 {
     g_return_if_fail (MOO_IS_GDB_SESSION (s));
     send_command (s, "-exec-finish", NULL, NULL);
+}
+
+/* -exec-interrupt sends SIGINT to the running inferior.  Use this
+ * to break into a hung program.  gdb responds with the usual
+ * *stopped record (reason="signal-received") which our existing
+ * dispatcher already routes to set_exec_mark. */
+void
+moo_gdb_session_pause (MooGdbSession *s)
+{
+    g_return_if_fail (MOO_IS_GDB_SESSION (s));
+    /* --all interrupts every thread in a multi-threaded program. */
+    send_command (s, "-exec-interrupt --all", NULL, NULL);
 }
 
 /* ── Breakpoints ──────────────────────────────────────────────────── */
