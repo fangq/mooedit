@@ -1,0 +1,338 @@
+/*
+ *   moogdb-session.cpp
+ *
+ *   Phase 1 implementation of MooGdbSession.  Spawns a gdb
+ *   subprocess in MI mode, reads lines asynchronously, dispatches
+ *   MI records, and supports a single round-trip command
+ *   (`-gdb-version`).  Execution control and breakpoints land in
+ *   later commits.
+ *
+ *   This file is part of medit.  medit is free software; you can
+ *   redistribute it and/or modify it under the terms of the
+ *   GNU Lesser General Public License as published by the
+ *   Free Software Foundation; either version 2.1 of the License,
+ *   or (at your option) any later version.
+ */
+
+#include "plugins/moogdb/moogdb-session.h"
+#include "plugins/moogdb/moogdb-mi-parser.h"
+
+#include <gio/gio.h>
+#include <string.h>
+
+/* ── Object layout ────────────────────────────────────────────────── */
+
+struct _MooGdbSession {
+    GObject parent;
+
+    GSubprocess      *gdb;
+    GOutputStream    *gdb_in;
+    GDataInputStream *gdb_out;
+    GCancellable     *cancellable;
+
+    MooGdbState       state;
+    char             *version;
+
+    /* Monotonic command counter.  Each outgoing -command is prefixed
+     * with `<token>` so the matching `<token>^done,...` response can
+     * be routed back to the issuer. */
+    guint             next_token;
+    GHashTable       *pending;   /* token (GINT) → ResponseCB struct */
+};
+
+G_DEFINE_TYPE (MooGdbSession, moo_gdb_session, G_TYPE_OBJECT)
+
+typedef void (*ResponseCB) (MooGdbSession *s,
+                            MooGdbMiRecord *record,
+                            gpointer        user_data);
+
+typedef struct {
+    ResponseCB cb;
+    gpointer   user_data;
+} PendingEntry;
+
+/* ── Signals ──────────────────────────────────────────────────────── */
+
+enum {
+    SIG_STATE_CHANGED,
+    SIG_CONSOLE_OUTPUT,
+    SIG_LOG_OUTPUT,
+    SIG_EXITED,
+    N_SIGNALS
+};
+static guint signals[N_SIGNALS];
+
+/* ── Forwards ─────────────────────────────────────────────────────── */
+
+static void  start_read_loop  (MooGdbSession *s);
+static void  on_line_async    (GObject *source, GAsyncResult *res, gpointer user_data);
+static void  dispatch_record  (MooGdbSession *s, MooGdbMiRecord *r);
+static void  send_command     (MooGdbSession *s,
+                               const char    *cmd,
+                               ResponseCB     cb,
+                               gpointer       user_data);
+static void  set_state        (MooGdbSession *s, MooGdbState st);
+static void  on_version_reply (MooGdbSession *s,
+                               MooGdbMiRecord *r,
+                               gpointer        user_data);
+
+/* ── Life-cycle ───────────────────────────────────────────────────── */
+
+static void
+moo_gdb_session_init (MooGdbSession *s)
+{
+    s->state       = MOO_GDB_STATE_IDLE;
+    s->next_token  = 1;
+    s->pending     = g_hash_table_new_full (g_direct_hash, g_direct_equal,
+                                             NULL, g_free);
+    s->cancellable = g_cancellable_new ();
+}
+
+static void
+moo_gdb_session_finalize (GObject *object)
+{
+    MooGdbSession *s = MOO_GDB_SESSION (object);
+    /* If gdb is still alive, force it down — quit() does a polite
+     * "-gdb-exit" but at finalize we may not have time to wait. */
+    if (s->gdb) {
+        g_cancellable_cancel (s->cancellable);
+        g_subprocess_force_exit (s->gdb);
+        g_object_unref (s->gdb);
+    }
+    g_clear_object (&s->gdb_out);
+    g_clear_object (&s->cancellable);
+    /* gdb_in is owned by gdb; don't unref. */
+    g_hash_table_destroy (s->pending);
+    g_free (s->version);
+    G_OBJECT_CLASS (moo_gdb_session_parent_class)->finalize (object);
+}
+
+static void
+moo_gdb_session_class_init (MooGdbSessionClass *klass)
+{
+    GObjectClass *go = G_OBJECT_CLASS (klass);
+    go->finalize = moo_gdb_session_finalize;
+
+    signals[SIG_STATE_CHANGED] = g_signal_new (
+        "state-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+        0, NULL, NULL, g_cclosure_marshal_VOID__VOID,
+        G_TYPE_NONE, 0);
+
+    signals[SIG_CONSOLE_OUTPUT] = g_signal_new (
+        "console-output", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+        0, NULL, NULL, g_cclosure_marshal_VOID__STRING,
+        G_TYPE_NONE, 1, G_TYPE_STRING);
+
+    signals[SIG_LOG_OUTPUT] = g_signal_new (
+        "log-output", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+        0, NULL, NULL, g_cclosure_marshal_VOID__STRING,
+        G_TYPE_NONE, 1, G_TYPE_STRING);
+
+    signals[SIG_EXITED] = g_signal_new (
+        "exited", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+        0, NULL, NULL, g_cclosure_marshal_VOID__VOID,
+        G_TYPE_NONE, 0);
+}
+
+MooGdbSession *
+moo_gdb_session_new (void)
+{
+    return MOO_GDB_SESSION (g_object_new (MOO_TYPE_GDB_SESSION, NULL));
+}
+
+/* ── State ────────────────────────────────────────────────────────── */
+
+static void
+set_state (MooGdbSession *s, MooGdbState st)
+{
+    if (s->state == st) return;
+    s->state = st;
+    g_signal_emit (s, signals[SIG_STATE_CHANGED], 0);
+}
+
+MooGdbState moo_gdb_session_get_state   (MooGdbSession *s) { return s->state; }
+const char *moo_gdb_session_get_version (MooGdbSession *s) { return s->version; }
+
+/* ── Spawn ────────────────────────────────────────────────────────── */
+
+gboolean
+moo_gdb_session_start (MooGdbSession *s, const char *target, GError **error)
+{
+    g_return_val_if_fail (MOO_IS_GDB_SESSION (s), FALSE);
+    if (s->gdb) {
+        g_set_error (error, G_IO_ERROR, G_IO_ERROR_PENDING,
+                     "session already started");
+        return FALSE;
+    }
+
+    GSubprocessLauncher *launcher =
+        g_subprocess_launcher_new ((GSubprocessFlags)
+            (G_SUBPROCESS_FLAGS_STDIN_PIPE
+             | G_SUBPROCESS_FLAGS_STDOUT_PIPE
+             | G_SUBPROCESS_FLAGS_STDERR_MERGE));
+
+    /* Build argv: gdb --interpreter=mi3 -nx --quiet [target]
+     *   -nx     skip ~/.gdbinit (avoids surprising user-config
+     *           interactions; we control the environment).
+     *   --quiet suppress the version banner; we'll fetch it with
+     *           -gdb-version explicitly. */
+    GPtrArray *argv = g_ptr_array_new ();
+    g_ptr_array_add (argv, (gpointer) "gdb");
+    g_ptr_array_add (argv, (gpointer) "--interpreter=mi3");
+    g_ptr_array_add (argv, (gpointer) "-nx");
+    g_ptr_array_add (argv, (gpointer) "--quiet");
+    if (target && *target)
+        g_ptr_array_add (argv, (gpointer) target);
+    g_ptr_array_add (argv, NULL);
+
+    s->gdb = g_subprocess_launcher_spawnv (launcher,
+                                            (const char *const *) argv->pdata,
+                                            error);
+    g_ptr_array_free (argv, TRUE);
+    g_object_unref (launcher);
+
+    if (!s->gdb) {
+        set_state (s, MOO_GDB_STATE_ERROR);
+        return FALSE;
+    }
+
+    s->gdb_in  = g_subprocess_get_stdin_pipe (s->gdb);
+    s->gdb_out = g_data_input_stream_new (
+        g_subprocess_get_stdout_pipe (s->gdb));
+
+    set_state (s, MOO_GDB_STATE_LOADING);
+    start_read_loop (s);
+
+    /* Fire off the version probe right away.  The reply arrives via
+     * the async read loop; on_version_reply stores the result and
+     * transitions us to READY. */
+    send_command (s, "-gdb-version", on_version_reply, NULL);
+    return TRUE;
+}
+
+/* ── Quit ─────────────────────────────────────────────────────────── */
+
+void
+moo_gdb_session_quit (MooGdbSession *s)
+{
+    g_return_if_fail (MOO_IS_GDB_SESSION (s));
+    if (!s->gdb) return;
+    /* Polite exit; the read loop will see EOF and emit "exited". */
+    send_command (s, "-gdb-exit", NULL, NULL);
+}
+
+/* ── Sending commands ─────────────────────────────────────────────── */
+
+static void
+send_command (MooGdbSession *s, const char *cmd,
+              ResponseCB cb, gpointer user_data)
+{
+    if (!s->gdb_in) return;
+    int token = (int) s->next_token++;
+    char *line = g_strdup_printf ("%d%s\n", token, cmd);
+    g_output_stream_write_all (s->gdb_in, line, strlen (line),
+                                NULL, NULL, NULL);
+    g_output_stream_flush (s->gdb_in, NULL, NULL);
+    g_free (line);
+
+    if (cb) {
+        PendingEntry *pe = g_new (PendingEntry, 1);
+        pe->cb        = cb;
+        pe->user_data = user_data;
+        g_hash_table_insert (s->pending, GINT_TO_POINTER (token), pe);
+    }
+}
+
+/* ── Async read loop ──────────────────────────────────────────────── */
+
+static void
+start_read_loop (MooGdbSession *s)
+{
+    g_data_input_stream_read_line_async (
+        s->gdb_out, G_PRIORITY_DEFAULT, s->cancellable,
+        on_line_async, s);
+}
+
+static void
+on_line_async (GObject *source, GAsyncResult *res, gpointer user_data)
+{
+    MooGdbSession *s = MOO_GDB_SESSION (user_data);
+    GError *err = NULL;
+    gsize len;
+    char *line = g_data_input_stream_read_line_finish (
+        G_DATA_INPUT_STREAM (source), res, &len, &err);
+
+    if (!line) {
+        /* EOF or error → gdb is gone. */
+        if (err) g_error_free (err);
+        set_state (s, MOO_GDB_STATE_EXITED);
+        g_signal_emit (s, signals[SIG_EXITED], 0);
+        return;
+    }
+
+    MooGdbMiRecord *rec = moo_gdb_mi_parse (line);
+    g_free (line);
+    if (rec) {
+        dispatch_record (s, rec);
+        moo_gdb_mi_record_free (rec);
+    }
+
+    /* Keep reading. */
+    start_read_loop (s);
+}
+
+static void
+dispatch_record (MooGdbSession *s, MooGdbMiRecord *r)
+{
+    MooGdbMiKind k = moo_gdb_mi_record_kind (r);
+    switch (k) {
+    case MOO_GDB_MI_RESULT: {
+        int tok = moo_gdb_mi_record_token (r);
+        if (tok >= 0) {
+            PendingEntry *pe = (PendingEntry *)
+                g_hash_table_lookup (s->pending, GINT_TO_POINTER (tok));
+            if (pe) {
+                ResponseCB cb = pe->cb;
+                gpointer ud   = pe->user_data;
+                /* Remove before invoking so the callback can safely
+                 * issue another command. */
+                g_hash_table_remove (s->pending, GINT_TO_POINTER (tok));
+                if (cb) cb (s, r, ud);
+            }
+        }
+        break;
+    }
+    case MOO_GDB_MI_CONSOLE: {
+        const char *t = moo_gdb_mi_record_text (r);
+        if (t) g_signal_emit (s, signals[SIG_CONSOLE_OUTPUT], 0, t);
+        break;
+    }
+    case MOO_GDB_MI_LOG: {
+        const char *t = moo_gdb_mi_record_text (r);
+        if (t) g_signal_emit (s, signals[SIG_LOG_OUTPUT], 0, t);
+        break;
+    }
+    case MOO_GDB_MI_PROMPT:
+        if (s->state == MOO_GDB_STATE_LOADING)
+            set_state (s, MOO_GDB_STATE_READY);
+        break;
+    default:
+        /* EXEC / STATUS / NOTIFY / TARGET — handled in Phase 2. */
+        break;
+    }
+}
+
+/* ── -gdb-version reply ───────────────────────────────────────────── */
+
+static void
+on_version_reply (MooGdbSession *s, MooGdbMiRecord *r,
+                  G_GNUC_UNUSED gpointer user_data)
+{
+    /* `-gdb-version` doesn't return its data structured; instead it
+     * streams the version through `~"..."` CONSOLE records, then a
+     * single `^done` arrives.  Our console handler already emits the
+     * lines; here we just stash the most-recent banner-looking line. */
+    const char *klass = moo_gdb_mi_record_class (r);
+    if (klass && !strcmp (klass, "done") && !s->version)
+        s->version = g_strdup ("(see console output)");
+}

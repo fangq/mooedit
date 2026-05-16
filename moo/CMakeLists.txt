@@ -985,6 +985,13 @@ endif()
 if(MOO_BUILD_MARKDOWN OR MOO_BUILD_WIKI)
     list(APPEND _plugins_sources plugins/moopagepreview.cpp)
 endif()
+if(MOO_BUILD_GDB)
+    list(APPEND _plugins_sources
+        plugins/moogdb/moogdb.cpp
+        plugins/moogdb/moogdb-session.cpp
+        plugins/moogdb/moogdb-mi-parser.cpp
+        plugins/moogdb/moogdb-ui.cpp)
+endif()
 
 # ════════════════════════════════════════════════════════════════════════════
 # Aggregate all moo_sources (prefix with ${_src}/ for absolute paths)
