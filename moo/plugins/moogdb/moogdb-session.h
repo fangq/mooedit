@@ -54,6 +54,14 @@ gboolean       moo_gdb_session_start     (MooGdbSession *session,
  * even if the session was never started. */
 void           moo_gdb_session_quit      (MooGdbSession *session);
 
+/* Forward a raw command line to gdb's stdin.  Useful for the
+ * console pane: any CLI command (e.g. "info threads", "print x",
+ * or any -MI- command) is sent verbatim, prefixed only with the
+ * usual numeric token so the reply can be matched.  Empty / NULL
+ * lines are no-ops. */
+void           moo_gdb_session_send_raw  (MooGdbSession *s,
+                                          const char    *cmd);
+
 /* Set the target executable to debug.  May be called before or
  * after start(); the path is forwarded to gdb via `-file-exec-and-
  * symbols`.  Safe to set NULL (clears the current target). */

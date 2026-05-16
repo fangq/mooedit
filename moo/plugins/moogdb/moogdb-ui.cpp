@@ -24,7 +24,7 @@
 #include "mooedit/mootextbuffer.h"
 #include "mooedit/moolinemark.h"
 #include "mooutils/mooi18n.h"
-#include "mooutils/moodialogs.h"
+#include "mooutils/moopane.h"
 #include <string.h>
 
 typedef struct {
@@ -165,7 +165,155 @@ struct _MooGdbWin {
     MooLineMark   *exec_mark;
     char          *exec_file;
     int            exec_line;
+
+    /* Console pane: monospaced log of gdb's ~/&/@ stream records
+     * plus error replies, with an entry below for the user to send
+     * raw commands.  Lives in the editor window's bottom pane area
+     * (MOO_PANE_POS_BOTTOM). */
+    GtkWidget     *console_pane;
+    GtkTextBuffer *console_buffer;
+    GtkTextView   *console_view;
+    GtkEntry      *console_entry;
 };
+
+/* ── Console pane ─────────────────────────────────────────────────── */
+
+#define MOO_GDB_CONSOLE_PANE_ID "MooGdbConsole"
+
+/* Append `text` to the console buffer with optional `tag_name`
+ * for colour coding.  Auto-scrolls so the latest line is visible. */
+static void
+console_append (MooGdbWin *win, const char *text, const char *tag_name)
+{
+    if (!win->console_buffer || !text || !*text) return;
+    GtkTextIter end;
+    gtk_text_buffer_get_end_iter (win->console_buffer, &end);
+    if (tag_name)
+        gtk_text_buffer_insert_with_tags_by_name (
+            win->console_buffer, &end, text, -1, tag_name, NULL);
+    else
+        gtk_text_buffer_insert (win->console_buffer, &end, text, -1);
+
+    /* Scroll the view so the bottom stays in sight even when the
+     * user hasn't focused the pane recently. */
+    if (win->console_view) {
+        GtkTextMark *insert =
+            gtk_text_buffer_get_insert (win->console_buffer);
+        gtk_text_view_scroll_mark_onscreen (win->console_view, insert);
+    }
+}
+
+static void
+on_console_signal (G_GNUC_UNUSED MooGdbSession *s,
+                   const char *line, gpointer user_data)
+{
+    console_append ((MooGdbWin *) user_data, line, NULL);
+}
+
+static void
+on_log_signal (G_GNUC_UNUSED MooGdbSession *s,
+               const char *line, gpointer user_data)
+{
+    console_append ((MooGdbWin *) user_data, line, "log");
+}
+
+static void
+on_console_error (G_GNUC_UNUSED MooGdbSession *s,
+                  const char *msg, gpointer user_data)
+{
+    MooGdbWin *win = (MooGdbWin *) user_data;
+    char *line = g_strdup_printf ("error: %s\n", msg ? msg : "(unknown)");
+    console_append (win, line, "error");
+    g_free (line);
+}
+
+/* User pressed Enter in the entry — forward the line to gdb, then
+ * echo it locally so the transcript reads coherently. */
+static void
+on_console_entry_activate (GtkEntry *entry, gpointer user_data)
+{
+    MooGdbWin *win = (MooGdbWin *) user_data;
+    const char *text = gtk_entry_get_text (entry);
+    if (!text || !*text) return;
+    /* Echo with a leading "(gdb) " so the user can tell their
+     * commands apart from gdb's responses. */
+    char *echo = g_strdup_printf ("(gdb) %s\n", text);
+    console_append (win, echo, "input");
+    g_free (echo);
+    if (win->session)
+        moo_gdb_session_send_raw (win->session, text);
+    gtk_entry_set_text (entry, "");
+}
+
+/* Build the console pane widget tree.  Layout:
+ *
+ *   ┌──────────────────────────────────────┐
+ *   │ scrolled-window                       │
+ *   │  └ GtkTextView (read-only, mono)      │
+ *   ├──────────────────────────────────────┤
+ *   │ GtkEntry  ← user types here           │
+ *   └──────────────────────────────────────┘
+ *
+ * Wrapped in a vbox so the entry stays a single line at the bottom
+ * regardless of content size in the text view. */
+static void
+build_console_pane (MooGdbWin *win)
+{
+    GtkWidget *vbox   = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+    GtkWidget *scroll = gtk_scrolled_window_new (NULL, NULL);
+    gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroll),
+                                    GTK_POLICY_AUTOMATIC,
+                                    GTK_POLICY_AUTOMATIC);
+    gtk_widget_set_hexpand (scroll, TRUE);
+    gtk_widget_set_vexpand (scroll, TRUE);
+
+    GtkWidget *view = gtk_text_view_new ();
+    gtk_text_view_set_editable      (GTK_TEXT_VIEW (view), FALSE);
+    gtk_text_view_set_monospace     (GTK_TEXT_VIEW (view), TRUE);
+    gtk_text_view_set_left_margin   (GTK_TEXT_VIEW (view), 6);
+    gtk_text_view_set_right_margin  (GTK_TEXT_VIEW (view), 6);
+    gtk_text_view_set_top_margin    (GTK_TEXT_VIEW (view), 4);
+    gtk_text_view_set_bottom_margin (GTK_TEXT_VIEW (view), 4);
+    gtk_text_view_set_wrap_mode     (GTK_TEXT_VIEW (view),
+                                     GTK_WRAP_WORD_CHAR);
+    gtk_container_add (GTK_CONTAINER (scroll), view);
+    gtk_box_pack_start (GTK_BOX (vbox), scroll, TRUE, TRUE, 0);
+
+    /* Three tags for the three stream kinds: dimmed for log lines,
+     * red-ish for errors, italic-grey for echoed user input. */
+    GtkTextBuffer *buf = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
+    gtk_text_buffer_create_tag (buf, "log",
+        "foreground", "#7f7f7f", NULL);
+    gtk_text_buffer_create_tag (buf, "error",
+        "foreground", "#c0392b",
+        "weight",     PANGO_WEIGHT_BOLD,
+        NULL);
+    gtk_text_buffer_create_tag (buf, "input",
+        "foreground", "#1a73e8",
+        "style",      PANGO_STYLE_ITALIC,
+        NULL);
+
+    GtkWidget *entry = gtk_entry_new ();
+    gtk_entry_set_placeholder_text (GTK_ENTRY (entry),
+        "Type a gdb command (e.g. `print x`, `info threads`) and press Enter");
+    gtk_box_pack_start (GTK_BOX (vbox), entry, FALSE, FALSE, 0);
+    g_signal_connect (entry, "activate",
+        G_CALLBACK (on_console_entry_activate), win);
+
+    gtk_widget_show_all (vbox);
+
+    MooPaneLabel *label = moo_pane_label_new ("utilities-terminal", NULL,
+                                              _("GDB Console"),
+                                              _("GDB Console"));
+    moo_edit_window_add_pane (win->window, MOO_GDB_CONSOLE_PANE_ID,
+                              vbox, label, MOO_PANE_POS_BOTTOM);
+    moo_pane_label_free (label);
+
+    win->console_pane   = vbox;
+    win->console_buffer = buf;
+    win->console_view   = GTK_TEXT_VIEW (view);
+    win->console_entry  = GTK_ENTRY (entry);
+}
 
 static void
 free_bp (gpointer p)
@@ -361,19 +509,6 @@ on_session_exited (G_GNUC_UNUSED MooGdbSession *s, gpointer user_data)
     clear_exec_mark (win);
 }
 
-static void
-on_session_error (G_GNUC_UNUSED MooGdbSession *s, const char *msg,
-                  gpointer user_data)
-{
-    MooGdbWin *win = (MooGdbWin *) user_data;
-    if (!msg) return;
-    /* Lightweight surfacing — full console panel arrives in
-     * commit 7.  Until then, show a dialog so the user sees that
-     * the most recent command failed (otherwise gdb errors
-     * vanish silently into the parsed-but-ignored result stream). */
-    moo_error_dialog (_("GDB Error"), msg, GTK_WIDGET (win->window));
-}
-
 /* Session "breakpoint-added" handler — gdb gave us a number; if we
  * have a pending placeholder at file:line, fill in its number and
  * register it in the by-number table for fast removal. */
@@ -438,8 +573,17 @@ ensure_session (MooGdbWin *win)
                       G_CALLBACK (on_session_running), win);
     g_signal_connect (win->session, "exited",
                       G_CALLBACK (on_session_exited), win);
+    /* Funnel console / log / error stream records into the
+     * bottom-pane transcript.  Errors used to pop a dialog; now
+     * they're appended to the pane in a bold red tag, which is
+     * less interrupting and survives across multiple errors in a
+     * single command burst. */
+    g_signal_connect (win->session, "console-output",
+                      G_CALLBACK (on_console_signal), win);
+    g_signal_connect (win->session, "log-output",
+                      G_CALLBACK (on_log_signal), win);
     g_signal_connect (win->session, "error",
-                      G_CALLBACK (on_session_error), win);
+                      G_CALLBACK (on_console_error), win);
     GError *err = NULL;
     if (!moo_gdb_session_start (win->session, NULL, &err)) {
         g_warning ("[gdb] failed to spawn gdb: %s",
@@ -543,6 +687,13 @@ moo_gdb_win_new (MooEditWindow *window)
                                                g_free, free_file_table);
     win->bp_by_number = g_hash_table_new (g_direct_hash, g_direct_equal);
 
+    /* Build the console transcript pane up-front so the user sees
+     * a greeting line even before they start a debug session. */
+    build_console_pane (win);
+    console_append (win,
+        "GDB Console — type a command and press Enter, "
+        "or use Ctrl+F5 to start debugging.\n", "log");
+
     /* Note: gutter-click breakpoint toggling and doc-loaded
      * re-attach were tried via an emission hook on
      * line-mark-clicked + a connect on a doc-loaded editor signal,
@@ -558,6 +709,9 @@ void
 moo_gdb_win_free (MooGdbWin *win)
 {
     if (!win) return;
+
+    if (win->console_pane)
+        moo_edit_window_remove_pane (win->window, MOO_GDB_CONSOLE_PANE_ID);
 
     clear_exec_mark (win);
 

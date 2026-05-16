@@ -271,6 +271,21 @@ moo_gdb_session_quit (MooGdbSession *s)
     send_command (s, "-gdb-exit", NULL, NULL);
 }
 
+/* ── Raw command forwarding ──────────────────────────────────────── */
+
+void
+moo_gdb_session_send_raw (MooGdbSession *s, const char *cmd)
+{
+    g_return_if_fail (MOO_IS_GDB_SESSION (s));
+    if (!cmd || !*cmd) return;
+    /* Strip a single trailing newline so the user's "info threads\n"
+     * doesn't double up.  send_command appends its own. */
+    char *trimmed = g_strdup (cmd);
+    g_strchomp (trimmed);
+    send_command (s, trimmed, NULL, NULL);
+    g_free (trimmed);
+}
+
 /* ── Sending commands ─────────────────────────────────────────────── */
 
 static void
