@@ -88,6 +88,7 @@ DEFINE_FORWARD (debug_step_into_cb, moo_gdb_win_step_into)
 DEFINE_FORWARD (debug_step_out_cb,  moo_gdb_win_step_out)
 DEFINE_FORWARD (debug_pause_cb,     moo_gdb_win_pause)
 DEFINE_FORWARD (debug_stop_cb,      moo_gdb_win_stop)
+DEFINE_FORWARD (debug_configure_cb, moo_gdb_win_configure)
 
 static void
 debug_toggle_bp_cb (MooEditWindow *window)
@@ -208,6 +209,14 @@ moo_gdb_plugin_init (MooGdbPlugin *plugin)
         "closure-callback", debug_stop_cb,
         nullptr);
 
+    moo_window_class_new_action (klass, "DebugConfigure", NULL,
+        "display-name",     _("Configure Debug Target..."),
+        "label",            _("Confi_gure Debug Target..."),
+        "tooltip",          _("Set the target binary, arguments, "
+                              "and working directory for Start Debugging"),
+        "closure-callback", debug_configure_cb,
+        nullptr);
+
     if (xml)
     {
         plugin->ui_merge_id = moo_ui_xml_new_merge_id (xml);
@@ -216,6 +225,7 @@ moo_gdb_plugin_init (MooGdbPlugin *plugin)
          * alongside the project-config dialog. */
         const char *const items[] = {
             "DebugTestConnection",
+            "DebugConfigure",
             "DebugStart",
             "DebugContinue",
             "DebugStepOver",

@@ -174,6 +174,14 @@ struct _MooGdbWin {
     GtkTextBuffer *console_buffer;
     GtkTextView   *console_view;
     GtkEntry      *console_entry;
+
+    /* Per-session user-configurable settings, set via the
+     * "Configure Target" dialog.  All optional — when unset, the
+     * old extension-strip heuristic kicks in for the target and
+     * gdb inherits the editor's cwd / empty args. */
+    char          *cfg_target;
+    char          *cfg_args;
+    char          *cfg_cwd;
 };
 
 /* ── Console pane ─────────────────────────────────────────────────── */
@@ -637,31 +645,58 @@ moo_gdb_win_start (MooGdbWin *win)
     g_return_if_fail (win != NULL);
     MooGdbSession *s = ensure_session (win);
     if (!s) return;
-    /* If the user hasn't told us about a target binary yet, try the
-     * doc that's currently active — useful when a built binary lives
-     * next to its source file.  Project-config dialog (commit 8)
-     * replaces this guesswork. */
-    MooEditor *editor = moo_editor_instance ();
-    MooEdit   *doc    = moo_edit_window_get_active_doc (win->window);
-    (void) editor;
-    if (doc) {
-        char *file = moo_edit_get_filename (doc);
-        if (file) {
-            /* Strip an extension to get a plausible executable name —
-             * for foo.c, look for ./foo.  Not bulletproof, but a
-             * sensible default for "Start Debugging" while we wait
-             * for the per-project config UI. */
-            char *dot = strrchr (file, '.');
-            char *guess;
-            if (dot && dot > strrchr (file, '/'))
-                guess = g_strndup (file, dot - file);
-            else
-                guess = g_strdup (file);
-            moo_gdb_session_set_target (s, guess);
-            g_free (guess);
-            g_free (file);
+
+    /* Pick the target binary.  Priority order:
+     *   1. Whatever the user set via "Configure Target".
+     *   2. Heuristic: strip the extension from the active doc's
+     *      filename (foo.c → ./foo) — works for trivial single-
+     *      file builds. */
+    char *target = NULL;
+    if (win->cfg_target && *win->cfg_target) {
+        target = g_strdup (win->cfg_target);
+    } else {
+        MooEdit *doc = moo_edit_window_get_active_doc (win->window);
+        if (doc) {
+            char *file = moo_edit_get_filename (doc);
+            if (file) {
+                char *dot = strrchr (file, '.');
+                if (dot && dot > strrchr (file, '/'))
+                    target = g_strndup (file, dot - file);
+                else
+                    target = g_strdup (file);
+                g_free (file);
+            }
         }
     }
+    if (target) {
+        moo_gdb_session_set_target (s, target);
+        g_free (target);
+    }
+
+    /* Apply optional cwd and argv. */
+    if (win->cfg_cwd && *win->cfg_cwd)
+        moo_gdb_session_set_cwd (s, win->cfg_cwd);
+
+    if (win->cfg_args && *win->cfg_args) {
+        GError *err = NULL;
+        char **argv = NULL;
+        int    argc = 0;
+        if (g_shell_parse_argv (win->cfg_args, &argc, &argv, &err)) {
+            moo_gdb_session_set_args (s, (const char *const *) argv);
+            g_strfreev (argv);
+        } else {
+            console_append (win,
+                "warning: couldn't parse program arguments: ", "log");
+            console_append (win, err->message, "error");
+            console_append (win, "\n", "error");
+            g_error_free (err);
+        }
+    } else {
+        /* Clear any previously-set args so a stale list doesn't
+         * carry between runs. */
+        moo_gdb_session_set_args (s, NULL);
+    }
+
     moo_gdb_session_run (s);
 }
 
@@ -677,6 +712,82 @@ void moo_gdb_win_pause     (MooGdbWin *win)
     { if (win && win->session) moo_gdb_session_pause      (win->session); }
 void moo_gdb_win_stop      (MooGdbWin *win)
     { if (win && win->session) { moo_gdb_session_quit (win->session); } }
+
+/* ── Configure-target dialog ─────────────────────────────────────── */
+
+/* Helper: build a labelled-entry row "label: [entry] [browse?]" and
+ * pack it into `grid` at `row`.  Returns the entry so the caller
+ * can stash a pointer for later read-back. */
+static GtkEntry *
+add_labelled_entry (GtkGrid *grid, int row,
+                    const char *label_text, const char *initial,
+                    gboolean with_browse)
+{
+    GtkWidget *label = gtk_label_new (label_text);
+    gtk_label_set_xalign (GTK_LABEL (label), 1.0);
+    gtk_widget_set_hexpand (label, FALSE);
+    gtk_grid_attach (grid, label, 0, row, 1, 1);
+
+    GtkWidget *entry = gtk_entry_new ();
+    if (initial) gtk_entry_set_text (GTK_ENTRY (entry), initial);
+    gtk_widget_set_hexpand (entry, TRUE);
+    gtk_entry_set_width_chars (GTK_ENTRY (entry), 40);
+    gtk_grid_attach (grid, entry, 1, row, 1, 1);
+    (void) with_browse;   /* file-chooser button reserved for later */
+    return GTK_ENTRY (entry);
+}
+
+void
+moo_gdb_win_configure (MooGdbWin *win)
+{
+    g_return_if_fail (win != NULL);
+
+    GtkWidget *dlg = gtk_dialog_new_with_buttons (
+        _("Configure Debug Target"),
+        GTK_WINDOW (win->window),
+        (GtkDialogFlags) (GTK_DIALOG_DESTROY_WITH_PARENT
+                          | GTK_DIALOG_MODAL),
+        _("_Cancel"), GTK_RESPONSE_CANCEL,
+        _("_OK"),     GTK_RESPONSE_OK,
+        (const char *) NULL);
+    gtk_dialog_set_default_response (GTK_DIALOG (dlg), GTK_RESPONSE_OK);
+
+    GtkWidget *content = gtk_dialog_get_content_area (GTK_DIALOG (dlg));
+    GtkWidget *grid    = gtk_grid_new ();
+    gtk_grid_set_row_spacing    (GTK_GRID (grid), 6);
+    gtk_grid_set_column_spacing (GTK_GRID (grid), 8);
+    g_object_set (grid, "margin", 12, NULL);
+    gtk_box_pack_start (GTK_BOX (content), grid, TRUE, TRUE, 0);
+
+    GtkEntry *target_entry = add_labelled_entry (GTK_GRID (grid), 0,
+        _("Target binary:"), win->cfg_target, TRUE);
+    gtk_entry_set_placeholder_text (target_entry,
+        _("e.g. ./a.out — leave empty to auto-derive from current source"));
+
+    GtkEntry *args_entry = add_labelled_entry (GTK_GRID (grid), 1,
+        _("Program arguments:"), win->cfg_args, FALSE);
+    gtk_entry_set_placeholder_text (args_entry,
+        _("Shell-style: my_arg \"quoted with space\" --verbose"));
+
+    GtkEntry *cwd_entry = add_labelled_entry (GTK_GRID (grid), 2,
+        _("Working directory:"), win->cfg_cwd, TRUE);
+    gtk_entry_set_placeholder_text (cwd_entry,
+        _("Empty: inherit medit's cwd"));
+
+    gtk_widget_show_all (dlg);
+
+    if (gtk_dialog_run (GTK_DIALOG (dlg)) == GTK_RESPONSE_OK)
+    {
+        g_free (win->cfg_target);
+        g_free (win->cfg_args);
+        g_free (win->cfg_cwd);
+        win->cfg_target = g_strdup (gtk_entry_get_text (target_entry));
+        win->cfg_args   = g_strdup (gtk_entry_get_text (args_entry));
+        win->cfg_cwd    = g_strdup (gtk_entry_get_text (cwd_entry));
+        console_append (win, "Debug target updated.\n", "log");
+    }
+    gtk_widget_destroy (dlg);
+}
 
 MooGdbWin *
 moo_gdb_win_new (MooEditWindow *window)
@@ -721,5 +832,8 @@ moo_gdb_win_free (MooGdbWin *win)
     }
     g_hash_table_destroy (win->bp_by_file);
     g_hash_table_destroy (win->bp_by_number);
+    g_free (win->cfg_target);
+    g_free (win->cfg_args);
+    g_free (win->cfg_cwd);
     g_free (win);
 }
