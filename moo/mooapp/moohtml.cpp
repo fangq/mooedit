@@ -2522,10 +2522,36 @@ process_span_elm (GtkTextView *view, GtkTextBuffer *buffer, xmlNode *elm,
 }
 
 
+/* CSS provider for the horizontal-rule widget.  The default GTK
+ * theme-supplied separator is a single faint pixel, easy to miss in
+ * a long document; force a more visible thickness here.  The
+ * "wikiline-thick" class is used by the wiki preview for 6+-dash
+ * rules so they read as a heavier divider. */
+static GtkCssProvider *
+moo_hr_css_provider (void)
+{
+    static GtkCssProvider *provider = NULL;
+    if (provider == NULL)
+    {
+        provider = gtk_css_provider_new ();
+        gtk_css_provider_load_from_data (provider,
+            "separator.moo-hr { "
+            "  min-height: 2px; "
+            "  background-color: alpha(currentColor, 0.45); "
+            "  margin: 6px 0; "
+            "}\n"
+            "separator.moo-hr.wikiline-thick { "
+            "  min-height: 4px; "
+            "  background-color: alpha(currentColor, 0.7); "
+            "}\n", -1, NULL);
+    }
+    return provider;
+}
+
 static void
 process_hr_elm (GtkTextView *view,
                 GtkTextBuffer *buffer,
-                G_GNUC_UNUSED xmlNode *elm,
+                xmlNode *elm,
                 MooHtmlTag *parent,
                 GtkTextIter *iter)
 {
@@ -2533,7 +2559,24 @@ process_hr_elm (GtkTextView *view,
     GtkWidget *line;
     MooHtmlData *data = moo_html_get_data (view);
 
-    line = gtk_hseparator_new ();
+    line = gtk_separator_new (GTK_ORIENTATION_HORIZONTAL);
+    gtk_style_context_add_class (gtk_widget_get_style_context (line),
+                                 "moo-hr");
+    /* Wiki preview sets class="wikiline-thick" for "------" (6+
+     * dashes).  Carry that class through so CSS can paint the
+     * thicker variant. */
+    xmlChar *cls = xmlGetProp (elm, (const xmlChar *) "class");
+    if (cls)
+    {
+        if (strstr ((const char *) cls, "wikiline-thick"))
+            gtk_style_context_add_class (
+                gtk_widget_get_style_context (line), "wikiline-thick");
+        xmlFree (cls);
+    }
+    gtk_style_context_add_provider (
+        gtk_widget_get_style_context (line),
+        GTK_STYLE_PROVIDER (moo_hr_css_provider ()),
+        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     gtk_widget_show (line);
 
     moo_html_new_line (view, buffer, iter, parent, FALSE);
