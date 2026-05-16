@@ -57,6 +57,8 @@ enum {
     SIG_STATE_CHANGED,
     SIG_CONSOLE_OUTPUT,
     SIG_LOG_OUTPUT,
+    SIG_RUNNING,
+    SIG_STOPPED,
     SIG_EXITED,
     N_SIGNALS
 };
@@ -127,6 +129,24 @@ moo_gdb_session_class_init (MooGdbSessionClass *klass)
         "log-output", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
         0, NULL, NULL, g_cclosure_marshal_VOID__STRING,
         G_TYPE_NONE, 1, G_TYPE_STRING);
+
+    signals[SIG_RUNNING] = g_signal_new (
+        "running", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+        0, NULL, NULL, g_cclosure_marshal_VOID__VOID,
+        G_TYPE_NONE, 0);
+
+    /* "stopped" carries the file/line/function gdb reported via the
+     * *stopped record's `frame` field, plus the textual stop reason
+     * (breakpoint-hit, end-stepping-range, exited-normally, ...).
+     * Strings are borrowed; copy them in the handler if needed. */
+    signals[SIG_STOPPED] = g_signal_new (
+        "stopped", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+        0, NULL, NULL, NULL,
+        G_TYPE_NONE, 4,
+        G_TYPE_STRING,    /* reason  */
+        G_TYPE_STRING,    /* file    (canonical path, may be NULL) */
+        G_TYPE_INT,       /* line    (1-based, 0 if unknown) */
+        G_TYPE_STRING);   /* function (may be NULL) */
 
     signals[SIG_EXITED] = g_signal_new (
         "exited", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
@@ -316,10 +336,112 @@ dispatch_record (MooGdbSession *s, MooGdbMiRecord *r)
         if (s->state == MOO_GDB_STATE_LOADING)
             set_state (s, MOO_GDB_STATE_READY);
         break;
-    default:
-        /* EXEC / STATUS / NOTIFY / TARGET — handled in Phase 2. */
+    case MOO_GDB_MI_EXEC: {
+        const char *klass = moo_gdb_mi_record_class (r);
+        if (!klass) break;
+        if (!strcmp (klass, "running")) {
+            set_state (s, MOO_GDB_STATE_RUNNING);
+            g_signal_emit (s, signals[SIG_RUNNING], 0);
+        } else if (!strcmp (klass, "stopped")) {
+            /* Pull file/line/function from the optional frame={…} */
+            const char *file = NULL, *func = NULL;
+            int         line = 0;
+            MooGdbMiValue *frame = moo_gdb_mi_record_field (r, "frame");
+            if (frame) {
+                MooGdbMiValue *v;
+                /* fullname is gdb's canonical absolute path; fall
+                 * back to relative `file` if missing. */
+                v = moo_gdb_mi_value_tuple_get (frame, "fullname");
+                if (!v) v = moo_gdb_mi_value_tuple_get (frame, "file");
+                if (v) file = moo_gdb_mi_value_string (v);
+                v = moo_gdb_mi_value_tuple_get (frame, "line");
+                if (v) {
+                    const char *ls = moo_gdb_mi_value_string (v);
+                    if (ls) line = atoi (ls);
+                }
+                v = moo_gdb_mi_value_tuple_get (frame, "func");
+                if (v) func = moo_gdb_mi_value_string (v);
+            }
+            const char *reason = NULL;
+            MooGdbMiValue *rv = moo_gdb_mi_record_field (r, "reason");
+            if (rv) reason = moo_gdb_mi_value_string (rv);
+
+            set_state (s, MOO_GDB_STATE_STOPPED);
+            g_signal_emit (s, signals[SIG_STOPPED], 0,
+                           reason, file, line, func);
+        }
         break;
     }
+    default:
+        /* STATUS / NOTIFY / TARGET — wired in later commits. */
+        break;
+    }
+}
+
+/* ── Target / arguments / cwd ────────────────────────────────────── */
+
+void
+moo_gdb_session_set_target (MooGdbSession *s, const char *target)
+{
+    g_return_if_fail (MOO_IS_GDB_SESSION (s));
+    if (!s->gdb_in) return;
+    char *escaped = target
+        ? g_strescape (target, "")
+        : g_strdup ("");
+    char *cmd = g_strdup_printf ("-file-exec-and-symbols \"%s\"", escaped);
+    send_command (s, cmd, NULL, NULL);
+    g_free (cmd);
+    g_free (escaped);
+}
+
+void
+moo_gdb_session_set_args (MooGdbSession *s, const char *const *argv)
+{
+    g_return_if_fail (MOO_IS_GDB_SESSION (s));
+    if (!s->gdb_in) return;
+    /* `-exec-arguments arg1 arg2 ...` — each arg shell-quoted to
+     * survive embedded spaces.  Empty argv clears the list. */
+    GString *cmd = g_string_new ("-exec-arguments");
+    if (argv) {
+        for (int i = 0; argv[i]; i++) {
+            char *quoted = g_shell_quote (argv[i]);
+            g_string_append_c (cmd, ' ');
+            g_string_append   (cmd, quoted);
+            g_free (quoted);
+        }
+    }
+    send_command (s, cmd->str, NULL, NULL);
+    g_string_free (cmd, TRUE);
+}
+
+void
+moo_gdb_session_set_cwd (MooGdbSession *s, const char *cwd)
+{
+    g_return_if_fail (MOO_IS_GDB_SESSION (s));
+    if (!s->gdb_in || !cwd) return;
+    char *quoted = g_shell_quote (cwd);
+    char *cmd    = g_strdup_printf ("-environment-cd %s", quoted);
+    send_command (s, cmd, NULL, NULL);
+    g_free (cmd);
+    g_free (quoted);
+}
+
+/* ── Execution control ────────────────────────────────────────────── */
+
+void
+moo_gdb_session_run (MooGdbSession *s)
+{
+    g_return_if_fail (MOO_IS_GDB_SESSION (s));
+    /* -exec-run starts the inferior from main(); the *running record
+     * arrives first, then *stopped on the first breakpoint / signal. */
+    send_command (s, "-exec-run", NULL, NULL);
+}
+
+void
+moo_gdb_session_continue (MooGdbSession *s)
+{
+    g_return_if_fail (MOO_IS_GDB_SESSION (s));
+    send_command (s, "-exec-continue", NULL, NULL);
 }
 
 /* ── -gdb-version reply ───────────────────────────────────────────── */

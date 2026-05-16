@@ -54,6 +54,28 @@ gboolean       moo_gdb_session_start     (MooGdbSession *session,
  * even if the session was never started. */
 void           moo_gdb_session_quit      (MooGdbSession *session);
 
+/* Set the target executable to debug.  May be called before or
+ * after start(); the path is forwarded to gdb via `-file-exec-and-
+ * symbols`.  Safe to set NULL (clears the current target). */
+void           moo_gdb_session_set_target (MooGdbSession *s,
+                                           const char    *target);
+
+/* Set the program arguments (NULL-terminated argv-style; the
+ * binary itself is NOT in the list).  Sent to gdb via
+ * `-exec-arguments` so a later `-exec-run` picks them up. */
+void           moo_gdb_session_set_args   (MooGdbSession     *s,
+                                           const char *const *argv);
+
+/* Set the working directory for the target program.  Forwarded
+ * via `-environment-cd`. */
+void           moo_gdb_session_set_cwd    (MooGdbSession *s,
+                                           const char    *cwd);
+
+/* Execution control.  All async; subscribe to "state-changed"
+ * (and Phase-4's "stopped" / "running") to observe transitions. */
+void           moo_gdb_session_run        (MooGdbSession *s);
+void           moo_gdb_session_continue   (MooGdbSession *s);
+
 /* State accessors ---------------------------------------------------- */
 
 MooGdbState    moo_gdb_session_get_state (MooGdbSession *session);
