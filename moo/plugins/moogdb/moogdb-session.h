@@ -122,6 +122,46 @@ guint          moo_gdb_session_add_watch   (MooGdbSession *s,
                                             const char    *expr);
 void           moo_gdb_session_remove_watch(MooGdbSession *s, guint slot);
 
+/* ── GDB variable objects (for drill-into-aggregates) ────────────────
+ *
+ * A "varobj" is gdb's handle for an expression that lives across MI
+ * commands.  We use it to lazily expand structs / arrays in the Locals
+ * pane: when the user expands a row, we ask gdb to give us the
+ * children of that variable.  The session tracks created varobjs and
+ * deletes them on every *running so the next stop starts with a fresh
+ * frame.  Callers shouldn't worry about lifecycle. */
+
+typedef struct {
+    char *name;     /* gdb-assigned varobj name (e.g. "var1.field") */
+    char *exp;      /* short display text — the field/index name    */
+    char *type;
+    char *value;    /* same caveat as MooGdbLocal::value             */
+    int   numchild; /* 0 means not further expandable                */
+} MooGdbVarChild;
+
+typedef void (*MooGdbVarCreateCb) (MooGdbSession *s,
+                                   const char    *expr,
+                                   const char    *varobj_name,
+                                   const char    *type,
+                                   const char    *value,
+                                   int            numchild,
+                                   gboolean       is_error,
+                                   gpointer       user_data);
+
+/* Children list ownership: borrowed; callback must g_ptr_array_ref
+ * if it wants to keep it past the callback return. */
+typedef void (*MooGdbVarChildrenCb) (MooGdbSession *s,
+                                     const char    *parent_varobj,
+                                     GPtrArray     *children,
+                                     gboolean       is_error,
+                                     gpointer       user_data);
+
+void  moo_gdb_session_var_create   (MooGdbSession *s, const char *expr,
+                                    MooGdbVarCreateCb cb, gpointer user_data);
+void  moo_gdb_session_var_children (MooGdbSession *s, const char *varobj_name,
+                                    MooGdbVarChildrenCb cb,
+                                    gpointer user_data);
+
 /* One-shot expression evaluator — fire `-data-evaluate-expression`
  * for `expr` in the current frame and deliver the result via `cb`.
  * The `value` argument to the callback is gdb's `value` field on

@@ -187,9 +187,12 @@ struct _MooGdbWin {
     /* Locals pane: a GtkTreeView showing the current frame's
      * variables.  Populated from moo_gdb_session_get_locals each
      * time the session emits "locals-changed".  Lives on the
-     * right side, alongside any future stack / watch panels. */
+     * right side, alongside any future stack / watch panels.
+     * Backing store is a GtkTreeStore (not list) so we can lazily
+     * drill into structs/arrays via gdb varobjs. */
     GtkWidget     *locals_pane;
-    GtkListStore  *locals_store;
+    GtkTreeStore  *locals_store;
+    GtkTreeView   *locals_view;
 
     /* Stack pane: a GtkTreeView showing the call frames.  Double-
      * click selects the frame via -stack-select-frame (and re-
@@ -225,19 +228,264 @@ static void console_append (MooGdbWin *win, const char *text,
 
 #define MOO_GDB_LOCALS_PANE_ID  "MooGdbLocals"
 
-/* List-store columns. */
+/* Tree-store columns.  The visible ones come first; the rest are
+ * bookkeeping needed to drive lazy expansion via gdb varobjs:
+ *
+ *   EXPR        — the full gdb expression for this row, used as the
+ *                 argument to -var-create the first time the user
+ *                 expands an aggregate.  For top-level locals this
+ *                 is the variable's name; for child rows it's gdb's
+ *                 own varobj name (since varobjs can be re-used as
+ *                 expressions in further MI commands).
+ *   VAROBJ      — the gdb-assigned varobj handle, populated after
+ *                 -var-create returns.  Empty string until then.
+ *   LOADED      — TRUE once we've replaced the placeholder child
+ *                 with real children.  Prevents redundant -var-list-
+ *                 children calls when the user collapses then re-
+ *                 expands the same row inside a single stop.
+ *   EXPANDABLE  — TRUE if this row should display an expansion
+ *                 arrow.  GtkTreeView shows arrows whenever a row
+ *                 has children, including the placeholder dummy
+ *                 we insert for unloaded aggregates. */
 enum {
     LOCALS_COL_NAME,
     LOCALS_COL_TYPE,
     LOCALS_COL_VALUE,
+    LOCALS_COL_EXPR,
+    LOCALS_COL_VAROBJ,
+    LOCALS_COL_LOADED,
+    LOCALS_COL_EXPANDABLE,
     LOCALS_N_COLS
 };
 
+/* Forward decls for the var-create / var-children callbacks. */
+static void on_locals_var_create  (MooGdbSession *s, const char *expr,
+                                    const char *varobj, const char *type,
+                                    const char *value, int numchild,
+                                    gboolean is_error, gpointer user_data);
+static void on_locals_var_children (MooGdbSession *s, const char *parent,
+                                     GPtrArray *children,
+                                     gboolean is_error, gpointer user_data);
+
+/* Per-row context shared across the async var-create / var-children
+ * path.  GtkTreeRowReference auto-invalidates on store rebuild so we
+ * can safely check before writing back. */
+typedef struct {
+    MooGdbWin           *win;
+    GtkTreeRowReference *row;
+} LocalsRowCtx;
+
+static void
+locals_row_ctx_free (LocalsRowCtx *ctx)
+{
+    if (!ctx) return;
+    if (ctx->row) gtk_tree_row_reference_free (ctx->row);
+    g_free (ctx);
+}
+
+/* Append a placeholder "loading…" child row under `parent` so the
+ * expansion arrow appears.  We never display the placeholder text
+ * directly to the user — the row gets removed and replaced by real
+ * children on first expand. */
+static void
+locals_add_dummy_child (GtkTreeStore *store, GtkTreeIter *parent)
+{
+    GtkTreeIter dummy;
+    gtk_tree_store_append (store, &dummy, parent);
+    gtk_tree_store_set (store, &dummy,
+        LOCALS_COL_NAME,       "",
+        LOCALS_COL_TYPE,       "",
+        LOCALS_COL_VALUE,      "...",
+        LOCALS_COL_EXPR,       "",
+        LOCALS_COL_VAROBJ,     "",
+        LOCALS_COL_LOADED,     FALSE,
+        LOCALS_COL_EXPANDABLE, FALSE,
+        -1);
+}
+
+/* When the user expands a previously-unloaded row, kick off the
+ * varobj round-trip.  Three states the row can be in:
+ *
+ *   1) Has no varobj yet  →  -var-create, then -var-list-children
+ *   2) Has varobj, not loaded  →  -var-list-children
+ *   3) Loaded  →  no-op (children are already in the store)
+ */
+static void
+on_locals_row_expanded (G_GNUC_UNUSED GtkTreeView *tv,
+                        GtkTreeIter *iter, GtkTreePath *path,
+                        gpointer user_data)
+{
+    MooGdbWin *win = (MooGdbWin *) user_data;
+    if (!win->session || !win->locals_store) return;
+
+    gboolean loaded = FALSE;
+    char *expr = NULL, *varobj = NULL;
+    gtk_tree_model_get (GTK_TREE_MODEL (win->locals_store), iter,
+        LOCALS_COL_LOADED, &loaded,
+        LOCALS_COL_EXPR,   &expr,
+        LOCALS_COL_VAROBJ, &varobj,
+        -1);
+    if (loaded) { g_free (expr); g_free (varobj); return; }
+    if (!expr || !*expr) { g_free (expr); g_free (varobj); return; }
+
+    LocalsRowCtx *ctx = g_new0 (LocalsRowCtx, 1);
+    ctx->win = win;
+    ctx->row = gtk_tree_row_reference_new (
+        GTK_TREE_MODEL (win->locals_store), path);
+
+    if (varobj && *varobj) {
+        moo_gdb_session_var_children (win->session, varobj,
+                                       on_locals_var_children, ctx);
+    } else {
+        moo_gdb_session_var_create (win->session, expr,
+                                     on_locals_var_create, ctx);
+    }
+    g_free (expr);
+    g_free (varobj);
+}
+
+/* var-create reply: store the varobj name on the row, then chain
+ * into var-children to actually fetch the kids. */
+static void
+on_locals_var_create (MooGdbSession *s, G_GNUC_UNUSED const char *expr,
+                      const char *varobj, G_GNUC_UNUSED const char *type,
+                      const char *value, int numchild,
+                      gboolean is_error, gpointer user_data)
+{
+    LocalsRowCtx *ctx = (LocalsRowCtx *) user_data;
+    MooGdbWin *win = ctx->win;
+    if (is_error || !varobj ||
+        !gtk_tree_row_reference_valid (ctx->row))
+    {
+        if (is_error && value && gtk_tree_row_reference_valid (ctx->row)) {
+            GtkTreePath *p = gtk_tree_row_reference_get_path (ctx->row);
+            GtkTreeIter it;
+            if (gtk_tree_model_get_iter (GTK_TREE_MODEL (win->locals_store),
+                                          &it, p))
+                gtk_tree_store_set (win->locals_store, &it,
+                    LOCALS_COL_VALUE,  value,
+                    LOCALS_COL_LOADED, TRUE,
+                    -1);
+            if (p) gtk_tree_path_free (p);
+        }
+        locals_row_ctx_free (ctx);
+        return;
+    }
+
+    GtkTreePath *p = gtk_tree_row_reference_get_path (ctx->row);
+    GtkTreeIter it;
+    if (p && gtk_tree_model_get_iter (GTK_TREE_MODEL (win->locals_store),
+                                       &it, p))
+    {
+        gtk_tree_store_set (win->locals_store, &it,
+            LOCALS_COL_VAROBJ, varobj,
+            -1);
+        /* If gdb gave us a value (rare for true aggregates, but
+         * happens for pointers), fill it in too. */
+        if (value && *value)
+            gtk_tree_store_set (win->locals_store, &it,
+                LOCALS_COL_VALUE, value, -1);
+    }
+    if (p) gtk_tree_path_free (p);
+
+    if (numchild > 0) {
+        /* Chain into var-children with the same row-ref context. */
+        moo_gdb_session_var_children (s, varobj,
+                                       on_locals_var_children, ctx);
+    } else {
+        /* Genuine scalar (or empty struct) — nothing more to show.
+         * Remove the dummy and mark loaded. */
+        if (gtk_tree_row_reference_valid (ctx->row)) {
+            GtkTreePath *p2 = gtk_tree_row_reference_get_path (ctx->row);
+            GtkTreeIter parent_it, child_it;
+            if (p2 && gtk_tree_model_get_iter (
+                    GTK_TREE_MODEL (win->locals_store), &parent_it, p2))
+            {
+                while (gtk_tree_model_iter_children (
+                        GTK_TREE_MODEL (win->locals_store),
+                        &child_it, &parent_it))
+                    gtk_tree_store_remove (win->locals_store, &child_it);
+                gtk_tree_store_set (win->locals_store, &parent_it,
+                    LOCALS_COL_LOADED,     TRUE,
+                    LOCALS_COL_EXPANDABLE, FALSE,
+                    -1);
+            }
+            if (p2) gtk_tree_path_free (p2);
+        }
+        locals_row_ctx_free (ctx);
+    }
+}
+
+/* var-list-children reply: replace the placeholder dummy under the
+ * parent row with real child rows.  Each child that has its own
+ * numchild > 0 gets its own dummy placeholder so the user can keep
+ * drilling. */
+static void
+on_locals_var_children (G_GNUC_UNUSED MooGdbSession *s,
+                        G_GNUC_UNUSED const char *parent,
+                        GPtrArray *children,
+                        gboolean is_error, gpointer user_data)
+{
+    LocalsRowCtx *ctx = (LocalsRowCtx *) user_data;
+    MooGdbWin *win = ctx->win;
+    if (!gtk_tree_row_reference_valid (ctx->row)) {
+        locals_row_ctx_free (ctx);
+        return;
+    }
+
+    GtkTreePath *p = gtk_tree_row_reference_get_path (ctx->row);
+    GtkTreeIter parent_it;
+    if (!p || !gtk_tree_model_get_iter (
+                GTK_TREE_MODEL (win->locals_store), &parent_it, p))
+    {
+        if (p) gtk_tree_path_free (p);
+        locals_row_ctx_free (ctx);
+        return;
+    }
+    gtk_tree_path_free (p);
+
+    /* Wipe any existing children (the dummy placeholder, plus any
+     * stale state from an earlier collapse-then-expand). */
+    GtkTreeIter child_it;
+    while (gtk_tree_model_iter_children (
+            GTK_TREE_MODEL (win->locals_store),
+            &child_it, &parent_it))
+        gtk_tree_store_remove (win->locals_store, &child_it);
+
+    if (is_error || !children) {
+        gtk_tree_store_set (win->locals_store, &parent_it,
+            LOCALS_COL_LOADED, TRUE, -1);
+        locals_row_ctx_free (ctx);
+        return;
+    }
+
+    for (guint i = 0; i < children->len; i++) {
+        MooGdbVarChild *c = (MooGdbVarChild *) children->pdata[i];
+        if (!c) continue;
+        GtkTreeIter row;
+        gtk_tree_store_append (win->locals_store, &row, &parent_it);
+        gtk_tree_store_set (win->locals_store, &row,
+            LOCALS_COL_NAME,       c->exp   ? c->exp   : (c->name ? c->name : ""),
+            LOCALS_COL_TYPE,       c->type  ? c->type  : "",
+            LOCALS_COL_VALUE,      c->value ? c->value : (c->numchild > 0 ? "(complex)" : ""),
+            LOCALS_COL_EXPR,       c->name  ? c->name  : "",
+            LOCALS_COL_VAROBJ,     c->name  ? c->name  : "",
+            LOCALS_COL_LOADED,     c->numchild == 0,
+            LOCALS_COL_EXPANDABLE, c->numchild > 0,
+            -1);
+        if (c->numchild > 0)
+            locals_add_dummy_child (win->locals_store, &row);
+    }
+
+    gtk_tree_store_set (win->locals_store, &parent_it,
+        LOCALS_COL_LOADED, TRUE, -1);
+    locals_row_ctx_free (ctx);
+}
+
 /* Build the locals tree-view widget and add it as a right-side
- * pane.  Each row is (name, type, value) — type may be blank
- * (`-stack-list-variables --simple-values` doesn't include type
- * for some cells), value may be blank for aggregates we haven't
- * drilled into. */
+ * pane.  Each row is (name, type, value) plus four bookkeeping
+ * columns; rows representing aggregates start collapsed with a
+ * placeholder child so the expansion arrow appears. */
 static void
 build_locals_pane (MooGdbWin *win)
 {
@@ -246,18 +494,19 @@ build_locals_pane (MooGdbWin *win)
                                     GTK_POLICY_AUTOMATIC,
                                     GTK_POLICY_AUTOMATIC);
 
-    GtkListStore *store = gtk_list_store_new (LOCALS_N_COLS,
-                                              G_TYPE_STRING,
-                                              G_TYPE_STRING,
-                                              G_TYPE_STRING);
+    GtkTreeStore *store = gtk_tree_store_new (LOCALS_N_COLS,
+                                              G_TYPE_STRING,   /* name */
+                                              G_TYPE_STRING,   /* type */
+                                              G_TYPE_STRING,   /* value */
+                                              G_TYPE_STRING,   /* expr */
+                                              G_TYPE_STRING,   /* varobj */
+                                              G_TYPE_BOOLEAN,  /* loaded */
+                                              G_TYPE_BOOLEAN); /* expandable */
 
     GtkWidget *view = gtk_tree_view_new_with_model (GTK_TREE_MODEL (store));
     gtk_tree_view_set_headers_visible (GTK_TREE_VIEW (view), TRUE);
-    g_object_unref (store);   /* tree view holds its own ref */
+    g_object_unref (store);
 
-    /* Three text columns; the value column is the widest so make
-     * it expand and ellipsize at the end so very long pointer
-     * dumps don't blow up the pane width. */
     struct { int idx; const char *label; gboolean expand; } cols[] = {
         { LOCALS_COL_NAME,  "Name",  FALSE },
         { LOCALS_COL_TYPE,  "Type",  FALSE },
@@ -274,6 +523,9 @@ build_locals_pane (MooGdbWin *win)
         gtk_tree_view_append_column (GTK_TREE_VIEW (view), c);
     }
 
+    g_signal_connect (view, "row-expanded",
+                      G_CALLBACK (on_locals_row_expanded), win);
+
     gtk_container_add (GTK_CONTAINER (scroll), view);
     gtk_widget_show_all (scroll);
 
@@ -286,28 +538,39 @@ build_locals_pane (MooGdbWin *win)
 
     win->locals_pane  = scroll;
     win->locals_store = store;
+    win->locals_view  = GTK_TREE_VIEW (view);
 }
 
 /* Session "locals-changed" handler.  Read the current snapshot and
- * push each entry into the list-store. */
+ * push each entry into the tree-store.  Aggregates (rows where gdb's
+ * `--simple-values` didn't fill in a value) get a placeholder child
+ * so they show an expansion arrow; first expand triggers the var-
+ * create round-trip in on_locals_row_expanded. */
 static void
 on_locals_changed (MooGdbSession *s, gpointer user_data)
 {
     MooGdbWin *win = (MooGdbWin *) user_data;
     if (!win->locals_store) return;
-    gtk_list_store_clear (win->locals_store);
+    gtk_tree_store_clear (win->locals_store);
 
     GPtrArray *locals = moo_gdb_session_get_locals (s);
     if (!locals) return;
     for (guint i = 0; i < locals->len; i++) {
         MooGdbLocal *l = (MooGdbLocal *) locals->pdata[i];
+        gboolean is_aggregate = (l->value == NULL);
         GtkTreeIter it;
-        gtk_list_store_append (win->locals_store, &it);
-        gtk_list_store_set (win->locals_store, &it,
-            LOCALS_COL_NAME,  l->name  ? l->name  : "",
-            LOCALS_COL_TYPE,  l->type  ? l->type  : "",
-            LOCALS_COL_VALUE, l->value ? l->value : "(complex)",
+        gtk_tree_store_append (win->locals_store, &it, NULL);
+        gtk_tree_store_set (win->locals_store, &it,
+            LOCALS_COL_NAME,       l->name  ? l->name  : "",
+            LOCALS_COL_TYPE,       l->type  ? l->type  : "",
+            LOCALS_COL_VALUE,      l->value ? l->value : "(complex)",
+            LOCALS_COL_EXPR,       l->name  ? l->name  : "",
+            LOCALS_COL_VAROBJ,     "",
+            LOCALS_COL_LOADED,     !is_aggregate,
+            LOCALS_COL_EXPANDABLE, is_aggregate,
             -1);
+        if (is_aggregate)
+            locals_add_dummy_child (win->locals_store, &it);
     }
 }
 

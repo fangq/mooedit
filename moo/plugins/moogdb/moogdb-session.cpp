@@ -52,6 +52,12 @@ struct _MooGdbSession {
      * MooGdbWatch* (or NULL for a freed slot).  Re-evaluated on
      * every *stopped via -data-evaluate-expression per slot. */
     GPtrArray        *watches;
+
+    /* Names of varobjs we've asked gdb to create via -var-create.
+     * Cleared on every *running (and on quit) by sending -var-delete
+     * for each name — varobjs are frame-bound, so they're stale by
+     * the time the next *stopped lands. */
+    GPtrArray        *varobjs;
 };
 
 G_DEFINE_TYPE (MooGdbSession, moo_gdb_session, G_TYPE_OBJECT)
@@ -158,6 +164,7 @@ moo_gdb_session_init (MooGdbSession *s)
     s->locals      = g_ptr_array_new_with_free_func (free_local);
     s->frames      = g_ptr_array_new_with_free_func (free_frame);
     s->watches     = g_ptr_array_new_with_free_func (free_watch);
+    s->varobjs     = g_ptr_array_new_with_free_func (g_free);
 }
 
 static void
@@ -178,6 +185,7 @@ moo_gdb_session_finalize (GObject *object)
     if (s->locals)  g_ptr_array_free (s->locals,  TRUE);
     if (s->frames)  g_ptr_array_free (s->frames,  TRUE);
     if (s->watches) g_ptr_array_free (s->watches, TRUE);
+    if (s->varobjs) g_ptr_array_free (s->varobjs, TRUE);
     g_free (s->version);
     G_OBJECT_CLASS (moo_gdb_session_parent_class)->finalize (object);
 }
@@ -306,6 +314,156 @@ moo_gdb_session_eval_async (MooGdbSession *s, const char *expr,
     ctx->expr      = g_strdup (expr);
     char *cmd = g_strdup_printf ("-data-evaluate-expression \"%s\"", expr);
     send_command (s, cmd, on_eval_async_reply, ctx);
+    g_free (cmd);
+}
+
+/* ── GDB variable objects ────────────────────────────────────────── */
+
+typedef struct {
+    char *expr;
+    MooGdbVarCreateCb cb;
+    gpointer user_data;
+} VarCreateCtx;
+
+static void
+on_var_create_reply (MooGdbSession *s, MooGdbMiRecord *r, gpointer user_data)
+{
+    VarCreateCtx *ctx = (VarCreateCtx *) user_data;
+    const char *klass = moo_gdb_mi_record_class (r);
+    if (klass && !strcmp (klass, "done")) {
+        MooGdbMiValue *name_v = moo_gdb_mi_record_field (r, "name");
+        MooGdbMiValue *type_v = moo_gdb_mi_record_field (r, "type");
+        MooGdbMiValue *val_v  = moo_gdb_mi_record_field (r, "value");
+        MooGdbMiValue *nc_v   = moo_gdb_mi_record_field (r, "numchild");
+        const char *name = name_v ? moo_gdb_mi_value_string (name_v) : NULL;
+        const char *type = type_v ? moo_gdb_mi_value_string (type_v) : NULL;
+        const char *val  = val_v  ? moo_gdb_mi_value_string (val_v)  : NULL;
+        int nc = nc_v ? atoi (moo_gdb_mi_value_string (nc_v)) : 0;
+        if (name)
+            g_ptr_array_add (s->varobjs, g_strdup (name));
+        if (ctx->cb)
+            ctx->cb (s, ctx->expr, name, type, val, nc, FALSE, ctx->user_data);
+    } else {
+        const char *msg = NULL;
+        if (klass && !strcmp (klass, "error")) {
+            MooGdbMiValue *m = moo_gdb_mi_record_field (r, "msg");
+            if (m) msg = moo_gdb_mi_value_string (m);
+        }
+        if (ctx->cb)
+            ctx->cb (s, ctx->expr, NULL, NULL, msg, 0, TRUE, ctx->user_data);
+    }
+    g_free (ctx->expr);
+    g_free (ctx);
+}
+
+void
+moo_gdb_session_var_create (MooGdbSession *s, const char *expr,
+                            MooGdbVarCreateCb cb, gpointer user_data)
+{
+    g_return_if_fail (MOO_IS_GDB_SESSION (s));
+    if (!expr || !*expr) {
+        if (cb) cb (s, expr, NULL, NULL, NULL, 0, TRUE, user_data);
+        return;
+    }
+    if (s->state != MOO_GDB_STATE_STOPPED) {
+        if (cb) cb (s, expr, NULL, NULL, NULL, 0, TRUE, user_data);
+        return;
+    }
+    VarCreateCtx *ctx = g_new0 (VarCreateCtx, 1);
+    ctx->expr = g_strdup (expr);
+    ctx->cb        = cb;
+    ctx->user_data = user_data;
+    /* `-var-create - * EXPR` — `-` lets gdb pick the name, `*` binds
+     * to the current frame.  Wrapping EXPR in quotes is safe because
+     * the locals/Watches pane only feeds us names sourced from gdb
+     * itself; the parser tolerates simple identifiers with no
+     * additional escaping. */
+    char *cmd = g_strdup_printf ("-var-create - * \"%s\"", expr);
+    send_command (s, cmd, on_var_create_reply, ctx);
+    g_free (cmd);
+}
+
+static void
+free_var_child (gpointer p)
+{
+    MooGdbVarChild *c = (MooGdbVarChild *) p;
+    if (!c) return;
+    g_free (c->name);
+    g_free (c->exp);
+    g_free (c->type);
+    g_free (c->value);
+    g_free (c);
+}
+
+typedef struct {
+    char *parent;
+    MooGdbVarChildrenCb cb;
+    gpointer user_data;
+} VarChildrenCtx;
+
+static void
+on_var_children_reply (MooGdbSession *s, MooGdbMiRecord *r, gpointer user_data)
+{
+    VarChildrenCtx *ctx = (VarChildrenCtx *) user_data;
+    GPtrArray *children = g_ptr_array_new_with_free_func (free_var_child);
+    gboolean is_error = FALSE;
+    const char *klass = moo_gdb_mi_record_class (r);
+    if (klass && !strcmp (klass, "done")) {
+        MooGdbMiValue *kids = moo_gdb_mi_record_field (r, "children");
+        if (kids) {
+            guint n = moo_gdb_mi_value_list_len (kids);
+            for (guint i = 0; i < n; i++) {
+                MooGdbMiValue *child = moo_gdb_mi_value_list_nth (kids, i);
+                if (!child) continue;
+                MooGdbVarChild *c = g_new0 (MooGdbVarChild, 1);
+                MooGdbMiValue *v;
+                v = moo_gdb_mi_value_tuple_get (child, "name");
+                if (v) c->name = g_strdup (moo_gdb_mi_value_string (v));
+                v = moo_gdb_mi_value_tuple_get (child, "exp");
+                if (v) c->exp = g_strdup (moo_gdb_mi_value_string (v));
+                v = moo_gdb_mi_value_tuple_get (child, "type");
+                if (v) c->type = g_strdup (moo_gdb_mi_value_string (v));
+                v = moo_gdb_mi_value_tuple_get (child, "value");
+                if (v) c->value = g_strdup (moo_gdb_mi_value_string (v));
+                v = moo_gdb_mi_value_tuple_get (child, "numchild");
+                if (v) c->numchild =
+                    atoi (moo_gdb_mi_value_string (v));
+                /* Track the gdb-side varobj so we can delete it on
+                 * the next *running. */
+                if (c->name)
+                    g_ptr_array_add (s->varobjs, g_strdup (c->name));
+                g_ptr_array_add (children, c);
+            }
+        }
+    } else {
+        is_error = TRUE;
+    }
+    if (ctx->cb)
+        ctx->cb (s, ctx->parent, children, is_error, ctx->user_data);
+    g_ptr_array_unref (children);
+    g_free (ctx->parent);
+    g_free (ctx);
+}
+
+void
+moo_gdb_session_var_children (MooGdbSession *s, const char *varobj_name,
+                              MooGdbVarChildrenCb cb, gpointer user_data)
+{
+    g_return_if_fail (MOO_IS_GDB_SESSION (s));
+    if (!varobj_name || !*varobj_name) {
+        if (cb) cb (s, varobj_name, NULL, TRUE, user_data);
+        return;
+    }
+    VarChildrenCtx *ctx = g_new0 (VarChildrenCtx, 1);
+    ctx->parent    = g_strdup (varobj_name);
+    ctx->cb        = cb;
+    ctx->user_data = user_data;
+    /* `--simple-values` returns inline scalar values + types but
+     * skips composite ones — matching the locals-pane convention so
+     * the user can drill into nested aggregates with one click each. */
+    char *cmd = g_strdup_printf (
+        "-var-list-children --simple-values %s", varobj_name);
+    send_command (s, cmd, on_var_children_reply, ctx);
     g_free (cmd);
 }
 
@@ -643,6 +801,16 @@ dispatch_record (MooGdbSession *s, MooGdbMiRecord *r)
         if (!klass) break;
         if (!strcmp (klass, "running")) {
             set_state (s, MOO_GDB_STATE_RUNNING);
+            /* Varobjs are frame-bound; drop them all before the next
+             * stop so we don't accidentally reuse a stale one whose
+             * underlying address has been freed/changed. */
+            for (guint i = 0; i < s->varobjs->len; i++) {
+                char *name = (char *) s->varobjs->pdata[i];
+                char *cmd  = g_strdup_printf ("-var-delete %s", name);
+                send_command (s, cmd, NULL, NULL);
+                g_free (cmd);
+            }
+            g_ptr_array_set_size (s->varobjs, 0);
             g_signal_emit (s, signals[SIG_RUNNING], 0);
         } else if (!strcmp (klass, "stopped")) {
             /* Pull file/line/function from the optional frame={…} */
