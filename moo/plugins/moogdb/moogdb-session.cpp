@@ -43,6 +43,10 @@ struct _MooGdbSession {
      * every *stopped event.  Each element is a MooGdbLocal*; freed
      * with the session. */
     GPtrArray        *locals;
+
+    /* Most-recent stack frames, refreshed automatically after every
+     * *stopped event.  Each element is a MooGdbFrame*. */
+    GPtrArray        *frames;
 };
 
 G_DEFINE_TYPE (MooGdbSession, moo_gdb_session, G_TYPE_OBJECT)
@@ -69,6 +73,7 @@ enum {
     SIG_BP_REMOVED,
     SIG_ERROR,
     SIG_LOCALS_CHANGED,
+    SIG_FRAMES_CHANGED,
     SIG_EXITED,
     N_SIGNALS
 };
@@ -93,6 +98,10 @@ static void  request_locals_refresh   (MooGdbSession *s);
 static void  on_locals_reply          (MooGdbSession *s,
                                         MooGdbMiRecord *r,
                                         gpointer        user_data);
+static void  request_frames_refresh   (MooGdbSession *s);
+static void  on_frames_reply          (MooGdbSession *s,
+                                        MooGdbMiRecord *r,
+                                        gpointer        user_data);
 
 /* ── Life-cycle ───────────────────────────────────────────────────── */
 
@@ -108,6 +117,17 @@ free_local (gpointer p)
 }
 
 static void
+free_frame (gpointer p)
+{
+    MooGdbFrame *f = (MooGdbFrame *) p;
+    if (!f) return;
+    g_free (f->function);
+    g_free (f->file);
+    g_free (f->addr);
+    g_free (f);
+}
+
+static void
 moo_gdb_session_init (MooGdbSession *s)
 {
     s->state       = MOO_GDB_STATE_IDLE;
@@ -116,6 +136,7 @@ moo_gdb_session_init (MooGdbSession *s)
                                              NULL, g_free);
     s->cancellable = g_cancellable_new ();
     s->locals      = g_ptr_array_new_with_free_func (free_local);
+    s->frames      = g_ptr_array_new_with_free_func (free_frame);
 }
 
 static void
@@ -134,6 +155,7 @@ moo_gdb_session_finalize (GObject *object)
     /* gdb_in is owned by gdb; don't unref. */
     g_hash_table_destroy (s->pending);
     if (s->locals) g_ptr_array_free (s->locals, TRUE);
+    if (s->frames) g_ptr_array_free (s->frames, TRUE);
     g_free (s->version);
     G_OBJECT_CLASS (moo_gdb_session_parent_class)->finalize (object);
 }
@@ -143,6 +165,28 @@ moo_gdb_session_get_locals (MooGdbSession *s)
 {
     g_return_val_if_fail (MOO_IS_GDB_SESSION (s), NULL);
     return s->locals;
+}
+
+GPtrArray *
+moo_gdb_session_get_frames (MooGdbSession *s)
+{
+    g_return_val_if_fail (MOO_IS_GDB_SESSION (s), NULL);
+    return s->frames;
+}
+
+void
+moo_gdb_session_select_frame (MooGdbSession *s, int level)
+{
+    g_return_if_fail (MOO_IS_GDB_SESSION (s));
+    g_return_if_fail (level >= 0);
+    /* Switch the selected frame, then re-pull locals at the new
+     * frame so the Locals pane refreshes.  -stack-select-frame
+     * doesn't auto-refresh anything — gdb just remembers which
+     * frame later commands target. */
+    char *cmd = g_strdup_printf ("-stack-select-frame %d", level);
+    send_command (s, cmd, NULL, NULL);
+    g_free (cmd);
+    request_locals_refresh (s);
 }
 
 static void
@@ -213,6 +257,13 @@ moo_gdb_session_class_init (MooGdbSessionClass *klass)
      * call moo_gdb_session_get_locals to read the new snapshot. */
     signals[SIG_LOCALS_CHANGED] = g_signal_new (
         "locals-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+        0, NULL, NULL, g_cclosure_marshal_VOID__VOID,
+        G_TYPE_NONE, 0);
+
+    /* "frames-changed" :: () — same shape, for the stack frames
+     * snapshot refreshed by -stack-list-frames. */
+    signals[SIG_FRAMES_CHANGED] = g_signal_new (
+        "frames-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
         0, NULL, NULL, g_cclosure_marshal_VOID__VOID,
         G_TYPE_NONE, 0);
 
@@ -483,6 +534,7 @@ dispatch_record (MooGdbSession *s, MooGdbMiRecord *r)
              * own -stack-list-variables.  Cheap when there are no
              * locals (e.g. stopped in glibc with no debug info). */
             request_locals_refresh (s);
+            request_frames_refresh (s);
         }
         break;
     }
@@ -796,4 +848,59 @@ on_locals_reply (MooGdbSession *s, MooGdbMiRecord *r,
     }
 
     g_signal_emit (s, signals[SIG_LOCALS_CHANGED], 0);
+}
+
+/* ── Frames refresh ──────────────────────────────────────────────── */
+
+static void
+request_frames_refresh (MooGdbSession *s)
+{
+    send_command (s, "-stack-list-frames", on_frames_reply, NULL);
+}
+
+static void
+on_frames_reply (MooGdbSession *s, MooGdbMiRecord *r,
+                 G_GNUC_UNUSED gpointer user_data)
+{
+    /* Expected shape:
+     *   ^done,stack=[frame={level="0",addr="0x...",func="main",
+     *                       file="t.c",fullname="/tmp/t.c",line="6"},
+     *                frame={level="1",addr="0x...",func="__libc_start_main",
+     *                       file="...",line="..."},
+     *                ...] */
+    g_ptr_array_set_size (s->frames, 0);
+
+    const char *klass = moo_gdb_mi_record_class (r);
+    if (klass && !strcmp (klass, "done")) {
+        MooGdbMiValue *stack = moo_gdb_mi_record_field (r, "stack");
+        if (stack) {
+            guint n = moo_gdb_mi_value_list_len (stack);
+            for (guint i = 0; i < n; i++) {
+                MooGdbMiValue *cell = moo_gdb_mi_value_list_nth (stack, i);
+                if (!cell) continue;
+                MooGdbFrame *f = g_new0 (MooGdbFrame, 1);
+                MooGdbMiValue *v;
+                v = moo_gdb_mi_value_tuple_get (cell, "level");
+                if (v) {
+                    const char *ls = moo_gdb_mi_value_string (v);
+                    if (ls) f->level = atoi (ls);
+                }
+                v = moo_gdb_mi_value_tuple_get (cell, "func");
+                if (v) f->function = g_strdup (moo_gdb_mi_value_string (v));
+                v = moo_gdb_mi_value_tuple_get (cell, "fullname");
+                if (!v) v = moo_gdb_mi_value_tuple_get (cell, "file");
+                if (v) f->file = g_strdup (moo_gdb_mi_value_string (v));
+                v = moo_gdb_mi_value_tuple_get (cell, "line");
+                if (v) {
+                    const char *ls = moo_gdb_mi_value_string (v);
+                    if (ls) f->line = atoi (ls);
+                }
+                v = moo_gdb_mi_value_tuple_get (cell, "addr");
+                if (v) f->addr = g_strdup (moo_gdb_mi_value_string (v));
+                g_ptr_array_add (s->frames, f);
+            }
+        }
+    }
+
+    g_signal_emit (s, signals[SIG_FRAMES_CHANGED], 0);
 }

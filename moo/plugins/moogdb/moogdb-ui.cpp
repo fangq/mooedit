@@ -189,6 +189,12 @@ struct _MooGdbWin {
      * right side, alongside any future stack / watch panels. */
     GtkWidget     *locals_pane;
     GtkListStore  *locals_store;
+
+    /* Stack pane: a GtkTreeView showing the call frames.  Double-
+     * click selects the frame via -stack-select-frame (and re-
+     * pulls locals at that frame). */
+    GtkWidget     *frames_pane;
+    GtkListStore  *frames_store;
 };
 
 /* ── Locals pane ─────────────────────────────────────────────────── */
@@ -278,6 +284,115 @@ on_locals_changed (MooGdbSession *s, gpointer user_data)
             LOCALS_COL_TYPE,  l->type  ? l->type  : "",
             LOCALS_COL_VALUE, l->value ? l->value : "(complex)",
             -1);
+    }
+}
+
+/* ── Stack frames pane ───────────────────────────────────────────── */
+
+#define MOO_GDB_FRAMES_PANE_ID  "MooGdbFrames"
+
+enum {
+    FRAMES_COL_LEVEL,    /* int  — frame index, 0 = innermost */
+    FRAMES_COL_FUNCTION, /* string */
+    FRAMES_COL_LOCATION, /* string — "file:line" or "0xaddr" */
+    FRAMES_N_COLS
+};
+
+static void
+on_frames_row_activated (GtkTreeView *tv, GtkTreePath *path,
+                         G_GNUC_UNUSED GtkTreeViewColumn *col,
+                         gpointer user_data)
+{
+    MooGdbWin    *win   = (MooGdbWin *) user_data;
+    GtkTreeModel *model = gtk_tree_view_get_model (tv);
+    GtkTreeIter   it;
+    if (!gtk_tree_model_get_iter (model, &it, path)) return;
+    int level = 0;
+    gtk_tree_model_get (model, &it, FRAMES_COL_LEVEL, &level, -1);
+    if (win->session)
+        moo_gdb_session_select_frame (win->session, level);
+}
+
+static void
+build_frames_pane (MooGdbWin *win)
+{
+    GtkWidget *scroll = gtk_scrolled_window_new (NULL, NULL);
+    gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroll),
+                                    GTK_POLICY_AUTOMATIC,
+                                    GTK_POLICY_AUTOMATIC);
+
+    GtkListStore *store = gtk_list_store_new (FRAMES_N_COLS,
+                                              G_TYPE_INT,
+                                              G_TYPE_STRING,
+                                              G_TYPE_STRING);
+    GtkWidget *view = gtk_tree_view_new_with_model (GTK_TREE_MODEL (store));
+    gtk_tree_view_set_headers_visible (GTK_TREE_VIEW (view), TRUE);
+    g_object_unref (store);
+
+    struct { int idx; const char *label; gboolean expand; } cols[] = {
+        { FRAMES_COL_LEVEL,    "#",        FALSE },
+        { FRAMES_COL_FUNCTION, "Function", FALSE },
+        { FRAMES_COL_LOCATION, "Location", TRUE  },
+    };
+    for (int i = 0; i < (int) G_N_ELEMENTS (cols); i++) {
+        GtkCellRenderer *r = gtk_cell_renderer_text_new ();
+        if (cols[i].expand)
+            g_object_set (r, "ellipsize", PANGO_ELLIPSIZE_START, NULL);
+        GtkTreeViewColumn *c = gtk_tree_view_column_new_with_attributes (
+            cols[i].label, r, "text", cols[i].idx, NULL);
+        gtk_tree_view_column_set_resizable (c, TRUE);
+        gtk_tree_view_column_set_expand    (c, cols[i].expand);
+        gtk_tree_view_append_column (GTK_TREE_VIEW (view), c);
+    }
+
+    /* Double-click a frame to make it the selected frame.  The
+     * arrow + Locals pane will refresh to that context. */
+    g_signal_connect (view, "row-activated",
+                      G_CALLBACK (on_frames_row_activated), win);
+
+    gtk_container_add (GTK_CONTAINER (scroll), view);
+    gtk_widget_show_all (scroll);
+
+    MooPaneLabel *label = moo_pane_label_new ("view-list-symbolic", NULL,
+                                              _("Stack"),
+                                              _("Call Stack"));
+    moo_edit_window_add_pane (win->window, MOO_GDB_FRAMES_PANE_ID,
+                              scroll, label, MOO_PANE_POS_RIGHT);
+    moo_pane_label_free (label);
+
+    win->frames_pane  = scroll;
+    win->frames_store = store;
+}
+
+static void
+on_frames_changed (MooGdbSession *s, gpointer user_data)
+{
+    MooGdbWin *win = (MooGdbWin *) user_data;
+    if (!win->frames_store) return;
+    gtk_list_store_clear (win->frames_store);
+
+    GPtrArray *frames = moo_gdb_session_get_frames (s);
+    if (!frames) return;
+    for (guint i = 0; i < frames->len; i++) {
+        MooGdbFrame *f = (MooGdbFrame *) frames->pdata[i];
+        char *loc;
+        if (f->file && f->line > 0) {
+            const char *base = strrchr (f->file, '/');
+            loc = g_strdup_printf ("%s:%d", base ? base + 1 : f->file,
+                                   f->line);
+        } else if (f->addr) {
+            loc = g_strdup (f->addr);
+        } else {
+            loc = g_strdup ("");
+        }
+        GtkTreeIter it;
+        gtk_list_store_append (win->frames_store, &it);
+        gtk_list_store_set (win->frames_store, &it,
+            FRAMES_COL_LEVEL,    f->level,
+            FRAMES_COL_FUNCTION, f->function ? f->function : "??",
+            FRAMES_COL_LOCATION, loc,
+            -1);
+        g_free (loc);
     }
 }
 
@@ -729,6 +844,8 @@ ensure_session (MooGdbWin *win)
                       G_CALLBACK (on_console_error), win);
     g_signal_connect (win->session, "locals-changed",
                       G_CALLBACK (on_locals_changed), win);
+    g_signal_connect (win->session, "frames-changed",
+                      G_CALLBACK (on_frames_changed), win);
     GError *err = NULL;
     if (!moo_gdb_session_start (win->session, NULL, &err)) {
         g_warning ("[gdb] failed to spawn gdb: %s",
@@ -985,6 +1102,9 @@ moo_gdb_win_new (MooEditWindow *window)
      * session's "locals-changed" signal which fires after every
      * *stopped event. */
     build_locals_pane (win);
+    /* Stack pane next to it — same right side, moo's pane system
+     * stacks/tabs them automatically. */
+    build_frames_pane (win);
 
     /* Note: gutter-click breakpoint toggling and doc-loaded
      * re-attach were tried via an emission hook on
@@ -1006,6 +1126,8 @@ moo_gdb_win_free (MooGdbWin *win)
         moo_edit_window_remove_pane (win->window, MOO_GDB_CONSOLE_PANE_ID);
     if (win->locals_pane)
         moo_edit_window_remove_pane (win->window, MOO_GDB_LOCALS_PANE_ID);
+    if (win->frames_pane)
+        moo_edit_window_remove_pane (win->window, MOO_GDB_FRAMES_PANE_ID);
 
     clear_exec_mark (win);
 

@@ -76,6 +76,24 @@ typedef struct {
  * hasn't stopped yet (or the inferior has no locals at this PC). */
 GPtrArray     *moo_gdb_session_get_locals (MooGdbSession *s);
 
+/* One stack frame in the current thread's backtrace. */
+typedef struct {
+    int   level;     /* 0 = innermost (currently-executing) */
+    char *function;  /* function name (may be NULL) */
+    char *file;      /* canonical source path (may be NULL) */
+    int   line;      /* 1-based, 0 if not available */
+    char *addr;      /* hex address (may be NULL) */
+} MooGdbFrame;
+
+/* Snapshot of the call stack after the most recent *stopped.
+ * Transfer-none; entries owned by the session. */
+GPtrArray     *moo_gdb_session_get_frames (MooGdbSession *s);
+
+/* Switch the selected stack frame.  Triggers a -stack-select-frame
+ * and re-requests locals at that frame, so the Locals pane refreshes
+ * automatically.  `level` 0 = innermost frame; deeper frames go up. */
+void           moo_gdb_session_select_frame (MooGdbSession *s, int level);
+
 /* Set the target executable to debug.  May be called before or
  * after start(); the path is forwarded to gdb via `-file-exec-and-
  * symbols`.  Safe to set NULL (clears the current target). */
@@ -154,6 +172,11 @@ const char    *moo_gdb_session_get_version (MooGdbSession *session);
  *       moo_gdb_session_get_locals now returns a fresh snapshot.
  *       Fires after every *stopped event once the auto-requested
  *       -stack-list-variables reply has been parsed.
+ *
+ *   "frames-changed"      :: ()
+ *       moo_gdb_session_get_frames now returns a fresh snapshot.
+ *       Fires after every *stopped event once -stack-list-frames
+ *       has been parsed.
  *
  *   "exited"              :: ()
  *       gdb has terminated.  The session is no longer usable.
