@@ -991,6 +991,7 @@ if(MOO_BUILD_GDB)
         plugins/moogdb/moogdb-session.cpp
         plugins/moogdb/moogdb-mi-parser.cpp
         plugins/moogdb/moogdb-json.cpp
+        plugins/moogdb/moogdb-project.cpp
         plugins/moogdb/moogdb-ui.cpp)
 endif()
 
