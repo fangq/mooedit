@@ -90,24 +90,7 @@ DEFINE_FORWARD (debug_pause_cb,     moo_gdb_win_pause)
 DEFINE_FORWARD (debug_stop_cb,      moo_gdb_win_stop)
 DEFINE_FORWARD (debug_configure_cb, moo_gdb_win_configure)
 
-static void
-debug_toggle_bp_cb (MooEditWindow *window)
-{
-    MooGdbWin *gw = get_win_state (window);
-    if (!gw) return;
-    MooEdit *doc = moo_edit_window_get_active_doc (window);
-    if (!doc) return;
-    char *file = moo_edit_get_filename (doc);
-    if (!file) return;
-    MooEditView *view = moo_edit_get_view (doc);
-    GtkTextBuffer *buf = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
-    GtkTextIter iter;
-    gtk_text_buffer_get_iter_at_mark (buf, &iter,
-        gtk_text_buffer_get_insert (buf));
-    int line = gtk_text_iter_get_line (&iter) + 1;
-    moo_gdb_win_toggle_bp (gw, file, line);
-    g_free (file);
-}
+DEFINE_FORWARD (debug_toggle_bp_cb, moo_gdb_win_toggle_bp_at_cursor)
 
 static gboolean
 moo_gdb_window_plugin_create (MooGdbWindowPlugin *plugin)

@@ -44,6 +44,11 @@ void       moo_gdb_win_toggle_bp(MooGdbWin     *win,
                                  const char    *file,
                                  int            line);
 
+/* Same as moo_gdb_win_toggle_bp but pulls the file + line from the
+ * active document's cursor position.  No-op if there's no active
+ * document or it's unsaved (no on-disk path for gdb to anchor to). */
+void       moo_gdb_win_toggle_bp_at_cursor (MooGdbWin *win);
+
 /* Execution control — forwarded to the (lazy) session.  start kicks
  * off "-exec-run"; subsequent commands target the running inferior.
  * No-op if there's no session yet (start) or no live inferior

@@ -884,6 +884,75 @@ wrap_section (const char *title, GtkWidget *body)
     return vbox;
 }
 
+/* One row of the toolbar above the inspect pane.  `icon_name` is a
+ * freedesktop icon-spec name; we let the active theme resolve it.
+ * `NULL` for icon_name marks a separator.  The action signature for
+ * `cb` matches the existing per-window forwards (moo_gdb_win_*) so
+ * we can connect with g_signal_connect_swapped and skip the
+ * boilerplate of writing per-button trampolines. */
+typedef struct {
+    const char *icon_name;
+    const char *label;
+    const char *tooltip;
+    void (*cb) (MooGdbWin *);
+} ToolBtnSpec;
+
+static const ToolBtnSpec INSPECT_TOOLBAR[] = {
+    { "media-playback-start", "Start",    "Start Debugging (Ctrl+F5)",
+      moo_gdb_win_start },
+    { "go-next",              "Continue", "Continue (Ctrl+F8)",
+      moo_gdb_win_continue },
+    { "media-playback-pause", "Pause",    "Pause Execution (F6)",
+      moo_gdb_win_pause },
+    { "media-playback-stop",  "Stop",     "Stop Debugging",
+      moo_gdb_win_stop },
+    { NULL, NULL, NULL, NULL },   /* separator */
+    { "go-down",              "Step Into", "Step Into (F11)",
+      moo_gdb_win_step_into },
+    { "go-jump",              "Step Over", "Step Over (F10)",
+      moo_gdb_win_step_over },
+    { "go-up",                "Step Out",  "Step Out (Shift+F11)",
+      moo_gdb_win_step_out },
+    { NULL, NULL, NULL, NULL },   /* separator */
+    { "process-stop",         "Toggle Breakpoint",
+      "Toggle Breakpoint at cursor (F9)",
+      moo_gdb_win_toggle_bp_at_cursor },
+    { "preferences-system",   "Configure",
+      "Configure Debug Target...",
+      moo_gdb_win_configure },
+};
+
+static GtkWidget *
+build_inspect_toolbar (MooGdbWin *win)
+{
+    GtkWidget *toolbar = gtk_toolbar_new ();
+    gtk_toolbar_set_style     (GTK_TOOLBAR (toolbar), GTK_TOOLBAR_ICONS);
+    gtk_toolbar_set_icon_size (GTK_TOOLBAR (toolbar),
+                                GTK_ICON_SIZE_SMALL_TOOLBAR);
+    gtk_toolbar_set_show_arrow (GTK_TOOLBAR (toolbar), TRUE);
+
+    for (guint i = 0; i < G_N_ELEMENTS (INSPECT_TOOLBAR); i++) {
+        const ToolBtnSpec *spec = &INSPECT_TOOLBAR[i];
+        GtkToolItem *item;
+        if (!spec->icon_name) {
+            item = gtk_separator_tool_item_new ();
+        } else {
+            item = gtk_tool_button_new (NULL, spec->label);
+            gtk_tool_button_set_icon_name (
+                GTK_TOOL_BUTTON (item), spec->icon_name);
+            gtk_widget_set_tooltip_text (GTK_WIDGET (item), spec->tooltip);
+            /* g_signal_connect_swapped flips the argument order so
+             * the per-window callback gets called as `cb(win)` —
+             * matches the existing moo_gdb_win_* function signatures
+             * verbatim, no per-button trampoline needed. */
+            g_signal_connect_swapped (item, "clicked",
+                                       G_CALLBACK (spec->cb), win);
+        }
+        gtk_toolbar_insert (GTK_TOOLBAR (toolbar), item, -1);
+    }
+    return toolbar;
+}
+
 static void
 build_inspect_pane (MooGdbWin *win)
 {
@@ -904,13 +973,20 @@ build_inspect_pane (MooGdbWin *win)
     gtk_paned_pack1 (GTK_PANED (outer), locals, TRUE, FALSE);
     gtk_paned_pack2 (GTK_PANED (outer), inner,  TRUE, FALSE);
 
-    gtk_widget_show_all (outer);
+    /* Wrap in a vbox so the debugger toolbar can ride above the
+     * splits without resizing when the user drags a pane divider. */
+    GtkWidget *vbox    = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+    GtkWidget *toolbar = build_inspect_toolbar (win);
+    gtk_box_pack_start (GTK_BOX (vbox), toolbar, FALSE, FALSE, 0);
+    gtk_box_pack_start (GTK_BOX (vbox), outer,   TRUE,  TRUE,  0);
+
+    gtk_widget_show_all (vbox);
 
     MooPaneLabel *label = moo_pane_label_new ("system-search", NULL,
                                               _("Debugger"),
                                               _("Locals, Call Stack, Watches"));
     moo_edit_window_add_pane (win->window, MOO_GDB_INSPECT_PANE_ID,
-                              outer, label, MOO_PANE_POS_RIGHT);
+                              vbox, label, MOO_PANE_POS_RIGHT);
     moo_pane_label_free (label);
 }
 
@@ -1755,6 +1831,25 @@ moo_gdb_win_start (MooGdbWin *win)
     }
 
     moo_gdb_session_run (s);
+}
+
+void
+moo_gdb_win_toggle_bp_at_cursor (MooGdbWin *win)
+{
+    g_return_if_fail (win != NULL);
+    MooEdit *doc = moo_edit_window_get_active_doc (win->window);
+    if (!doc) return;
+    char *file = moo_edit_get_filename (doc);
+    if (!file) return;
+    MooEditView *view = moo_edit_get_view (doc);
+    if (!view) { g_free (file); return; }
+    GtkTextBuffer *buf = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
+    GtkTextIter iter;
+    gtk_text_buffer_get_iter_at_mark (buf, &iter,
+        gtk_text_buffer_get_insert (buf));
+    int line = gtk_text_iter_get_line (&iter) + 1;
+    moo_gdb_win_toggle_bp (win, file, line);
+    g_free (file);
 }
 
 void moo_gdb_win_continue (MooGdbWin *win)
