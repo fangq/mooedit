@@ -226,7 +226,13 @@ static void console_append (MooGdbWin *win, const char *text,
 
 /* ── Locals pane ─────────────────────────────────────────────────── */
 
-#define MOO_GDB_LOCALS_PANE_ID  "MooGdbLocals"
+/* Single combined right-side pane that stacks Locals / Stack /
+ * Watches vertically.  The three sections are still owned/built in
+ * isolation (build_*_section below), then mounted into a nested
+ * GtkPaned in build_inspect_pane so the user can drag the dividers
+ * to give a struct dump more room without losing sight of the
+ * stack or watches. */
+#define MOO_GDB_INSPECT_PANE_ID "MooGdbInspect"
 
 /* Tree-store columns.  The visible ones come first; the rest are
  * bookkeeping needed to drive lazy expansion via gdb varobjs:
@@ -482,12 +488,13 @@ on_locals_var_children (G_GNUC_UNUSED MooGdbSession *s,
     locals_row_ctx_free (ctx);
 }
 
-/* Build the locals tree-view widget and add it as a right-side
- * pane.  Each row is (name, type, value) plus four bookkeeping
- * columns; rows representing aggregates start collapsed with a
- * placeholder child so the expansion arrow appears. */
-static void
-build_locals_pane (MooGdbWin *win)
+/* Build the locals tree-view widget tree.  Returns the outer
+ * scrolled-window for the caller (build_inspect_pane) to mount in
+ * the combined right-side pane.  Each row is (name, type, value)
+ * plus four bookkeeping columns; rows representing aggregates start
+ * collapsed with a placeholder child so the expansion arrow appears. */
+static GtkWidget *
+build_locals_section (MooGdbWin *win)
 {
     GtkWidget *scroll = gtk_scrolled_window_new (NULL, NULL);
     gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroll),
@@ -527,18 +534,11 @@ build_locals_pane (MooGdbWin *win)
                       G_CALLBACK (on_locals_row_expanded), win);
 
     gtk_container_add (GTK_CONTAINER (scroll), view);
-    gtk_widget_show_all (scroll);
-
-    MooPaneLabel *label = moo_pane_label_new ("system-search", NULL,
-                                              _("Locals"),
-                                              _("Local Variables"));
-    moo_edit_window_add_pane (win->window, MOO_GDB_LOCALS_PANE_ID,
-                              scroll, label, MOO_PANE_POS_RIGHT);
-    moo_pane_label_free (label);
 
     win->locals_pane  = scroll;
     win->locals_store = store;
     win->locals_view  = GTK_TREE_VIEW (view);
+    return scroll;
 }
 
 /* Session "locals-changed" handler.  Read the current snapshot and
@@ -574,9 +574,7 @@ on_locals_changed (MooGdbSession *s, gpointer user_data)
     }
 }
 
-/* ── Stack frames pane ───────────────────────────────────────────── */
-
-#define MOO_GDB_FRAMES_PANE_ID  "MooGdbFrames"
+/* ── Stack frames section ────────────────────────────────────────── */
 
 enum {
     FRAMES_COL_LEVEL,    /* int  — frame index, 0 = innermost */
@@ -600,8 +598,8 @@ on_frames_row_activated (GtkTreeView *tv, GtkTreePath *path,
         moo_gdb_session_select_frame (win->session, level);
 }
 
-static void
-build_frames_pane (MooGdbWin *win)
+static GtkWidget *
+build_frames_section (MooGdbWin *win)
 {
     GtkWidget *scroll = gtk_scrolled_window_new (NULL, NULL);
     gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroll),
@@ -638,17 +636,10 @@ build_frames_pane (MooGdbWin *win)
                       G_CALLBACK (on_frames_row_activated), win);
 
     gtk_container_add (GTK_CONTAINER (scroll), view);
-    gtk_widget_show_all (scroll);
-
-    MooPaneLabel *label = moo_pane_label_new ("view-list-symbolic", NULL,
-                                              _("Stack"),
-                                              _("Call Stack"));
-    moo_edit_window_add_pane (win->window, MOO_GDB_FRAMES_PANE_ID,
-                              scroll, label, MOO_PANE_POS_RIGHT);
-    moo_pane_label_free (label);
 
     win->frames_pane  = scroll;
     win->frames_store = store;
+    return scroll;
 }
 
 static void
@@ -683,9 +674,7 @@ on_frames_changed (MooGdbSession *s, gpointer user_data)
     }
 }
 
-/* ── Watches pane ────────────────────────────────────────────────── */
-
-#define MOO_GDB_WATCHES_PANE_ID "MooGdbWatches"
+/* ── Watches section ─────────────────────────────────────────────── */
 
 enum {
     WATCHES_COL_SLOT,        /* int, slot number in session->watches */
@@ -789,8 +778,8 @@ on_watches_key_press (GtkWidget *widget, GdkEventKey *ev,
     return TRUE;
 }
 
-static void
-build_watches_pane (MooGdbWin *win)
+static GtkWidget *
+build_watches_section (MooGdbWin *win)
 {
     GtkWidget *vbox   = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
     GtkWidget *scroll = gtk_scrolled_window_new (NULL, NULL);
@@ -860,19 +849,69 @@ build_watches_pane (MooGdbWin *win)
     g_signal_connect (entry, "activate",
                       G_CALLBACK (on_watches_entry_activate), win);
 
-    gtk_widget_show_all (vbox);
-
-    MooPaneLabel *label = moo_pane_label_new ("preferences-system", NULL,
-                                              _("Watches"),
-                                              _("Watch Expressions"));
-    moo_edit_window_add_pane (win->window, MOO_GDB_WATCHES_PANE_ID,
-                              vbox, label, MOO_PANE_POS_RIGHT);
-    moo_pane_label_free (label);
-
     win->watches_pane  = vbox;
     win->watches_store = store;
     win->watches_view  = GTK_TREE_VIEW (view);
     win->watches_entry = GTK_ENTRY (entry);
+    return vbox;
+}
+
+/* Build the single combined right-side pane that stacks Locals,
+ * Stack, and Watches as three resizable sections.  Each section has
+ * a bold header label so the user can tell them apart without
+ * relying on a tab control.  Two nested GtkPaneds give independent
+ * drag-to-resize between adjacent sections — the top split scales
+ * Locals against everything else, the bottom split scales Stack
+ * against Watches.  Both default to ~33%/33%/33% via the
+ * `position-set=FALSE` initial state which lets GTK compute even
+ * splits based on natural-size hints. */
+static GtkWidget *
+wrap_section (const char *title, GtkWidget *body)
+{
+    GtkWidget *vbox = gtk_box_new (GTK_ORIENTATION_VERTICAL, 2);
+    GtkWidget *header = gtk_label_new (NULL);
+    char *markup = g_markup_printf_escaped (
+        "<b>%s</b>", title);
+    gtk_label_set_markup (GTK_LABEL (header), markup);
+    g_free (markup);
+    gtk_label_set_xalign (GTK_LABEL (header), 0.0);
+    g_object_set (header, "margin-start", 4, "margin-top", 4,
+                          "margin-bottom", 2, NULL);
+    gtk_box_pack_start (GTK_BOX (vbox), header, FALSE, FALSE, 0);
+    gtk_widget_set_hexpand (body, TRUE);
+    gtk_widget_set_vexpand (body, TRUE);
+    gtk_box_pack_start (GTK_BOX (vbox), body, TRUE, TRUE, 0);
+    return vbox;
+}
+
+static void
+build_inspect_pane (MooGdbWin *win)
+{
+    GtkWidget *locals  = wrap_section (_("Locals"),
+                                       build_locals_section (win));
+    GtkWidget *frames  = wrap_section (_("Call Stack"),
+                                       build_frames_section (win));
+    GtkWidget *watches = wrap_section (_("Watches"),
+                                       build_watches_section (win));
+
+    /* Outer paned: Locals on top, (Stack+Watches) on bottom.
+     * Inner paned: Stack on top, Watches on bottom. */
+    GtkWidget *inner = gtk_paned_new (GTK_ORIENTATION_VERTICAL);
+    gtk_paned_pack1 (GTK_PANED (inner), frames,  TRUE, FALSE);
+    gtk_paned_pack2 (GTK_PANED (inner), watches, TRUE, FALSE);
+
+    GtkWidget *outer = gtk_paned_new (GTK_ORIENTATION_VERTICAL);
+    gtk_paned_pack1 (GTK_PANED (outer), locals, TRUE, FALSE);
+    gtk_paned_pack2 (GTK_PANED (outer), inner,  TRUE, FALSE);
+
+    gtk_widget_show_all (outer);
+
+    MooPaneLabel *label = moo_pane_label_new ("system-search", NULL,
+                                              _("Debugger"),
+                                              _("Locals, Call Stack, Watches"));
+    moo_edit_window_add_pane (win->window, MOO_GDB_INSPECT_PANE_ID,
+                              outer, label, MOO_PANE_POS_RIGHT);
+    moo_pane_label_free (label);
 }
 
 static void
@@ -1827,15 +1866,12 @@ moo_gdb_win_new (MooEditWindow *window)
         "GDB Console — type a command and press Enter, "
         "or use Ctrl+F5 to start debugging.\n", "log");
 
-    /* Locals pane lives on the right side; auto-populated from the
-     * session's "locals-changed" signal which fires after every
-     * *stopped event. */
-    build_locals_pane (win);
-    /* Stack pane next to it — same right side, moo's pane system
-     * stacks/tabs them automatically. */
-    build_frames_pane (win);
-    /* Watches pane: user-typed expressions, evaluated on each stop. */
-    build_watches_pane (win);
+    /* Combined right-side "Debugger" pane stacks Locals + Stack +
+     * Watches vertically as three resizable sections.  Each section
+     * still auto-populates via the matching session signal
+     * (locals-changed / frames-changed / watches-changed) — only
+     * their layout is shared. */
+    build_inspect_pane (win);
 
     /* Note: gutter-click breakpoint toggling and doc-loaded
      * re-attach were tried via an emission hook on
@@ -1855,12 +1891,10 @@ moo_gdb_win_free (MooGdbWin *win)
 
     if (win->console_pane)
         moo_edit_window_remove_pane (win->window, MOO_GDB_CONSOLE_PANE_ID);
-    if (win->locals_pane)
-        moo_edit_window_remove_pane (win->window, MOO_GDB_LOCALS_PANE_ID);
-    if (win->frames_pane)
-        moo_edit_window_remove_pane (win->window, MOO_GDB_FRAMES_PANE_ID);
-    if (win->watches_pane)
-        moo_edit_window_remove_pane (win->window, MOO_GDB_WATCHES_PANE_ID);
+    /* Locals / Stack / Watches share a single combined pane — one
+     * removal tears down all three at once. */
+    if (win->locals_pane || win->frames_pane || win->watches_pane)
+        moo_edit_window_remove_pane (win->window, MOO_GDB_INSPECT_PANE_ID);
 
     clear_exec_mark (win);
 
