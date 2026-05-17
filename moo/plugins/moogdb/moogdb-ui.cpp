@@ -18,6 +18,7 @@
 #include "plugins/moogdb/moogdb-ui.h"
 #include "plugins/moogdb/moogdb-session.h"
 #include "plugins/moogdb/moogdb-project.h"
+#include "mooglib/moo-stat.h"
 
 #include "mooedit/mooeditor.h"
 #include "mooedit/mooeditview.h"
@@ -230,6 +231,13 @@ struct _MooGdbWin {
     /* Signal handler id on the editor window's "notify::active-doc"
      * — kept so the destructor can detach cleanly. */
     gulong         active_doc_handler;
+
+    /* Build task tracking.  is_building==TRUE while a preLaunchTask
+     * subprocess is running; suppresses concurrent build / start
+     * presses.  pending_start carries the post-build action to run
+     * on success (NULL if the build was a manual one-shot). */
+    gboolean       is_building;
+    GCancellable  *build_cancel;
 };
 
 /* Forward declaration: console_append is defined in the console-pane
@@ -914,6 +922,9 @@ typedef struct {
 static const ToolBtnSpec INSPECT_TOOLBAR[] = {
     { "media-playback-start", "Start",    "Start Debugging (Ctrl+F5)",
       moo_gdb_win_start },
+    { "system-run",           "Build",
+      "Build (run the active config's preLaunchTask)",
+      moo_gdb_win_build },
     { "go-next",              "Continue", "Continue (Ctrl+F8)",
       moo_gdb_win_continue },
     { "media-playback-pause", "Pause",    "Pause Execution (F6)",
@@ -1493,6 +1504,11 @@ build_console_pane (MooGdbWin *win)
     gtk_text_buffer_create_tag (buf, "target",
         "foreground", "#27ae60",
         NULL);
+    /* Build-task output (preLaunchTask stdout/stderr) — orange so
+     * it doesn't clash with gdb's `target` green or `error` red. */
+    gtk_text_buffer_create_tag (buf, "build",
+        "foreground", "#d35400",
+        NULL);
 
     GtkWidget *entry = gtk_entry_new ();
     gtk_entry_set_placeholder_text (GTK_ENTRY (entry),
@@ -1867,6 +1883,268 @@ moo_gdb_win_toggle_bp (MooGdbWin *win, const char *file, int line)
         moo_gdb_session_break_add (s, file, line);
 }
 
+/* ── Build runner ────────────────────────────────────────────────── */
+
+/* Forward decls — these helpers are defined alongside
+ * moo_gdb_win_start below, but the build runner uses them too. */
+static char *active_doc_path (MooGdbWin *win);
+static char *resolve_field   (MooGdbWin *win, const char *raw,
+                               const char *active_file);
+
+typedef void (*BuildDoneCb) (MooGdbWin *win, gboolean success,
+                              gpointer user_data);
+
+typedef struct {
+    MooGdbWin   *win;
+    GSubprocess *proc;
+    GDataInputStream *stream;
+    char        *label;       /* config name, for log lines */
+    BuildDoneCb  cb;
+    gpointer     cb_data;
+} BuildCtx;
+
+static void
+build_ctx_free (BuildCtx *ctx)
+{
+    if (!ctx) return;
+    if (ctx->stream) g_object_unref (ctx->stream);
+    if (ctx->proc)   g_object_unref (ctx->proc);
+    g_free (ctx->label);
+    g_free (ctx);
+}
+
+static void read_build_line (BuildCtx *ctx);
+
+static void
+on_build_line (GObject *source, GAsyncResult *res, gpointer user_data)
+{
+    BuildCtx *ctx = (BuildCtx *) user_data;
+    gsize len = 0;
+    GError *err = NULL;
+    char *line = g_data_input_stream_read_line_finish_utf8 (
+        G_DATA_INPUT_STREAM (source), res, &len, &err);
+    if (err) {
+        /* Cancelled (subprocess detach) is benign — just stop
+         * reading.  Other errors get surfaced. */
+        if (!g_error_matches (err, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
+            char *m = g_strdup_printf (
+                "[build] read error: %s\n", err->message);
+            console_append (ctx->win, m, "error");
+            g_free (m);
+        }
+        g_error_free (err);
+        return;
+    }
+    if (!line) {
+        /* EOF — wait for exit code to fire on_build_exit. */
+        return;
+    }
+    char *display = g_strdup_printf ("%s\n", line);
+    console_append (ctx->win, display, "build");
+    g_free (display);
+    g_free (line);
+    read_build_line (ctx);
+}
+
+static void
+read_build_line (BuildCtx *ctx)
+{
+    g_data_input_stream_read_line_async (
+        ctx->stream, G_PRIORITY_DEFAULT,
+        ctx->win->build_cancel, on_build_line, ctx);
+}
+
+static void
+on_build_exit (GObject *source, GAsyncResult *res, gpointer user_data)
+{
+    BuildCtx *ctx = (BuildCtx *) user_data;
+    GError *err = NULL;
+    gboolean waited =
+        g_subprocess_wait_finish (G_SUBPROCESS (source), res, &err);
+    gint code = -1;
+    if (waited)
+        code = g_subprocess_get_exit_status (G_SUBPROCESS (source));
+    if (err) g_error_free (err);
+
+    ctx->win->is_building = FALSE;
+
+    gboolean success = (code == 0);
+    char *msg;
+    if (success)
+        msg = g_strdup_printf (
+            "[build] '%s' succeeded\n", ctx->label);
+    else
+        msg = g_strdup_printf (
+            "[build] '%s' failed (exit code %d)\n", ctx->label, code);
+    console_append (ctx->win, msg, success ? "build" : "error");
+    g_free (msg);
+
+    BuildDoneCb cb     = ctx->cb;
+    gpointer    cb_ud  = ctx->cb_data;
+    MooGdbWin  *win    = ctx->win;
+    build_ctx_free (ctx);
+    if (cb) cb (win, success, cb_ud);
+}
+
+/* Spawn `cmd` (via `sh -c` so the user can write pipes / globs in
+ * launch.json) in directory `cwd`.  Returns FALSE and logs an error
+ * if the spawn itself failed; success means the subprocess is
+ * running — the eventual exit lands in on_build_exit which fires
+ * the callback. */
+static gboolean
+run_build (MooGdbWin *win, const char *cmd, const char *cwd,
+            const char *label,
+            BuildDoneCb cb, gpointer cb_data)
+{
+    if (win->is_building) {
+        console_append (win,
+            "[build] another build is still running\n", "error");
+        if (cb) cb (win, FALSE, cb_data);
+        return FALSE;
+    }
+    GSubprocessLauncher *launcher = g_subprocess_launcher_new (
+        (GSubprocessFlags) (G_SUBPROCESS_FLAGS_STDOUT_PIPE
+                          | G_SUBPROCESS_FLAGS_STDERR_MERGE));
+    if (cwd && *cwd)
+        g_subprocess_launcher_set_cwd (launcher, cwd);
+
+    GError *err = NULL;
+    GSubprocess *proc = g_subprocess_launcher_spawn (
+        launcher, &err, "sh", "-c", cmd, NULL);
+    g_object_unref (launcher);
+    if (!proc) {
+        char *m = g_strdup_printf (
+            "[build] failed to spawn: %s\n",
+            err ? err->message : "(unknown)");
+        console_append (win, m, "error");
+        g_free (m);
+        if (err) g_error_free (err);
+        if (cb) cb (win, FALSE, cb_data);
+        return FALSE;
+    }
+
+    char *banner = g_strdup_printf (
+        "[build] $ %s%s%s\n", cmd,
+        (cwd && *cwd) ? "  # in " : "",
+        (cwd && *cwd) ? cwd : "");
+    console_append (win, banner, "build");
+    g_free (banner);
+
+    if (win->build_cancel) g_object_unref (win->build_cancel);
+    win->build_cancel = g_cancellable_new ();
+
+    BuildCtx *ctx = g_new0 (BuildCtx, 1);
+    ctx->win     = win;
+    ctx->proc    = proc;
+    ctx->stream  = g_data_input_stream_new (
+        g_subprocess_get_stdout_pipe (proc));
+    ctx->label   = g_strdup (label);
+    ctx->cb      = cb;
+    ctx->cb_data = cb_data;
+
+    win->is_building = TRUE;
+    read_build_line (ctx);
+    g_subprocess_wait_async (proc, win->build_cancel, on_build_exit, ctx);
+    return TRUE;
+}
+
+/* Walk the project tree (capped depth) checking whether any C/C++
+ * source/header file has an mtime newer than `binary_mtime`.
+ * Returns TRUE if a rebuild looks warranted. */
+static gboolean
+any_source_newer (const char *dir, gint64 binary_mtime, int depth)
+{
+    if (depth > 5) return FALSE;
+    GDir *d = g_dir_open (dir, 0, NULL);
+    if (!d) return FALSE;
+    const char *name;
+    gboolean stale = FALSE;
+    while (!stale && (name = g_dir_read_name (d))) {
+        if (name[0] == '.') continue;       /* skip hidden / vcs */
+        /* Skip common build / external trees so a big node_modules
+         * doesn't dominate the walk time. */
+        if (!strcmp (name, "build")        ||
+            !strcmp (name, "build-md")     ||
+            !strcmp (name, "build-rel")    ||
+            !strcmp (name, "build-spell")  ||
+            !strcmp (name, "node_modules") ||
+            !strcmp (name, ".git"))
+            continue;
+        char *path = g_build_filename (dir, name, NULL);
+        if (g_file_test (path, G_FILE_TEST_IS_DIR)) {
+            stale = any_source_newer (path, binary_mtime, depth + 1);
+        } else if (g_str_has_suffix (name, ".c")   ||
+                   g_str_has_suffix (name, ".cpp") ||
+                   g_str_has_suffix (name, ".cc")  ||
+                   g_str_has_suffix (name, ".cxx") ||
+                   g_str_has_suffix (name, ".h")   ||
+                   g_str_has_suffix (name, ".hpp")) {
+            MgwStatBuf st;
+            mgw_errno_t err = MGW_E_NOERROR;
+            if (mgw_stat (path, &st, &err) == 0 &&
+                st.mtime.value > binary_mtime)
+                stale = TRUE;
+        }
+        g_free (path);
+    }
+    g_dir_close (d);
+    return stale;
+}
+
+static gboolean
+binary_is_stale (const char *binary, const char *root)
+{
+    if (!binary || !*binary) return FALSE;
+    if (!g_file_test (binary, G_FILE_TEST_IS_REGULAR)) return TRUE;
+    MgwStatBuf bs;
+    mgw_errno_t err2 = MGW_E_NOERROR;
+    if (mgw_stat (binary, &bs, &err2) != 0) return TRUE;
+    if (!root || !*root) return FALSE;
+    return any_source_newer (root, bs.mtime.value, 0);
+}
+
+/* The actual launch — split from moo_gdb_win_start so the build
+ * runner can call it as a continuation after a successful build. */
+static void do_start_now (MooGdbWin *win);
+
+static void
+on_prelaunch_done (MooGdbWin *win, gboolean success,
+                    G_GNUC_UNUSED gpointer ud)
+{
+    if (success) do_start_now (win);
+    else console_append (win,
+        "[build] aborting launch because build failed\n", "error");
+}
+
+void
+moo_gdb_win_build (MooGdbWin *win)
+{
+    g_return_if_fail (win != NULL);
+    if (!win->project || win->active_config < 0) {
+        console_append (win,
+            "[build] no launch configuration selected\n", "error");
+        return;
+    }
+    const MooGdbConfig *cfg = moo_gdb_project_config (win->project,
+                                                       (guint) win->active_config);
+    if (!cfg || !cfg->build_command || !*cfg->build_command) {
+        console_append (win,
+            "[build] active configuration has no build command\n",
+            "error");
+        return;
+    }
+    char *active_file = active_doc_path (win);
+    char *cmd = moo_gdb_project_resolve (win->project,
+                                           cfg->build_command, active_file);
+    char *cwd = cfg->cwd && *cfg->cwd
+                ? moo_gdb_project_resolve (win->project, cfg->cwd, active_file)
+                : g_strdup (moo_gdb_project_root (win->project));
+    run_build (win, cmd, cwd, cfg->name, NULL, NULL);
+    g_free (cmd);
+    g_free (cwd);
+    g_free (active_file);
+}
+
 /* ── Execution control forwards ──────────────────────────────────── */
 
 /* Get the active document's full path, or NULL if none / unsaved.
@@ -1891,6 +2169,57 @@ resolve_field (MooGdbWin *win, const char *raw, const char *active_file)
 
 void
 moo_gdb_win_start (MooGdbWin *win)
+{
+    g_return_if_fail (win != NULL);
+    if (win->is_building) {
+        console_append (win,
+            "[build] still building; launch will not start until "
+            "the build finishes\n", "log");
+        return;
+    }
+
+    /* When a launch config is active and its binary is missing or
+     * older than any source file, run the preLaunchTask first and
+     * defer the actual launch to on_prelaunch_done.  Without a
+     * project we skip the check entirely. */
+    if (win->project && win->active_config >= 0) {
+        const MooGdbConfig *cfg = moo_gdb_project_config (win->project,
+                                            (guint) win->active_config);
+        if (cfg && cfg->build_command && *cfg->build_command) {
+            char *active_file = active_doc_path (win);
+            char *bin = resolve_field (win, cfg->program, active_file);
+            const char *root = moo_gdb_project_root (win->project);
+            gboolean stale = binary_is_stale (bin, root);
+            if (stale) {
+                console_append (win,
+                    bin && g_file_test (bin, G_FILE_TEST_IS_REGULAR)
+                      ? "[build] source newer than binary — rebuilding...\n"
+                      : "[build] binary missing — building...\n",
+                    "build");
+                char *cmd = moo_gdb_project_resolve (win->project,
+                                cfg->build_command, active_file);
+                char *cwd = cfg->cwd && *cfg->cwd
+                              ? moo_gdb_project_resolve (win->project,
+                                                          cfg->cwd, active_file)
+                              : g_strdup (root);
+                run_build (win, cmd, cwd, cfg->name,
+                            on_prelaunch_done, NULL);
+                g_free (cmd);
+                g_free (cwd);
+                g_free (bin);
+                g_free (active_file);
+                return;
+            }
+            g_free (bin);
+            g_free (active_file);
+        }
+    }
+
+    do_start_now (win);
+}
+
+static void
+do_start_now (MooGdbWin *win)
 {
     g_return_if_fail (win != NULL);
     MooGdbSession *s = ensure_session (win);
@@ -2239,6 +2568,10 @@ moo_gdb_win_free (MooGdbWin *win)
     }
     if (win->active_doc_handler)
         g_signal_handler_disconnect (win->window, win->active_doc_handler);
+    if (win->build_cancel) {
+        g_cancellable_cancel (win->build_cancel);
+        g_object_unref (win->build_cancel);
+    }
     if (win->project) moo_gdb_project_free (win->project);
 
     g_hash_table_destroy (win->bp_by_file);

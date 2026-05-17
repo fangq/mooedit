@@ -64,8 +64,16 @@ void       moo_gdb_win_stop     (MooGdbWin     *win);
 /* Pop a "Configure Target" dialog letting the user set the
  * binary path, command-line arguments, and working directory for
  * the next Start Debugging.  Values are stored on the
- * MooGdbWin and applied each time moo_gdb_win_start runs. */
+ * MooGdbWin and applied each time moo_gdb_win_start runs.
+ * When a project is loaded, this instead opens the discovered
+ * launch.json in medit so the user edits the same source of truth. */
 void       moo_gdb_win_configure(MooGdbWin     *win);
+
+/* Run the active configuration's preLaunchTask (or its `build`
+ * shorthand) as a child shell process.  Output streams to the GDB
+ * Console pane under a "build" tag.  No-op when no project /
+ * config / build command is configured. */
+void       moo_gdb_win_build    (MooGdbWin     *win);
 
 G_END_DECLS
 
