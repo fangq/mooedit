@@ -887,23 +887,37 @@ build_watches_section (MooGdbWin *win)
  * against Watches.  Both default to ~33%/33%/33% via the
  * `position-set=FALSE` initial state which lets GTK compute even
  * splits based on natural-size hints. */
+/* Each inspect-pane section gets its own GtkExpander so the user
+ * can fold what they're not paying attention to.  Sections start
+ * expanded so the default look matches the previous (always-shown)
+ * layout.  The body is still vexpand=TRUE so when an expander is
+ * open it occupies its share of the surrounding GtkPaned; when
+ * folded it shrinks to the header height and the user can drag
+ * the paned divider to give the still-open sections more room.
+ *
+ * Note: hiding a section does NOT throttle gdb traffic — the
+ * session refresh on *stopped is a few cheap MI commands that
+ * happen whether or not the rows are visible.  Folding is a
+ * visual-focus aid, not a throughput optimisation. */
 static GtkWidget *
 wrap_section (const char *title, GtkWidget *body)
 {
-    GtkWidget *vbox = gtk_box_new (GTK_ORIENTATION_VERTICAL, 2);
-    GtkWidget *header = gtk_label_new (NULL);
-    char *markup = g_markup_printf_escaped (
-        "<b>%s</b>", title);
-    gtk_label_set_markup (GTK_LABEL (header), markup);
+    GtkWidget *expander = gtk_expander_new (NULL);
+    char *markup = g_markup_printf_escaped ("<b>%s</b>", title);
+    gtk_expander_set_use_markup (GTK_EXPANDER (expander), TRUE);
+    gtk_expander_set_label      (GTK_EXPANDER (expander), markup);
     g_free (markup);
-    gtk_label_set_xalign (GTK_LABEL (header), 0.0);
-    g_object_set (header, "margin-start", 4, "margin-top", 4,
-                          "margin-bottom", 2, NULL);
-    gtk_box_pack_start (GTK_BOX (vbox), header, FALSE, FALSE, 0);
+    gtk_expander_set_expanded   (GTK_EXPANDER (expander), TRUE);
+    /* Keyboard nav: arrow keys / Enter on the expander row toggle
+     * its state; Tab cycles through child widgets when open. */
+    gtk_widget_set_tooltip_text (expander,
+        "Click the chevron (or press Enter when focused) "
+        "to hide this section.  Folding is purely visual — "
+        "gdb is still queried on every stop.");
     gtk_widget_set_hexpand (body, TRUE);
     gtk_widget_set_vexpand (body, TRUE);
-    gtk_box_pack_start (GTK_BOX (vbox), body, TRUE, TRUE, 0);
-    return vbox;
+    gtk_container_add (GTK_CONTAINER (expander), body);
+    return expander;
 }
 
 /* One row of the toolbar above the inspect pane.  `icon_name` is a
@@ -919,31 +933,68 @@ typedef struct {
     void (*cb) (MooGdbWin *);
 } ToolBtnSpec;
 
+/* Tooltip strings are deliberately multi-line: first line is the
+ * action name (matches the menu label), second describes the
+ * effect, third shows the keyboard shortcut. */
 static const ToolBtnSpec INSPECT_TOOLBAR[] = {
-    { "media-playback-start", "Start",    "Start Debugging (Ctrl+F5)",
+    { "media-playback-start", "Start",
+      "Start Debugging\n"
+      "Launch the active configuration's program under gdb; "
+      "auto-builds first if the binary is stale.\n"
+      "Shortcut: Ctrl+F5",
       moo_gdb_win_start },
     { "system-run",           "Build",
-      "Build (run the active config's preLaunchTask)",
+      "Build\n"
+      "Run the active configuration's preLaunchTask (or its "
+      "`build` shorthand) — forces a rebuild regardless of "
+      "binary staleness.\n"
+      "Output streams to the GDB Console pane.",
       moo_gdb_win_build },
-    { "go-next",              "Continue", "Continue (Ctrl+F8)",
+    { "go-next",              "Continue",
+      "Continue\n"
+      "Resume execution until the next breakpoint, signal, or exit.\n"
+      "Shortcut: Ctrl+F8",
       moo_gdb_win_continue },
-    { "media-playback-pause", "Pause",    "Pause Execution (F6)",
+    { "media-playback-pause", "Pause",
+      "Pause Execution\n"
+      "Send SIGINT to the running inferior so it stops at its "
+      "current source line.\n"
+      "Shortcut: F6",
       moo_gdb_win_pause },
-    { "media-playback-stop",  "Stop",     "Stop Debugging",
+    { "media-playback-stop",  "Stop",
+      "Stop Debugging\n"
+      "Kill the inferior and quit gdb.  The next Start Debugging "
+      "will spawn a fresh session.",
       moo_gdb_win_stop },
     { NULL, NULL, NULL, NULL },   /* separator */
-    { "go-down",              "Step Into", "Step Into (F11)",
+    { "go-down",              "Step Into",
+      "Step Into\n"
+      "Execute one source line; descend into function calls.\n"
+      "Shortcut: F11",
       moo_gdb_win_step_into },
-    { "go-jump",              "Step Over", "Step Over (F10)",
+    { "go-jump",              "Step Over",
+      "Step Over\n"
+      "Execute one source line; treat function calls as atomic.\n"
+      "Shortcut: F10",
       moo_gdb_win_step_over },
-    { "go-up",                "Step Out",  "Step Out (Shift+F11)",
+    { "go-up",                "Step Out",
+      "Step Out\n"
+      "Run until the current function returns, then stop.\n"
+      "Shortcut: Shift+F11",
       moo_gdb_win_step_out },
     { NULL, NULL, NULL, NULL },   /* separator */
     { "process-stop",         "Toggle Breakpoint",
-      "Toggle Breakpoint at cursor (F9)",
+      "Toggle Breakpoint\n"
+      "Add or remove a breakpoint at the cursor's line in the "
+      "active document.  A red dot marks each set breakpoint in "
+      "the gutter.\n"
+      "Shortcut: F9",
       moo_gdb_win_toggle_bp_at_cursor },
     { "preferences-system",   "Configure",
-      "Configure Debug Target...",
+      "Configure\n"
+      "When a project is loaded, opens its launch.json in medit "
+      "so you can edit configurations directly.  Otherwise pops "
+      "the legacy Target / Args / Cwd dialog.",
       moo_gdb_win_configure },
 };
 
@@ -1060,14 +1111,20 @@ build_inspect_toolbar (MooGdbWin *win)
         GtkWidget   *lbl      = gtk_label_new ("Config: (none)");
         g_object_set (lbl, "margin-start", 4, "margin-end", 4, NULL);
         gtk_container_add (GTK_CONTAINER (lbl_item), lbl);
+        gtk_tool_item_set_tooltip_text (lbl_item,
+            "Project root — directory containing .medit/launch.json "
+            "or .vscode/launch.json.  Shows '(none)' when no project "
+            "file was found upwards from the active document.");
         gtk_toolbar_insert (GTK_TOOLBAR (toolbar), lbl_item, -1);
         win->cfg_label = GTK_LABEL (lbl);
 
         GtkToolItem *combo_item = gtk_tool_item_new ();
         GtkWidget   *combo      = gtk_combo_box_text_new ();
         gtk_widget_set_sensitive (combo, FALSE);   /* until a project loads */
-        gtk_widget_set_tooltip_text (combo,
-            "Pick a launch configuration from launch.json");
+        gtk_tool_item_set_tooltip_text (combo_item,
+            "Pick a launch configuration from launch.json.  The "
+            "selected entry's program / args / cwd / environment "
+            "are used by Start Debugging and Build.");
         g_signal_connect (combo, "changed",
                           G_CALLBACK (on_cfg_combo_changed), win);
         gtk_container_add (GTK_CONTAINER (combo_item), combo);
@@ -1087,7 +1144,12 @@ build_inspect_toolbar (MooGdbWin *win)
             item = gtk_tool_button_new (NULL, spec->label);
             gtk_tool_button_set_icon_name (
                 GTK_TOOL_BUTTON (item), spec->icon_name);
-            gtk_widget_set_tooltip_text (GTK_WIDGET (item), spec->tooltip);
+            /* gtk_tool_item_set_tooltip_text is the canonical GTK3
+             * API for tooltips on toolbar items — propagates the
+             * tooltip to the wrapped button so it shows on hover
+             * regardless of which descendant widget the pointer
+             * is over. */
+            gtk_tool_item_set_tooltip_text (item, spec->tooltip);
             /* g_signal_connect_swapped flips the argument order so
              * the per-window callback gets called as `cb(win)` —
              * matches the existing moo_gdb_win_* function signatures
