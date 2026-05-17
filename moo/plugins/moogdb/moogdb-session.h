@@ -94,6 +94,34 @@ GPtrArray     *moo_gdb_session_get_frames (MooGdbSession *s);
  * automatically.  `level` 0 = innermost frame; deeper frames go up. */
 void           moo_gdb_session_select_frame (MooGdbSession *s, int level);
 
+/* Evaluate `expr` in the current frame and store the result on the
+ * given watch slot.  Called by the watch UI after the user adds a
+ * new expression, and automatically on each *stopped event for
+ * every registered watch.  The result lands in the watches array;
+ * "watches-changed" fires when all pending evaluations finish. */
+void           moo_gdb_session_eval_watch  (MooGdbSession *s,
+                                            guint          slot,
+                                            const char    *expr);
+
+/* One watch slot — the expression the user typed and its most
+ * recent value (or error message). */
+typedef struct {
+    char    *expression;   /* the user's text */
+    char    *value;        /* most-recent eval result; NULL if unset */
+    gboolean error;        /* TRUE if the last eval returned ^error */
+} MooGdbWatch;
+
+/* Borrowed snapshot of all registered watches.  Each element is a
+ * MooGdbWatch* indexed by slot number.  Slots may be NULL if a
+ * watch was removed. */
+GPtrArray     *moo_gdb_session_get_watches (MooGdbSession *s);
+
+/* Allocate a fresh slot for a new watch and return its index.
+ * The expression is stored but not evaluated until a stop. */
+guint          moo_gdb_session_add_watch   (MooGdbSession *s,
+                                            const char    *expr);
+void           moo_gdb_session_remove_watch(MooGdbSession *s, guint slot);
+
 /* Set the target executable to debug.  May be called before or
  * after start(); the path is forwarded to gdb via `-file-exec-and-
  * symbols`.  Safe to set NULL (clears the current target). */
@@ -177,6 +205,11 @@ const char    *moo_gdb_session_get_version (MooGdbSession *session);
  *       moo_gdb_session_get_frames now returns a fresh snapshot.
  *       Fires after every *stopped event once -stack-list-frames
  *       has been parsed.
+ *
+ *   "watches-changed"     :: ()
+ *       moo_gdb_session_get_watches now returns a fresh snapshot.
+ *       Fires after each batch of -data-evaluate-expression
+ *       replies (one per registered watch) lands.
  *
  *   "exited"              :: ()
  *       gdb has terminated.  The session is no longer usable.

@@ -25,6 +25,7 @@
 #include "mooedit/moolinemark.h"
 #include "mooutils/mooi18n.h"
 #include "mooutils/moopane.h"
+#include <gdk/gdkkeysyms.h>
 #include <string.h>
 
 typedef struct {
@@ -195,7 +196,20 @@ struct _MooGdbWin {
      * pulls locals at that frame). */
     GtkWidget     *frames_pane;
     GtkListStore  *frames_store;
+
+    /* Watches pane: user-typed expressions + their last-eval
+     * results.  Entry below the tree-view for adding a new watch. */
+    GtkWidget     *watches_pane;
+    GtkListStore  *watches_store;
+    GtkTreeView   *watches_view;
+    GtkEntry      *watches_entry;
 };
+
+/* Forward declaration: console_append is defined in the console-pane
+ * section further down but used by the watches pane's "no session"
+ * error path above it. */
+static void console_append (MooGdbWin *win, const char *text,
+                            const char *tag_name);
 
 /* ── Locals pane ─────────────────────────────────────────────────── */
 
@@ -393,6 +407,165 @@ on_frames_changed (MooGdbSession *s, gpointer user_data)
             FRAMES_COL_LOCATION, loc,
             -1);
         g_free (loc);
+    }
+}
+
+/* ── Watches pane ────────────────────────────────────────────────── */
+
+#define MOO_GDB_WATCHES_PANE_ID "MooGdbWatches"
+
+enum {
+    WATCHES_COL_SLOT,        /* int, slot number in session->watches */
+    WATCHES_COL_EXPRESSION,
+    WATCHES_COL_VALUE,
+    WATCHES_COL_ERROR,       /* gboolean — render value red if TRUE */
+    WATCHES_N_COLS
+};
+
+static void
+on_watches_entry_activate (GtkEntry *entry, gpointer user_data)
+{
+    MooGdbWin *win = (MooGdbWin *) user_data;
+    const char *text = gtk_entry_get_text (entry);
+    if (!text || !*text) return;
+    if (!win->session) {
+        console_append (win,
+            "Cannot add watch: gdb session not started.  "
+            "Press Ctrl+F5 to start debugging first.\n", "error");
+        return;
+    }
+    moo_gdb_session_add_watch (win->session, text);
+    gtk_entry_set_text (entry, "");
+}
+
+/* Delete-key handler on the tree-view — remove the selected
+ * watch slot.  Returns TRUE if handled (consumed key), FALSE
+ * otherwise so other keys keep their default behaviour. */
+static gboolean
+on_watches_key_press (GtkWidget *widget, GdkEventKey *ev,
+                      gpointer user_data)
+{
+    if (ev->keyval != GDK_KEY_Delete && ev->keyval != GDK_KEY_KP_Delete)
+        return FALSE;
+    MooGdbWin *win = (MooGdbWin *) user_data;
+    GtkTreeSelection *sel =
+        gtk_tree_view_get_selection (GTK_TREE_VIEW (widget));
+    GtkTreeModel *model;
+    GtkTreeIter   it;
+    if (!gtk_tree_selection_get_selected (sel, &model, &it))
+        return FALSE;
+    int slot;
+    gtk_tree_model_get (model, &it, WATCHES_COL_SLOT, &slot, -1);
+    if (win->session && slot >= 0)
+        moo_gdb_session_remove_watch (win->session, (guint) slot);
+    return TRUE;
+}
+
+static void
+build_watches_pane (MooGdbWin *win)
+{
+    GtkWidget *vbox   = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+    GtkWidget *scroll = gtk_scrolled_window_new (NULL, NULL);
+    gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroll),
+                                    GTK_POLICY_AUTOMATIC,
+                                    GTK_POLICY_AUTOMATIC);
+    gtk_widget_set_hexpand (scroll, TRUE);
+    gtk_widget_set_vexpand (scroll, TRUE);
+
+    GtkListStore *store = gtk_list_store_new (WATCHES_N_COLS,
+                                              G_TYPE_INT,
+                                              G_TYPE_STRING,
+                                              G_TYPE_STRING,
+                                              G_TYPE_BOOLEAN);
+    GtkWidget *view = gtk_tree_view_new_with_model (GTK_TREE_MODEL (store));
+    gtk_tree_view_set_headers_visible (GTK_TREE_VIEW (view), TRUE);
+    g_object_unref (store);
+
+    /* Expression column (non-resizable in width but text-editable
+     * would be nice later — skip for v1).  Value column ellipsizes
+     * at the end and turns red when error=TRUE via the
+     * foreground-set / foreground attributes. */
+    {
+        GtkCellRenderer *r = gtk_cell_renderer_text_new ();
+        GtkTreeViewColumn *c = gtk_tree_view_column_new_with_attributes (
+            "Expression", r, "text", WATCHES_COL_EXPRESSION, NULL);
+        gtk_tree_view_column_set_resizable (c, TRUE);
+        gtk_tree_view_append_column (GTK_TREE_VIEW (view), c);
+    }
+    {
+        GtkCellRenderer *r = gtk_cell_renderer_text_new ();
+        g_object_set (r, "ellipsize", PANGO_ELLIPSIZE_END, NULL);
+        GtkTreeViewColumn *c = gtk_tree_view_column_new_with_attributes (
+            "Value", r,
+            "text",             WATCHES_COL_VALUE,
+            NULL);
+        /* Bind the error column to the renderer's foreground via a
+         * cell-data-func so we colour failures red.  Simpler: use
+         * tree_view_column_add_attribute with foreground-set. */
+        gtk_tree_view_column_set_cell_data_func (c, r,
+            [](GtkTreeViewColumn *, GtkCellRenderer *cell,
+               GtkTreeModel *m, GtkTreeIter *iter, gpointer) {
+                gboolean err = FALSE;
+                gtk_tree_model_get (m, iter, WATCHES_COL_ERROR, &err, -1);
+                g_object_set (cell,
+                    "foreground", err ? "#c0392b" : NULL,
+                    "foreground-set", err,
+                    NULL);
+            }, NULL, NULL);
+        gtk_tree_view_column_set_resizable (c, TRUE);
+        gtk_tree_view_column_set_expand    (c, TRUE);
+        gtk_tree_view_append_column (GTK_TREE_VIEW (view), c);
+    }
+
+    g_signal_connect (view, "key-press-event",
+                      G_CALLBACK (on_watches_key_press), win);
+
+    gtk_container_add (GTK_CONTAINER (scroll), view);
+    gtk_box_pack_start (GTK_BOX (vbox), scroll, TRUE, TRUE, 0);
+
+    GtkWidget *entry = gtk_entry_new ();
+    gtk_entry_set_placeholder_text (GTK_ENTRY (entry),
+        _("Type a C expression and press Enter (Delete to remove a row)"));
+    gtk_box_pack_start (GTK_BOX (vbox), entry, FALSE, FALSE, 0);
+    g_signal_connect (entry, "activate",
+                      G_CALLBACK (on_watches_entry_activate), win);
+
+    gtk_widget_show_all (vbox);
+
+    MooPaneLabel *label = moo_pane_label_new ("preferences-system", NULL,
+                                              _("Watches"),
+                                              _("Watch Expressions"));
+    moo_edit_window_add_pane (win->window, MOO_GDB_WATCHES_PANE_ID,
+                              vbox, label, MOO_PANE_POS_RIGHT);
+    moo_pane_label_free (label);
+
+    win->watches_pane  = vbox;
+    win->watches_store = store;
+    win->watches_view  = GTK_TREE_VIEW (view);
+    win->watches_entry = GTK_ENTRY (entry);
+}
+
+static void
+on_watches_changed (MooGdbSession *s, gpointer user_data)
+{
+    MooGdbWin *win = (MooGdbWin *) user_data;
+    if (!win->watches_store) return;
+    gtk_list_store_clear (win->watches_store);
+
+    GPtrArray *watches = moo_gdb_session_get_watches (s);
+    if (!watches) return;
+    for (guint i = 0; i < watches->len; i++) {
+        MooGdbWatch *w = (MooGdbWatch *) watches->pdata[i];
+        if (!w) continue;   /* removed slot */
+        GtkTreeIter it;
+        gtk_list_store_append (win->watches_store, &it);
+        gtk_list_store_set (win->watches_store, &it,
+            WATCHES_COL_SLOT,       (int) i,
+            WATCHES_COL_EXPRESSION, w->expression ? w->expression : "",
+            WATCHES_COL_VALUE,
+                w->value ? w->value : (w->expression ? "(not yet evaluated)" : ""),
+            WATCHES_COL_ERROR,      w->error,
+            -1);
     }
 }
 
@@ -846,6 +1019,8 @@ ensure_session (MooGdbWin *win)
                       G_CALLBACK (on_locals_changed), win);
     g_signal_connect (win->session, "frames-changed",
                       G_CALLBACK (on_frames_changed), win);
+    g_signal_connect (win->session, "watches-changed",
+                      G_CALLBACK (on_watches_changed), win);
     GError *err = NULL;
     if (!moo_gdb_session_start (win->session, NULL, &err)) {
         g_warning ("[gdb] failed to spawn gdb: %s",
@@ -1105,6 +1280,8 @@ moo_gdb_win_new (MooEditWindow *window)
     /* Stack pane next to it — same right side, moo's pane system
      * stacks/tabs them automatically. */
     build_frames_pane (win);
+    /* Watches pane: user-typed expressions, evaluated on each stop. */
+    build_watches_pane (win);
 
     /* Note: gutter-click breakpoint toggling and doc-loaded
      * re-attach were tried via an emission hook on
@@ -1128,6 +1305,8 @@ moo_gdb_win_free (MooGdbWin *win)
         moo_edit_window_remove_pane (win->window, MOO_GDB_LOCALS_PANE_ID);
     if (win->frames_pane)
         moo_edit_window_remove_pane (win->window, MOO_GDB_FRAMES_PANE_ID);
+    if (win->watches_pane)
+        moo_edit_window_remove_pane (win->window, MOO_GDB_WATCHES_PANE_ID);
 
     clear_exec_mark (win);
 

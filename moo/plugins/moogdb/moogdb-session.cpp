@@ -47,6 +47,11 @@ struct _MooGdbSession {
     /* Most-recent stack frames, refreshed automatically after every
      * *stopped event.  Each element is a MooGdbFrame*. */
     GPtrArray        *frames;
+
+    /* User-defined watch expressions.  Each element is a
+     * MooGdbWatch* (or NULL for a freed slot).  Re-evaluated on
+     * every *stopped via -data-evaluate-expression per slot. */
+    GPtrArray        *watches;
 };
 
 G_DEFINE_TYPE (MooGdbSession, moo_gdb_session, G_TYPE_OBJECT)
@@ -74,6 +79,7 @@ enum {
     SIG_ERROR,
     SIG_LOCALS_CHANGED,
     SIG_FRAMES_CHANGED,
+    SIG_WATCHES_CHANGED,
     SIG_EXITED,
     N_SIGNALS
 };
@@ -102,6 +108,10 @@ static void  request_frames_refresh   (MooGdbSession *s);
 static void  on_frames_reply          (MooGdbSession *s,
                                         MooGdbMiRecord *r,
                                         gpointer        user_data);
+static void  request_watches_refresh  (MooGdbSession *s);
+static void  on_watch_reply           (MooGdbSession *s,
+                                        MooGdbMiRecord *r,
+                                        gpointer        user_data);
 
 /* ── Life-cycle ───────────────────────────────────────────────────── */
 
@@ -128,6 +138,16 @@ free_frame (gpointer p)
 }
 
 static void
+free_watch (gpointer p)
+{
+    MooGdbWatch *w = (MooGdbWatch *) p;
+    if (!w) return;
+    g_free (w->expression);
+    g_free (w->value);
+    g_free (w);
+}
+
+static void
 moo_gdb_session_init (MooGdbSession *s)
 {
     s->state       = MOO_GDB_STATE_IDLE;
@@ -137,6 +157,7 @@ moo_gdb_session_init (MooGdbSession *s)
     s->cancellable = g_cancellable_new ();
     s->locals      = g_ptr_array_new_with_free_func (free_local);
     s->frames      = g_ptr_array_new_with_free_func (free_frame);
+    s->watches     = g_ptr_array_new_with_free_func (free_watch);
 }
 
 static void
@@ -154,8 +175,9 @@ moo_gdb_session_finalize (GObject *object)
     g_clear_object (&s->cancellable);
     /* gdb_in is owned by gdb; don't unref. */
     g_hash_table_destroy (s->pending);
-    if (s->locals) g_ptr_array_free (s->locals, TRUE);
-    if (s->frames) g_ptr_array_free (s->frames, TRUE);
+    if (s->locals)  g_ptr_array_free (s->locals,  TRUE);
+    if (s->frames)  g_ptr_array_free (s->frames,  TRUE);
+    if (s->watches) g_ptr_array_free (s->watches, TRUE);
     g_free (s->version);
     G_OBJECT_CLASS (moo_gdb_session_parent_class)->finalize (object);
 }
@@ -172,6 +194,67 @@ moo_gdb_session_get_frames (MooGdbSession *s)
 {
     g_return_val_if_fail (MOO_IS_GDB_SESSION (s), NULL);
     return s->frames;
+}
+
+GPtrArray *
+moo_gdb_session_get_watches (MooGdbSession *s)
+{
+    g_return_val_if_fail (MOO_IS_GDB_SESSION (s), NULL);
+    return s->watches;
+}
+
+guint
+moo_gdb_session_add_watch (MooGdbSession *s, const char *expr)
+{
+    g_return_val_if_fail (MOO_IS_GDB_SESSION (s), 0);
+    g_return_val_if_fail (expr != NULL && *expr, 0);
+    MooGdbWatch *w = g_new0 (MooGdbWatch, 1);
+    w->expression = g_strdup (expr);
+    /* Reuse the first NULL slot if there is one (preserves slot
+     * indices that may already be referenced elsewhere); otherwise
+     * append. */
+    guint slot;
+    for (slot = 0; slot < s->watches->len; slot++)
+        if (!s->watches->pdata[slot]) {
+            s->watches->pdata[slot] = w;
+            return slot;
+        }
+    g_ptr_array_add (s->watches, w);
+    /* Trigger an evaluation immediately if we're stopped — the user
+     * just typed it, they want to see the value. */
+    if (s->state == MOO_GDB_STATE_STOPPED)
+        moo_gdb_session_eval_watch (s, slot, expr);
+    return slot;
+}
+
+void
+moo_gdb_session_remove_watch (MooGdbSession *s, guint slot)
+{
+    g_return_if_fail (MOO_IS_GDB_SESSION (s));
+    if (slot >= s->watches->len) return;
+    /* Don't shrink the array — free the slot in place so other
+     * existing slot indices stay valid. */
+    free_watch (s->watches->pdata[slot]);
+    s->watches->pdata[slot] = NULL;
+    g_signal_emit (s, signals[SIG_WATCHES_CHANGED], 0);
+}
+
+void
+moo_gdb_session_eval_watch (MooGdbSession *s, guint slot, const char *expr)
+{
+    g_return_if_fail (MOO_IS_GDB_SESSION (s));
+    if (!expr || !*expr) return;
+    /* Stash the slot in the command callback's user_data so the
+     * reply handler can write the result back into the right
+     * slot.  GINT_TO_POINTER is fine for slot indices (small). */
+    char *cmd = g_strdup_printf ("-data-evaluate-expression \"%s\"", expr);
+    /* The pending-table value is the callback's user_data, not the
+     * callback's own state — but our send_command's PendingEntry
+     * has user_data wired in.  We pass slot via the user_data
+     * pointer.  + 1 so we can distinguish "slot 0" from NULL. */
+    send_command (s, cmd, on_watch_reply,
+                  GUINT_TO_POINTER (slot + 1));
+    g_free (cmd);
 }
 
 void
@@ -264,6 +347,13 @@ moo_gdb_session_class_init (MooGdbSessionClass *klass)
      * snapshot refreshed by -stack-list-frames. */
     signals[SIG_FRAMES_CHANGED] = g_signal_new (
         "frames-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
+        0, NULL, NULL, g_cclosure_marshal_VOID__VOID,
+        G_TYPE_NONE, 0);
+
+    /* "watches-changed" :: () — same shape, for watch-expression
+     * results refreshed by -data-evaluate-expression. */
+    signals[SIG_WATCHES_CHANGED] = g_signal_new (
+        "watches-changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
         0, NULL, NULL, g_cclosure_marshal_VOID__VOID,
         G_TYPE_NONE, 0);
 
@@ -535,6 +625,7 @@ dispatch_record (MooGdbSession *s, MooGdbMiRecord *r)
              * locals (e.g. stopped in glibc with no debug info). */
             request_locals_refresh (s);
             request_frames_refresh (s);
+            request_watches_refresh (s);
         }
         break;
     }
@@ -903,4 +994,47 @@ on_frames_reply (MooGdbSession *s, MooGdbMiRecord *r,
     }
 
     g_signal_emit (s, signals[SIG_FRAMES_CHANGED], 0);
+}
+
+/* ── Watch refresh ───────────────────────────────────────────────── */
+
+static void
+request_watches_refresh (MooGdbSession *s)
+{
+    /* Fire off one -data-evaluate-expression per occupied slot;
+     * each reply lands in on_watch_reply which writes the value
+     * back to the matching slot and emits "watches-changed" after
+     * the last pending eval finishes. */
+    for (guint slot = 0; slot < s->watches->len; slot++) {
+        MooGdbWatch *w = (MooGdbWatch *) s->watches->pdata[slot];
+        if (!w || !w->expression) continue;
+        moo_gdb_session_eval_watch (s, slot, w->expression);
+    }
+}
+
+static void
+on_watch_reply (MooGdbSession *s, MooGdbMiRecord *r, gpointer user_data)
+{
+    guint slot = GPOINTER_TO_UINT (user_data) - 1;
+    if (slot >= s->watches->len) return;
+    MooGdbWatch *w = (MooGdbWatch *) s->watches->pdata[slot];
+    if (!w) return;
+
+    g_free (w->value);
+    w->value = NULL;
+    w->error = FALSE;
+
+    const char *klass = moo_gdb_mi_record_class (r);
+    if (klass && !strcmp (klass, "done")) {
+        MooGdbMiValue *v = moo_gdb_mi_record_field (r, "value");
+        if (v) w->value = g_strdup (moo_gdb_mi_value_string (v));
+    } else if (klass && !strcmp (klass, "error")) {
+        MooGdbMiValue *m = moo_gdb_mi_record_field (r, "msg");
+        if (m) w->value = g_strdup (moo_gdb_mi_value_string (m));
+        w->error = TRUE;
+    }
+
+    /* Fire once per reply.  In practice the UI doesn't care which
+     * specific watch changed — it just rebuilds the whole list. */
+    g_signal_emit (s, signals[SIG_WATCHES_CHANGED], 0);
 }
