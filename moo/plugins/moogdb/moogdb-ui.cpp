@@ -17,6 +17,7 @@
 
 #include "plugins/moogdb/moogdb-ui.h"
 #include "plugins/moogdb/moogdb-session.h"
+#include "plugins/moogdb/moogdb-project.h"
 
 #include "mooedit/mooeditor.h"
 #include "mooedit/mooeditview.h"
@@ -216,6 +217,19 @@ struct _MooGdbWin {
      * still mid-query. */
     GHashTable    *hover_cache;     /* char* -> char* */
     GHashTable    *hover_pending;   /* char* -> dummy non-NULL */
+
+    /* Launch-config project.  NULL when no `.medit/launch.json` or
+     * `.vscode/launch.json` is found upwards from the active doc.
+     * `active_config` indexes into project->configs[]; -1 if no
+     * project is loaded.  cfg_combo + label live in the toolbar so
+     * we can refresh them when the project (re)loads. */
+    MooGdbProject *project;
+    int            active_config;
+    GtkComboBoxText *cfg_combo;
+    GtkLabel        *cfg_label;
+    /* Signal handler id on the editor window's "notify::active-doc"
+     * — kept so the destructor can detach cleanly. */
+    gulong         active_doc_handler;
 };
 
 /* Forward declaration: console_append is defined in the console-pane
@@ -922,6 +936,102 @@ static const ToolBtnSpec INSPECT_TOOLBAR[] = {
       moo_gdb_win_configure },
 };
 
+/* ── Configurations dropdown / project lifecycle ─────────────────── */
+
+static void
+on_cfg_combo_changed (GtkComboBox *combo, gpointer user_data)
+{
+    MooGdbWin *win = (MooGdbWin *) user_data;
+    win->active_config = gtk_combo_box_get_active (combo);
+}
+
+/* Refresh the dropdown's contents to match the currently-loaded
+ * project.  Pre-emptively blocks the "changed" handler so re-
+ * populating doesn't fire spurious notifications. */
+static void
+refresh_cfg_combo (MooGdbWin *win)
+{
+    if (!win->cfg_combo) return;
+    g_signal_handlers_block_by_func (
+        win->cfg_combo, (gpointer) on_cfg_combo_changed, win);
+
+    gtk_combo_box_text_remove_all (win->cfg_combo);
+
+    guint n = win->project ? moo_gdb_project_n_configs (win->project) : 0;
+    for (guint i = 0; i < n; i++) {
+        const MooGdbConfig *c = moo_gdb_project_config (win->project, i);
+        gtk_combo_box_text_append_text (win->cfg_combo,
+            c->name ? c->name : "(unnamed)");
+    }
+    gtk_widget_set_sensitive (GTK_WIDGET (win->cfg_combo), n > 0);
+    if (n > 0) {
+        int idx = win->active_config;
+        if (idx < 0 || (guint) idx >= n) idx = 0;
+        gtk_combo_box_set_active (GTK_COMBO_BOX (win->cfg_combo), idx);
+        win->active_config = idx;
+    } else {
+        win->active_config = -1;
+    }
+
+    if (win->cfg_label) {
+        if (n > 0 && win->project) {
+            char *root = g_path_get_basename (
+                moo_gdb_project_root (win->project));
+            char *txt = g_strdup_printf ("Config (%s):", root);
+            gtk_label_set_text (win->cfg_label, txt);
+            g_free (txt);
+            g_free (root);
+        } else {
+            gtk_label_set_text (win->cfg_label, "Config: (none)");
+        }
+    }
+
+    g_signal_handlers_unblock_by_func (
+        win->cfg_combo, (gpointer) on_cfg_combo_changed, win);
+}
+
+/* (Re)discover the project from the active document's path and
+ * refresh the dropdown.  No-op if no document is active — the
+ * previous project, if any, stays loaded so users can swap to a
+ * non-source file without losing their config. */
+static void
+reload_project (MooGdbWin *win)
+{
+    MooEdit *doc = moo_edit_window_get_active_doc (win->window);
+    if (!doc) return;
+    char *file = moo_edit_get_filename (doc);
+    if (!file) return;
+
+    GError *err = NULL;
+    MooGdbProject *p = moo_gdb_project_load (file, &err);
+    g_free (file);
+
+    if (!p) {
+        /* No project found — that's normal, don't spam the console.
+         * Only complain if a launch.json existed but failed to parse. */
+        if (err && err->code != 0)
+            console_append (win, err->message, "error");
+        if (err) g_error_free (err);
+        if (win->project) {
+            moo_gdb_project_free (win->project);
+            win->project = NULL;
+        }
+        refresh_cfg_combo (win);
+        return;
+    }
+    if (win->project) moo_gdb_project_free (win->project);
+    win->project = p;
+    refresh_cfg_combo (win);
+}
+
+static void
+on_active_doc_notify (G_GNUC_UNUSED GObject *obj,
+                      G_GNUC_UNUSED GParamSpec *pspec,
+                      gpointer user_data)
+{
+    reload_project ((MooGdbWin *) user_data);
+}
+
 static GtkWidget *
 build_inspect_toolbar (MooGdbWin *win)
 {
@@ -930,6 +1040,32 @@ build_inspect_toolbar (MooGdbWin *win)
     gtk_toolbar_set_icon_size (GTK_TOOLBAR (toolbar),
                                 GTK_ICON_SIZE_SMALL_TOOLBAR);
     gtk_toolbar_set_show_arrow (GTK_TOOLBAR (toolbar), TRUE);
+
+    /* Configurations dropdown — appears at the start of the toolbar
+     * so the user picks "what to debug" before the action buttons.
+     * Wrapped in a GtkToolItem (the toolbar's required child type). */
+    {
+        GtkToolItem *lbl_item = gtk_tool_item_new ();
+        GtkWidget   *lbl      = gtk_label_new ("Config: (none)");
+        g_object_set (lbl, "margin-start", 4, "margin-end", 4, NULL);
+        gtk_container_add (GTK_CONTAINER (lbl_item), lbl);
+        gtk_toolbar_insert (GTK_TOOLBAR (toolbar), lbl_item, -1);
+        win->cfg_label = GTK_LABEL (lbl);
+
+        GtkToolItem *combo_item = gtk_tool_item_new ();
+        GtkWidget   *combo      = gtk_combo_box_text_new ();
+        gtk_widget_set_sensitive (combo, FALSE);   /* until a project loads */
+        gtk_widget_set_tooltip_text (combo,
+            "Pick a launch configuration from launch.json");
+        g_signal_connect (combo, "changed",
+                          G_CALLBACK (on_cfg_combo_changed), win);
+        gtk_container_add (GTK_CONTAINER (combo_item), combo);
+        gtk_toolbar_insert (GTK_TOOLBAR (toolbar), combo_item, -1);
+        win->cfg_combo = GTK_COMBO_BOX_TEXT (combo);
+
+        GtkToolItem *sep = gtk_separator_tool_item_new ();
+        gtk_toolbar_insert (GTK_TOOLBAR (toolbar), sep, -1);
+    }
 
     for (guint i = 0; i < G_N_ELEMENTS (INSPECT_TOOLBAR); i++) {
         const ToolBtnSpec *spec = &INSPECT_TOOLBAR[i];
@@ -1733,6 +1869,26 @@ moo_gdb_win_toggle_bp (MooGdbWin *win, const char *file, int line)
 
 /* ── Execution control forwards ──────────────────────────────────── */
 
+/* Get the active document's full path, or NULL if none / unsaved.
+ * Used both for project re-discovery and for ${file} substitution.
+ * Returned pointer is owned by caller (free with g_free). */
+static char *
+active_doc_path (MooGdbWin *win)
+{
+    MooEdit *doc = moo_edit_window_get_active_doc (win->window);
+    if (!doc) return NULL;
+    return moo_edit_get_filename (doc);   /* transfer-full */
+}
+
+/* Resolve a launch.json string field through the project's
+ * substitution helper.  Returns NULL if `raw` is NULL/empty. */
+static char *
+resolve_field (MooGdbWin *win, const char *raw, const char *active_file)
+{
+    if (!raw || !*raw) return NULL;
+    return moo_gdb_project_resolve (win->project, raw, active_file);
+}
+
 void
 moo_gdb_win_start (MooGdbWin *win)
 {
@@ -1741,27 +1897,61 @@ moo_gdb_win_start (MooGdbWin *win)
     if (!s) return;
 
     /* Pick the target binary.  Priority order:
-     *   1. Whatever the user set via "Configure Target".
-     *   2. Heuristic: strip the extension from the active doc's
+     *   1. The active launch.json configuration (highest fidelity
+     *      and the new default — users who set up a project want
+     *      their selection honoured).
+     *   2. Whatever the user set via "Configure Target".
+     *   3. Heuristic: strip the extension from the active doc's
      *      filename (foo.c → ./foo) — works for trivial single-
-     *      file builds. */
-    char *target = NULL;
-    if (win->cfg_target && *win->cfg_target) {
-        target = g_strdup (win->cfg_target);
-    } else {
-        MooEdit *doc = moo_edit_window_get_active_doc (win->window);
-        if (doc) {
-            char *file = moo_edit_get_filename (doc);
-            if (file) {
-                char *dot = strrchr (file, '.');
-                if (dot && dot > strrchr (file, '/'))
-                    target = g_strndup (file, dot - file);
-                else
-                    target = g_strdup (file);
-                g_free (file);
-            }
+     *      file builds.  Kept as a fallback so the editor is still
+     *      useful without any project setup. */
+    const MooGdbConfig *cfg = NULL;
+    if (win->project && win->active_config >= 0)
+        cfg = moo_gdb_project_config (win->project,
+                                       (guint) win->active_config);
+
+    char *active_file = active_doc_path (win);
+    char *target      = NULL;
+    char *cwd_resolved = NULL;
+    char **argv_resolved = NULL;
+    GHashTable *env_resolved = NULL;   /* char*name → char*value */
+
+    if (cfg) {
+        target       = resolve_field (win, cfg->program, active_file);
+        cwd_resolved = resolve_field (win, cfg->cwd,     active_file);
+        if (cfg->args) {
+            guint n = g_strv_length (cfg->args);
+            argv_resolved = g_new0 (char *, n + 1);
+            for (guint i = 0; i < n; i++)
+                argv_resolved[i] = moo_gdb_project_resolve (win->project,
+                                    cfg->args[i], active_file);
         }
+        if (cfg->environment && g_hash_table_size (cfg->environment) > 0) {
+            env_resolved = g_hash_table_new_full (g_str_hash, g_str_equal,
+                                                    g_free, g_free);
+            GHashTableIter it;
+            gpointer k, v;
+            g_hash_table_iter_init (&it, cfg->environment);
+            while (g_hash_table_iter_next (&it, &k, &v))
+                g_hash_table_insert (env_resolved,
+                    g_strdup ((const char *) k),
+                    moo_gdb_project_resolve (win->project,
+                                              (const char *) v, active_file));
+        }
+        char *msg = g_strdup_printf (
+            "Launch configuration: %s\n", cfg->name);
+        console_append (win, msg, "log");
+        g_free (msg);
+    } else if (win->cfg_target && *win->cfg_target) {
+        target = g_strdup (win->cfg_target);
+    } else if (active_file) {
+        char *dot = strrchr (active_file, '.');
+        if (dot && dot > strrchr (active_file, '/'))
+            target = g_strndup (active_file, dot - active_file);
+        else
+            target = g_strdup (active_file);
     }
+    g_free (active_file);
 
     /* Verify the inferred target exists & is executable before
      * sending anything to gdb — otherwise -file-exec-and-symbols
@@ -1806,11 +1996,21 @@ moo_gdb_win_start (MooGdbWin *win)
     moo_gdb_session_set_target (s, target);
     g_free (target);
 
-    /* Apply optional cwd and argv. */
-    if (win->cfg_cwd && *win->cfg_cwd)
+    /* Apply cwd: launch.json wins, then the legacy dialog field. */
+    if (cwd_resolved && *cwd_resolved)
+        moo_gdb_session_set_cwd (s, cwd_resolved);
+    else if (win->cfg_cwd && *win->cfg_cwd)
         moo_gdb_session_set_cwd (s, win->cfg_cwd);
+    g_free (cwd_resolved);
 
-    if (win->cfg_args && *win->cfg_args) {
+    /* Apply argv.  When a launch config is active, argv_resolved is
+     * already a NULL-terminated array of resolved strings — pass it
+     * verbatim.  Otherwise fall back to shell-parsing the legacy
+     * dialog field. */
+    if (argv_resolved) {
+        moo_gdb_session_set_args (s, (const char *const *) argv_resolved);
+        g_strfreev (argv_resolved);
+    } else if (win->cfg_args && *win->cfg_args) {
         GError *err = NULL;
         char **argv = NULL;
         int    argc = 0;
@@ -1828,6 +2028,23 @@ moo_gdb_win_start (MooGdbWin *win)
         /* Clear any previously-set args so a stale list doesn't
          * carry between runs. */
         moo_gdb_session_set_args (s, NULL);
+    }
+
+    /* Environment variables from the launch config.  Pushed to gdb
+     * via repeated `-gdb-set environment KEY=VALUE` so they're
+     * picked up by `-exec-run`. */
+    if (env_resolved) {
+        GHashTableIter it;
+        gpointer k, v;
+        g_hash_table_iter_init (&it, env_resolved);
+        while (g_hash_table_iter_next (&it, &k, &v)) {
+            char *cmd = g_strdup_printf (
+                "-gdb-set environment %s=%s",
+                (const char *) k, (const char *) v);
+            moo_gdb_session_send_raw (s, cmd);
+            g_free (cmd);
+        }
+        g_hash_table_destroy (env_resolved);
     }
 
     moo_gdb_session_run (s);
@@ -1894,6 +2111,19 @@ moo_gdb_win_configure (MooGdbWin *win)
 {
     g_return_if_fail (win != NULL);
 
+    /* When a project is loaded, "Configure" means "edit launch.json".
+     * Open it in medit so the user can edit the same source of truth
+     * VS Code uses.  Fall through to the legacy dialog only when no
+     * project file was discovered. */
+    if (win->project) {
+        const char *p = moo_gdb_project_launch_path (win->project);
+        if (p && *p) {
+            moo_editor_open_path (moo_editor_instance (), p, NULL, 0,
+                                   win->window);
+            return;
+        }
+    }
+
     GtkWidget *dlg = gtk_dialog_new_with_buttons (
         _("Configure Debug Target"),
         GTK_WINDOW (win->window),
@@ -1953,6 +2183,7 @@ moo_gdb_win_new (MooEditWindow *window)
                                                 g_free, g_free);
     win->hover_pending = g_hash_table_new_full (g_str_hash, g_str_equal,
                                                  g_free, NULL);
+    win->active_config = -1;
 
     /* Build the console transcript pane up-front so the user sees
      * a greeting line even before they start a debug session. */
@@ -1967,6 +2198,15 @@ moo_gdb_win_new (MooEditWindow *window)
      * (locals-changed / frames-changed / watches-changed) — only
      * their layout is shared. */
     build_inspect_pane (win);
+
+    /* Listen for active-doc changes so the project model can re-
+     * discover whenever the user switches to a file in a different
+     * tree.  Also kick off a one-shot discover now so the dropdown
+     * is populated by the time the user looks at it. */
+    win->active_doc_handler = g_signal_connect (window,
+        "notify::active-doc",
+        G_CALLBACK (on_active_doc_notify), win);
+    reload_project (win);
 
     /* Note: gutter-click breakpoint toggling and doc-loaded
      * re-attach were tried via an emission hook on
@@ -1997,6 +2237,10 @@ moo_gdb_win_free (MooGdbWin *win)
         moo_gdb_session_quit (win->session);
         g_object_unref (win->session);
     }
+    if (win->active_doc_handler)
+        g_signal_handler_disconnect (win->window, win->active_doc_handler);
+    if (win->project) moo_gdb_project_free (win->project);
+
     g_hash_table_destroy (win->bp_by_file);
     g_hash_table_destroy (win->bp_by_number);
     if (win->hover_cache)   g_hash_table_destroy (win->hover_cache);
