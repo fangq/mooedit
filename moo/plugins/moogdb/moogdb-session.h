@@ -122,6 +122,23 @@ guint          moo_gdb_session_add_watch   (MooGdbSession *s,
                                             const char    *expr);
 void           moo_gdb_session_remove_watch(MooGdbSession *s, guint slot);
 
+/* One-shot expression evaluator — fire `-data-evaluate-expression`
+ * for `expr` in the current frame and deliver the result via `cb`.
+ * The `value` argument to the callback is gdb's `value` field on
+ * success, or its `msg` field on failure (with `is_error = TRUE`).
+ * If the session is not stopped, the callback is invoked synchronously
+ * with `value = NULL, is_error = TRUE` so callers don't need a separate
+ * "not ready" code path.  Used by the source-view hover tooltip. */
+typedef void (*MooGdbEvalCb) (MooGdbSession *s,
+                              const char    *expr,
+                              const char    *value,
+                              gboolean       is_error,
+                              gpointer       user_data);
+void           moo_gdb_session_eval_async  (MooGdbSession *s,
+                                            const char    *expr,
+                                            MooGdbEvalCb   cb,
+                                            gpointer       user_data);
+
 /* Set the target executable to debug.  May be called before or
  * after start(); the path is forwarded to gdb via `-file-exec-and-
  * symbols`.  Safe to set NULL (clears the current target). */

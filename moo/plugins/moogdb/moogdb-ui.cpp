@@ -203,6 +203,16 @@ struct _MooGdbWin {
     GtkListStore  *watches_store;
     GtkTreeView   *watches_view;
     GtkEntry      *watches_entry;
+
+    /* Hover-to-inspect cache.  Maps C-identifier string → most-recent
+     * formatted value (or error message prefixed with "!").  Cleared
+     * on every *running / *exited so a stale value from an old frame
+     * never lingers on screen.  hover_pending is a set of identifiers
+     * for which a -data-evaluate-expression is in flight — used to
+     * avoid spamming gdb with repeat requests while a tooltip is
+     * still mid-query. */
+    GHashTable    *hover_cache;     /* char* -> char* */
+    GHashTable    *hover_pending;   /* char* -> dummy non-NULL */
 };
 
 /* Forward declaration: console_append is defined in the console-pane
@@ -438,6 +448,61 @@ on_watches_entry_activate (GtkEntry *entry, gpointer user_data)
     gtk_entry_set_text (entry, "");
 }
 
+/* Click-to-edit on the Expression column.  GtkCellRendererText
+ * fires "edited" with the new string after the user commits via
+ * Enter (or Esc to cancel — that doesn't fire "edited" at all).
+ * Update the watch slot, then re-issue the eval so the value
+ * column refreshes too. */
+static void
+on_watch_expr_edited (G_GNUC_UNUSED GtkCellRendererText *cell,
+                      const gchar *path_str, const gchar *new_text,
+                      gpointer user_data)
+{
+    MooGdbWin *win = (MooGdbWin *) user_data;
+    if (!new_text || !*new_text) return;
+    GtkTreePath *path = gtk_tree_path_new_from_string (path_str);
+    if (!path) return;
+    GtkTreeIter it;
+    if (gtk_tree_model_get_iter (GTK_TREE_MODEL (win->watches_store),
+                                  &it, path))
+    {
+        int slot;
+        gtk_tree_model_get (GTK_TREE_MODEL (win->watches_store), &it,
+            WATCHES_COL_SLOT, &slot, -1);
+
+        /* Update the visible expression cell straight away so the user
+         * sees their edit confirmed even if no eval can run yet. */
+        gtk_list_store_set (win->watches_store, &it,
+            WATCHES_COL_EXPRESSION, new_text,
+            WATCHES_COL_VALUE,      "(not yet evaluated)",
+            WATCHES_COL_ERROR,      FALSE,
+            -1);
+
+        if (win->session && slot >= 0) {
+            /* Update the stored expression in the session — we go
+             * through the session's GPtrArray directly because there
+             * is no public setter, and the slot must keep its identity
+             * (its index is used elsewhere as a stable handle). */
+            GPtrArray *watches = moo_gdb_session_get_watches (win->session);
+            if (watches && (guint) slot < watches->len) {
+                MooGdbWatch *w = (MooGdbWatch *) watches->pdata[slot];
+                if (w) {
+                    g_free (w->expression);
+                    w->expression = g_strdup (new_text);
+                    g_free (w->value);
+                    w->value = NULL;
+                    w->error = FALSE;
+                }
+            }
+            /* Trigger an immediate re-eval so the value column
+             * refreshes without waiting for the next *stopped. */
+            moo_gdb_session_eval_watch (win->session,
+                                         (guint) slot, new_text);
+        }
+    }
+    gtk_tree_path_free (path);
+}
+
 /* Delete-key handler on the tree-view — remove the selected
  * watch slot.  Returns TRUE if handled (consumed key), FALSE
  * otherwise so other keys keep their default behaviour. */
@@ -481,12 +546,14 @@ build_watches_pane (MooGdbWin *win)
     gtk_tree_view_set_headers_visible (GTK_TREE_VIEW (view), TRUE);
     g_object_unref (store);
 
-    /* Expression column (non-resizable in width but text-editable
-     * would be nice later — skip for v1).  Value column ellipsizes
-     * at the end and turns red when error=TRUE via the
-     * foreground-set / foreground attributes. */
+    /* Expression column — editable.  Clicking once selects the row,
+     * double-click or F2 opens the in-place editor.  GtkCellRendererText
+     * fires "edited" with the new value on Enter; Esc cancels silently. */
     {
         GtkCellRenderer *r = gtk_cell_renderer_text_new ();
+        g_object_set (r, "editable", TRUE, NULL);
+        g_signal_connect (r, "edited",
+                          G_CALLBACK (on_watch_expr_edited), win);
         GtkTreeViewColumn *c = gtk_tree_view_column_new_with_attributes (
             "Expression", r, "text", WATCHES_COL_EXPRESSION, NULL);
         gtk_tree_view_column_set_resizable (c, TRUE);
@@ -567,6 +634,217 @@ on_watches_changed (MooGdbSession *s, gpointer user_data)
             WATCHES_COL_ERROR,      w->error,
             -1);
     }
+}
+
+/* ── Hover-to-inspect ────────────────────────────────────────────────
+ *
+ * On every *stopped event we walk the window's open documents and
+ * install a "query-tooltip" handler on each MooEditView.  The handler
+ * extracts the C identifier under the mouse, looks it up in
+ * `hover_cache`, and either shows the cached value or kicks off a
+ * one-shot `-data-evaluate-expression` whose reply caches the value
+ * and re-triggers the tooltip query.
+ *
+ * Identifier-only — no `->`, no `.`, no array indexing for v1.  The
+ * extracted text is wrapped in double quotes when passed to gdb;
+ * that's safe because we only accept [_A-Za-z][_A-Za-z0-9]*. */
+
+/* GObject-data key.  Used to mark a view as already hooked so the
+ * stop handler can re-iterate without double-attaching. */
+#define MOO_GDB_HOVER_HOOKED_KEY  "moogdb-hover-hooked"
+
+typedef struct {
+    MooGdbWin *win;
+    char      *expr;
+} HoverCtx;
+
+static gboolean
+is_c_ident_char (gunichar c, gboolean first)
+{
+    if (c == '_') return TRUE;
+    if (first) return g_unichar_isalpha (c);
+    return g_unichar_isalnum (c);
+}
+
+/* Walk left and right from `iter` collecting the maximal run of
+ * C-identifier characters that includes the iter's position.
+ * Returns a freshly-allocated string (NULL if no identifier here). */
+static char *
+extract_identifier_at (GtkTextIter *iter)
+{
+    gunichar ch = gtk_text_iter_get_char (iter);
+    if (!is_c_ident_char (ch, FALSE))
+        return NULL;
+    GtkTextIter start = *iter, end = *iter;
+    /* Walk left while previous char is still an ident char. */
+    while (gtk_text_iter_backward_char (&start)) {
+        gunichar c = gtk_text_iter_get_char (&start);
+        if (!is_c_ident_char (c, FALSE)) {
+            gtk_text_iter_forward_char (&start);
+            break;
+        }
+    }
+    /* Forward end past the last ident char. */
+    while (is_c_ident_char (gtk_text_iter_get_char (&end), FALSE)) {
+        if (!gtk_text_iter_forward_char (&end))
+            break;
+    }
+    /* Reject identifiers starting with a digit (would be a number,
+     * not a variable). */
+    gunichar first = gtk_text_iter_get_char (&start);
+    if (!is_c_ident_char (first, TRUE))
+        return NULL;
+    return gtk_text_buffer_get_text (gtk_text_iter_get_buffer (&start),
+                                      &start, &end, FALSE);
+}
+
+/* Reply callback for the async hover evaluation.  Stash the result
+ * in the cache and re-trigger the tooltip so the user sees the new
+ * value if they're still hovering. */
+static void
+on_hover_eval_reply (G_GNUC_UNUSED MooGdbSession *s,
+                     const char *expr, const char *value,
+                     gboolean is_error, gpointer user_data)
+{
+    HoverCtx *ctx = (HoverCtx *) user_data;
+    MooGdbWin *win = ctx->win;
+    if (!win->hover_cache || !expr) {
+        g_free (ctx->expr);
+        g_free (ctx);
+        return;
+    }
+    /* Prefix errors with "!" so the hover handler can render them
+     * differently from a successful value if we want to later.
+     * For now both render as plain tooltip text. */
+    char *cached;
+    if (is_error)
+        cached = g_strdup_printf ("!%s", value ? value : "evaluation failed");
+    else
+        cached = g_strdup (value ? value : "(null)");
+    g_hash_table_insert (win->hover_cache, g_strdup (expr), cached);
+    g_hash_table_remove (win->hover_pending, expr);
+
+    /* Re-fire the tooltip query for whichever view the user is
+     * currently hovering over — if it's still us and still on this
+     * identifier, the new value will appear.  We don't know which
+     * view spawned the request, so trigger on all hooked ones. */
+    MooEditor *editor = moo_editor_instance ();
+    MooEditArray *docs = moo_editor_get_docs (editor);
+    if (docs) {
+        for (guint i = 0; i < docs->n_elms; i++) {
+            MooEditView *v = moo_edit_get_view (docs->elms[i]);
+            if (v && g_object_get_data (G_OBJECT (v),
+                                         MOO_GDB_HOVER_HOOKED_KEY))
+                gtk_widget_trigger_tooltip_query (GTK_WIDGET (v));
+        }
+        moo_edit_array_free (docs);
+    }
+    g_free (ctx->expr);
+    g_free (ctx);
+}
+
+/* "query-tooltip" handler installed on each MooEditView while a
+ * session is active.  GtkTextView passes window-relative (x,y) on
+ * mouse-driven queries and the cursor position on keyboard-driven
+ * ones — convert to buffer coords either way before pulling the
+ * identifier out. */
+static gboolean
+on_view_query_tooltip (GtkWidget *widget, gint x, gint y,
+                        gboolean keyboard_mode,
+                        GtkTooltip *tooltip, gpointer user_data)
+{
+    MooGdbWin *win = (MooGdbWin *) user_data;
+    if (!win || !win->session) return FALSE;
+    if (moo_gdb_session_get_state (win->session) != MOO_GDB_STATE_STOPPED)
+        return FALSE;
+
+    GtkTextView *view = GTK_TEXT_VIEW (widget);
+    GtkTextIter iter;
+    if (keyboard_mode) {
+        gtk_text_buffer_get_iter_at_mark (
+            gtk_text_view_get_buffer (view), &iter,
+            gtk_text_buffer_get_insert (gtk_text_view_get_buffer (view)));
+    } else {
+        gint bx, by;
+        gtk_text_view_window_to_buffer_coords (
+            view, GTK_TEXT_WINDOW_WIDGET, x, y, &bx, &by);
+        if (!gtk_text_view_get_iter_at_location (view, &iter, bx, by))
+            return FALSE;
+    }
+
+    char *expr = extract_identifier_at (&iter);
+    if (!expr) return FALSE;
+    /* Filter obvious non-variables (C keywords / common type names)
+     * so we don't waste a gdb round-trip on `int`, `if`, etc. */
+    static const char *const KEYWORDS[] = {
+        "if","else","for","while","do","switch","case","break",
+        "continue","return","goto","sizeof","typedef","struct","union",
+        "enum","static","extern","auto","register","const","volatile",
+        "void","char","short","int","long","float","double","signed",
+        "unsigned","NULL","TRUE","FALSE","true","false", NULL
+    };
+    for (const char *const *k = KEYWORDS; *k; k++)
+        if (!strcmp (expr, *k)) { g_free (expr); return FALSE; }
+
+    const char *cached = (const char *)
+        g_hash_table_lookup (win->hover_cache, expr);
+    if (cached) {
+        /* "!msg" → error message; render with the same tooltip but
+         * could be styled differently in future. */
+        const char *display = (cached[0] == '!') ? cached + 1 : cached;
+        char *line = g_strdup_printf ("%s = %s", expr, display);
+        gtk_tooltip_set_text (tooltip, line);
+        g_free (line);
+        g_free (expr);
+        return TRUE;
+    }
+
+    /* No cached value yet.  Kick off an async eval if not already
+     * pending; show "..." in the meantime.  The reply will
+     * re-trigger the tooltip query so the value lands without the
+     * user having to mouse off and back. */
+    if (!g_hash_table_contains (win->hover_pending, expr)) {
+        g_hash_table_insert (win->hover_pending, g_strdup (expr),
+                              GINT_TO_POINTER (1));
+        HoverCtx *ctx = g_new0 (HoverCtx, 1);
+        ctx->win  = win;
+        ctx->expr = g_strdup (expr);
+        moo_gdb_session_eval_async (win->session, expr,
+                                     on_hover_eval_reply, ctx);
+    }
+    char *line = g_strdup_printf ("%s = ...", expr);
+    gtk_tooltip_set_text (tooltip, line);
+    g_free (line);
+    g_free (expr);
+    return TRUE;
+}
+
+/* Attach the query-tooltip handler to `view` if not already done.
+ * Idempotent — we mark the view with set_data after the first call.
+ * Called on every *stopped because new docs may have been opened
+ * since the last stop. */
+static void
+attach_hover_to_view (MooGdbWin *win, MooEditView *view)
+{
+    if (!view) return;
+    if (g_object_get_data (G_OBJECT (view), MOO_GDB_HOVER_HOOKED_KEY))
+        return;
+    gtk_widget_set_has_tooltip (GTK_WIDGET (view), TRUE);
+    g_signal_connect (view, "query-tooltip",
+                      G_CALLBACK (on_view_query_tooltip), win);
+    g_object_set_data (G_OBJECT (view), MOO_GDB_HOVER_HOOKED_KEY,
+                       GINT_TO_POINTER (1));
+}
+
+static void
+attach_hover_to_open_docs (MooGdbWin *win)
+{
+    MooEditor *editor = moo_editor_instance ();
+    MooEditArray *docs = moo_editor_get_docs (editor);
+    if (!docs) return;
+    for (guint i = 0; i < docs->n_elms; i++)
+        attach_hover_to_view (win, moo_edit_get_view (docs->elms[i]));
+    moo_edit_array_free (docs);
 }
 
 /* ── Console pane ─────────────────────────────────────────────────── */
@@ -922,6 +1200,9 @@ on_session_stopped (G_GNUC_UNUSED MooGdbSession *s,
 {
     MooGdbWin *win = (MooGdbWin *) user_data;
     set_exec_mark (win, file, line);
+    /* Attach the query-tooltip handler to whatever source views are
+     * currently open — including ones loaded after the last stop. */
+    attach_hover_to_open_docs (win);
 }
 
 static void
@@ -929,6 +1210,10 @@ on_session_running (G_GNUC_UNUSED MooGdbSession *s, gpointer user_data)
 {
     MooGdbWin *win = (MooGdbWin *) user_data;
     clear_exec_mark (win);
+    /* Hover values are frame-local — drop the cache so the next
+     * stop doesn't show stale values from before the resume. */
+    if (win->hover_cache)   g_hash_table_remove_all (win->hover_cache);
+    if (win->hover_pending) g_hash_table_remove_all (win->hover_pending);
 }
 
 static void
@@ -936,6 +1221,8 @@ on_session_exited (G_GNUC_UNUSED MooGdbSession *s, gpointer user_data)
 {
     MooGdbWin *win = (MooGdbWin *) user_data;
     clear_exec_mark (win);
+    if (win->hover_cache)   g_hash_table_remove_all (win->hover_cache);
+    if (win->hover_pending) g_hash_table_remove_all (win->hover_pending);
 }
 
 /* Session "breakpoint-added" handler — gdb gave us a number; if we
@@ -1265,6 +1552,10 @@ moo_gdb_win_new (MooEditWindow *window)
     win->bp_by_file  = g_hash_table_new_full (g_str_hash, g_str_equal,
                                                g_free, free_file_table);
     win->bp_by_number = g_hash_table_new (g_direct_hash, g_direct_equal);
+    win->hover_cache  = g_hash_table_new_full (g_str_hash, g_str_equal,
+                                                g_free, g_free);
+    win->hover_pending = g_hash_table_new_full (g_str_hash, g_str_equal,
+                                                 g_free, NULL);
 
     /* Build the console transcript pane up-front so the user sees
      * a greeting line even before they start a debug session. */
@@ -1316,6 +1607,8 @@ moo_gdb_win_free (MooGdbWin *win)
     }
     g_hash_table_destroy (win->bp_by_file);
     g_hash_table_destroy (win->bp_by_number);
+    if (win->hover_cache)   g_hash_table_destroy (win->hover_cache);
+    if (win->hover_pending) g_hash_table_destroy (win->hover_pending);
     g_free (win->cfg_target);
     g_free (win->cfg_args);
     g_free (win->cfg_cwd);

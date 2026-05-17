@@ -257,6 +257,58 @@ moo_gdb_session_eval_watch (MooGdbSession *s, guint slot, const char *expr)
     g_free (cmd);
 }
 
+/* One-shot expression evaluator used by the source-view hover
+ * tooltip.  Allocates a context to carry the callback and the
+ * original expression through send_command's reply path, then
+ * trampolines to the user callback when the reply lands. */
+typedef struct {
+    MooGdbEvalCb cb;
+    gpointer     user_data;
+    char        *expr;
+} EvalCtx;
+
+static void
+on_eval_async_reply (MooGdbSession *s, MooGdbMiRecord *r, gpointer user_data)
+{
+    EvalCtx *ctx = (EvalCtx *) user_data;
+    const char *value    = NULL;
+    gboolean    is_error = FALSE;
+    const char *klass    = moo_gdb_mi_record_class (r);
+    if (klass && !strcmp (klass, "done")) {
+        MooGdbMiValue *v = moo_gdb_mi_record_field (r, "value");
+        if (v) value = moo_gdb_mi_value_string (v);
+    } else if (klass && !strcmp (klass, "error")) {
+        MooGdbMiValue *m = moo_gdb_mi_record_field (r, "msg");
+        if (m) value = moo_gdb_mi_value_string (m);
+        is_error = TRUE;
+    }
+    if (ctx->cb)
+        ctx->cb (s, ctx->expr, value, is_error, ctx->user_data);
+    g_free (ctx->expr);
+    g_free (ctx);
+}
+
+void
+moo_gdb_session_eval_async (MooGdbSession *s, const char *expr,
+                            MooGdbEvalCb cb, gpointer user_data)
+{
+    g_return_if_fail (MOO_IS_GDB_SESSION (s));
+    if (!expr || !*expr) return;
+    /* Sync-fail if there's no live frame to evaluate in — saves the
+     * caller a "did the session stop?" check before every hover. */
+    if (s->state != MOO_GDB_STATE_STOPPED) {
+        if (cb) cb (s, expr, NULL, TRUE, user_data);
+        return;
+    }
+    EvalCtx *ctx = g_new0 (EvalCtx, 1);
+    ctx->cb        = cb;
+    ctx->user_data = user_data;
+    ctx->expr      = g_strdup (expr);
+    char *cmd = g_strdup_printf ("-data-evaluate-expression \"%s\"", expr);
+    send_command (s, cmd, on_eval_async_reply, ctx);
+    g_free (cmd);
+}
+
 void
 moo_gdb_session_select_frame (MooGdbSession *s, int level)
 {
