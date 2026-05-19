@@ -231,6 +231,11 @@ struct _MooGdbWin {
     /* Signal handler id on the editor window's "notify::active-doc"
      * — kept so the destructor can detach cleanly. */
     gulong         active_doc_handler;
+    /* Same idea for "new-doc": forces a project rescan every time
+     * a fresh document is loaded into the window, so a freshly-
+     * authored .medit/launch.json gets picked up without the user
+     * having to first switch tabs. */
+    gulong         new_doc_handler;
 
     /* Build task tracking.  is_building==TRUE while a preLaunchTask
      * subprocess is running; suppresses concurrent build / start
@@ -908,12 +913,6 @@ wrap_section (const char *title, GtkWidget *body)
     gtk_expander_set_label      (GTK_EXPANDER (expander), markup);
     g_free (markup);
     gtk_expander_set_expanded   (GTK_EXPANDER (expander), TRUE);
-    /* Keyboard nav: arrow keys / Enter on the expander row toggle
-     * its state; Tab cycles through child widgets when open. */
-    gtk_widget_set_tooltip_text (expander,
-        "Click the chevron (or press Enter when focused) "
-        "to hide this section.  Folding is purely visual — "
-        "gdb is still queried on every stop.");
     gtk_widget_set_hexpand (body, TRUE);
     gtk_widget_set_vexpand (body, TRUE);
     gtk_container_add (GTK_CONTAINER (expander), body);
@@ -932,6 +931,27 @@ typedef struct {
     const char *tooltip;
     void (*cb) (MooGdbWin *);
 } ToolBtnSpec;
+
+/* Walk a widget tree and apply a tooltip to every node.  GtkToolButton
+ * wraps an inner GtkButton, which in turn wraps a GtkBox containing
+ * a GtkImage and a GtkLabel.  Each of these descendants has its own
+ * input window that can swallow pointer motion before it bubbles to
+ * an ancestor with `has-tooltip` set — so a tooltip applied only to
+ * the outer GtkToolItem never fires when the cursor sits on the icon
+ * or label.  Painting the tooltip onto every descendant guarantees a
+ * match regardless of which sub-widget receives the motion event. */
+static void
+set_tooltip_recursive (GtkWidget *widget, const char *text)
+{
+    if (!widget) return;
+    gtk_widget_set_tooltip_text (widget, text);
+    if (GTK_IS_CONTAINER (widget)) {
+        GList *children = gtk_container_get_children (GTK_CONTAINER (widget));
+        for (GList *l = children; l; l = l->next)
+            set_tooltip_recursive (GTK_WIDGET (l->data), text);
+        g_list_free (children);
+    }
+}
 
 /* Tooltip strings are deliberately multi-line: first line is the
  * action name (matches the menu label), second describes the
@@ -1052,6 +1072,47 @@ refresh_cfg_combo (MooGdbWin *win)
         win->cfg_combo, (gpointer) on_cfg_combo_changed, win);
 }
 
+/* Walk up from `start_path` and (re)load the project there.
+ * `clear_if_missing`: when TRUE and no project is found, also drop
+ * any previously-loaded project (used by the active-doc handler so
+ * the dropdown empties when the user switches to a file outside the
+ * project tree).  When FALSE, a missing project leaves the existing
+ * one alone (used by the new-doc handler so opening a non-project
+ * file from File→Open doesn't blow away the user's config). */
+static void
+reload_project_from_path (MooGdbWin  *win,
+                          const char *start_path,
+                          gboolean    clear_if_missing)
+{
+    if (!start_path) {
+        if (clear_if_missing && win->project) {
+            moo_gdb_project_free (win->project);
+            win->project = NULL;
+            refresh_cfg_combo (win);
+        }
+        return;
+    }
+    GError *err = NULL;
+    MooGdbProject *p = moo_gdb_project_load (start_path, &err);
+
+    if (!p) {
+        /* No project found — that's normal, don't spam the console.
+         * Only complain if a launch.json existed but failed to parse. */
+        if (err && err->code != 0)
+            console_append (win, err->message, "error");
+        if (err) g_error_free (err);
+        if (clear_if_missing && win->project) {
+            moo_gdb_project_free (win->project);
+            win->project = NULL;
+            refresh_cfg_combo (win);
+        }
+        return;
+    }
+    if (win->project) moo_gdb_project_free (win->project);
+    win->project = p;
+    refresh_cfg_combo (win);
+}
+
 /* (Re)discover the project from the active document's path and
  * refresh the dropdown.  No-op if no document is active — the
  * previous project, if any, stays loaded so users can swap to a
@@ -1062,28 +1123,8 @@ reload_project (MooGdbWin *win)
     MooEdit *doc = moo_edit_window_get_active_doc (win->window);
     if (!doc) return;
     char *file = moo_edit_get_filename (doc);
-    if (!file) return;
-
-    GError *err = NULL;
-    MooGdbProject *p = moo_gdb_project_load (file, &err);
+    reload_project_from_path (win, file, /*clear_if_missing=*/TRUE);
     g_free (file);
-
-    if (!p) {
-        /* No project found — that's normal, don't spam the console.
-         * Only complain if a launch.json existed but failed to parse. */
-        if (err && err->code != 0)
-            console_append (win, err->message, "error");
-        if (err) g_error_free (err);
-        if (win->project) {
-            moo_gdb_project_free (win->project);
-            win->project = NULL;
-        }
-        refresh_cfg_combo (win);
-        return;
-    }
-    if (win->project) moo_gdb_project_free (win->project);
-    win->project = p;
-    refresh_cfg_combo (win);
 }
 
 static void
@@ -1092,6 +1133,33 @@ on_active_doc_notify (G_GNUC_UNUSED GObject *obj,
                       gpointer user_data)
 {
     reload_project ((MooGdbWin *) user_data);
+}
+
+/* Re-discover the project whenever a doc is loaded into the window.
+ * Fires unconditionally — even if a project is already loaded and
+ * the new doc lives under the same root — because the user may have
+ * just edited launch.json on disk and re-opened the file to pick up
+ * the change.  reload_project_from_path frees the previous project
+ * first, so the on-disk launch.json is always re-read here.
+ *
+ * NOTE: this signal fires BEFORE moo_edit_window_set_active_doc
+ * (see mooeditwindow.cpp _moo_edit_window_insert_doc), so the new
+ * doc is not yet the window's active doc.  We therefore can't call
+ * reload_project (which reads get_active_doc and would see the old /
+ * NULL value); instead we use the doc handed to us by the signal
+ * directly.  This is what was breaking `medit foo.c` from the CLI —
+ * the initial reload_project at plugin-create time saw no active doc,
+ * and the subsequent new-doc signal looked up the wrong one. */
+static void
+on_new_doc (G_GNUC_UNUSED MooEditWindow *window,
+            MooEdit *doc,
+            gpointer user_data)
+{
+    MooGdbWin *win = (MooGdbWin *) user_data;
+    if (!doc) return;
+    char *file = moo_edit_get_filename (doc);
+    reload_project_from_path (win, file, /*clear_if_missing=*/FALSE);
+    g_free (file);
 }
 
 static GtkWidget *
@@ -1144,12 +1212,10 @@ build_inspect_toolbar (MooGdbWin *win)
             item = gtk_tool_button_new (NULL, spec->label);
             gtk_tool_button_set_icon_name (
                 GTK_TOOL_BUTTON (item), spec->icon_name);
-            /* gtk_tool_item_set_tooltip_text is the canonical GTK3
-             * API for tooltips on toolbar items — propagates the
-             * tooltip to the wrapped button so it shows on hover
-             * regardless of which descendant widget the pointer
-             * is over. */
-            gtk_tool_item_set_tooltip_text (item, spec->tooltip);
+            /* See set_tooltip_recursive — paint the tooltip onto the
+             * tool item and every descendant so any hovered sub-widget
+             * resolves the tooltip via its own input window. */
+            set_tooltip_recursive (GTK_WIDGET (item), spec->tooltip);
             /* g_signal_connect_swapped flips the argument order so
              * the per-window callback gets called as `cb(win)` —
              * matches the existing moo_gdb_win_* function signatures
@@ -1343,6 +1409,11 @@ on_view_query_tooltip (GtkWidget *widget, gint x, gint y,
     MooGdbWin *win = (MooGdbWin *) user_data;
     if (!win || !win->session) return FALSE;
     if (moo_gdb_session_get_state (win->session) != MOO_GDB_STATE_STOPPED)
+        return FALSE;
+    /* After the inferior exits, gdb keeps the session alive (so the
+     * user can restart) but there's no frame — every evaluation
+     * would come back as "No registers."  Skip silently. */
+    if (!moo_gdb_session_inferior_alive (win->session))
         return FALSE;
 
     GtkTextView *view = GTK_TEXT_VIEW (widget);
@@ -2597,6 +2668,9 @@ moo_gdb_win_new (MooEditWindow *window)
     win->active_doc_handler = g_signal_connect (window,
         "notify::active-doc",
         G_CALLBACK (on_active_doc_notify), win);
+    win->new_doc_handler = g_signal_connect (window,
+        "new-doc",
+        G_CALLBACK (on_new_doc), win);
     reload_project (win);
 
     /* Note: gutter-click breakpoint toggling and doc-loaded
@@ -2630,6 +2704,8 @@ moo_gdb_win_free (MooGdbWin *win)
     }
     if (win->active_doc_handler)
         g_signal_handler_disconnect (win->window, win->active_doc_handler);
+    if (win->new_doc_handler)
+        g_signal_handler_disconnect (win->window, win->new_doc_handler);
     if (win->build_cancel) {
         g_cancellable_cancel (win->build_cancel);
         g_object_unref (win->build_cancel);

@@ -58,6 +58,16 @@ struct _MooGdbSession {
      * for each name — varobjs are frame-bound, so they're stale by
      * the time the next *stopped lands. */
     GPtrArray        *varobjs;
+
+    /* TRUE while an inferior process exists and has a live frame to
+     * inspect.  Set on *running; cleared on *stopped reasons whose
+     * name starts with "exited" (exited, exited-normally, exited-
+     * signalled).  The session state stays MOO_GDB_STATE_STOPPED in
+     * that case because gdb itself is still alive — this flag is the
+     * finer-grained distinction the hover-eval path needs to suppress
+     * `-data-evaluate-expression` calls that would otherwise come
+     * back as the noisy "No registers." error. */
+    gboolean          inferior_alive;
 };
 
 G_DEFINE_TYPE (MooGdbSession, moo_gdb_session, G_TYPE_OBJECT)
@@ -303,8 +313,12 @@ moo_gdb_session_eval_async (MooGdbSession *s, const char *expr,
     g_return_if_fail (MOO_IS_GDB_SESSION (s));
     if (!expr || !*expr) return;
     /* Sync-fail if there's no live frame to evaluate in — saves the
-     * caller a "did the session stop?" check before every hover. */
-    if (s->state != MOO_GDB_STATE_STOPPED) {
+     * caller a "did the session stop?" check before every hover.
+     * The inferior_alive guard catches the case where the program
+     * exited but the session is still in STATE_STOPPED (gdb itself
+     * lives on); without it, every hover would round-trip to gdb
+     * and come back as the noisy "No registers." error. */
+    if (s->state != MOO_GDB_STATE_STOPPED || !s->inferior_alive) {
         if (cb) cb (s, expr, NULL, TRUE, user_data);
         return;
     }
@@ -601,6 +615,8 @@ set_state (MooGdbSession *s, MooGdbState st)
 }
 
 MooGdbState moo_gdb_session_get_state   (MooGdbSession *s) { return s->state; }
+gboolean    moo_gdb_session_inferior_alive (MooGdbSession *s)
+    { return s ? s->inferior_alive : FALSE; }
 const char *moo_gdb_session_get_version (MooGdbSession *s) { return s->version; }
 
 /* ── Spawn ────────────────────────────────────────────────────────── */
@@ -753,19 +769,29 @@ dispatch_record (MooGdbSession *s, MooGdbMiRecord *r)
     switch (k) {
     case MOO_GDB_MI_RESULT: {
         const char *klass = moo_gdb_mi_record_class (r);
-        /* Surface gdb-reported errors so the UI can flag them.  The
-         * msg field of ^error,msg="..." carries a human-readable
-         * description; we forward it verbatim. */
-        if (klass && !strcmp (klass, "error")) {
+        int tok = moo_gdb_mi_record_token (r);
+        PendingEntry *pe = NULL;
+        if (tok >= 0)
+            pe = (PendingEntry *) g_hash_table_lookup (
+                s->pending, GINT_TO_POINTER (tok));
+
+        /* Errors with a matched callback go to that callback (which
+         * gets the full reply record and can read `msg` itself).
+         * Only orphan errors — those for tokens nobody is waiting on,
+         * plus token-matched ones whose registered callback is NULL
+         * — fire the global SIG_ERROR.  This stops hover-eval's
+         * expected "No symbol X in current context" / "No registers."
+         * replies from spamming the console while the user mouses
+         * over comments or after the inferior has exited. */
+        if (klass && !strcmp (klass, "error") &&
+            (!pe || pe->cb == NULL))
+        {
             MooGdbMiValue *msg = moo_gdb_mi_record_field (r, "msg");
             const char *mstr = msg ? moo_gdb_mi_value_string (msg) : NULL;
             g_signal_emit (s, signals[SIG_ERROR], 0,
                            mstr ? mstr : "(unknown gdb error)");
         }
-        int tok = moo_gdb_mi_record_token (r);
         if (tok >= 0) {
-            PendingEntry *pe = (PendingEntry *)
-                g_hash_table_lookup (s->pending, GINT_TO_POINTER (tok));
             if (pe) {
                 ResponseCB cb = pe->cb;
                 gpointer ud   = pe->user_data;
@@ -811,6 +837,7 @@ dispatch_record (MooGdbSession *s, MooGdbMiRecord *r)
                 g_free (cmd);
             }
             g_ptr_array_set_size (s->varobjs, 0);
+            s->inferior_alive = TRUE;
             g_signal_emit (s, signals[SIG_RUNNING], 0);
         } else if (!strcmp (klass, "stopped")) {
             /* Pull file/line/function from the optional frame={…} */
@@ -837,15 +864,28 @@ dispatch_record (MooGdbSession *s, MooGdbMiRecord *r)
             if (rv) reason = moo_gdb_mi_value_string (rv);
 
             set_state (s, MOO_GDB_STATE_STOPPED);
+            /* gdb reports inferior termination via *stopped,reason=
+             * exited (or "exited-normally" / "exited-signalled").
+             * The session state stays STOPPED — gdb is still alive
+             * and the user can re-launch — but there's no longer a
+             * frame to inspect, so suppress hover/locals/watch evals
+             * that would otherwise come back as "No registers." */
+            if (reason && g_str_has_prefix (reason, "exited")) {
+                s->inferior_alive = FALSE;
+            }
             g_signal_emit (s, signals[SIG_STOPPED], 0,
                            reason, file, line, func);
             /* Auto-refresh the locals snapshot so the panel can
              * update without each consumer needing to wire up its
              * own -stack-list-variables.  Cheap when there are no
-             * locals (e.g. stopped in glibc with no debug info). */
-            request_locals_refresh (s);
-            request_frames_refresh (s);
-            request_watches_refresh (s);
+             * locals (e.g. stopped in glibc with no debug info).
+             * Skip the request burst when the inferior is gone —
+             * gdb would just return "No registers." for every one. */
+            if (s->inferior_alive) {
+                request_locals_refresh (s);
+                request_frames_refresh (s);
+                request_watches_refresh (s);
+            }
         }
         break;
     }
@@ -917,11 +957,17 @@ moo_gdb_session_set_cwd (MooGdbSession *s, const char *cwd)
 {
     g_return_if_fail (MOO_IS_GDB_SESSION (s));
     if (!s->gdb_in || !cwd) return;
-    char *quoted = g_shell_quote (cwd);
-    char *cmd    = g_strdup_printf ("-environment-cd %s", quoted);
+    /* GDB MI argument quoting is C-string style: double quotes with
+     * backslash-escapes.  Shell-style single-quote wrapping
+     * (`'/path/...'`) is NOT recognised — gdb treats the surrounding
+     * apostrophes as part of the filename and reports `No such file
+     * or directory.` for a path that actually exists.  Mirror what
+     * moo_gdb_session_set_target does for `-file-exec-and-symbols`. */
+    char *escaped = g_strescape (cwd, "");
+    char *cmd     = g_strdup_printf ("-environment-cd \"%s\"", escaped);
     send_command (s, cmd, NULL, NULL);
     g_free (cmd);
-    g_free (quoted);
+    g_free (escaped);
 }
 
 /* ── Execution control ────────────────────────────────────────────── */

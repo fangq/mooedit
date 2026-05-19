@@ -220,6 +220,16 @@ void           moo_gdb_session_break_remove(MooGdbSession *s, int number);
 
 MooGdbState    moo_gdb_session_get_state (MooGdbSession *session);
 
+/* TRUE while an inferior process is loaded and has a live frame to
+ * inspect — set after *running and cleared when *stopped arrives
+ * with a reason starting with "exited" (the program completed).
+ * The high-level state stays MOO_GDB_STATE_STOPPED in that case
+ * because gdb itself is still alive and ready to run again; this
+ * finer-grained flag is what hover-to-inspect and the locals/watch
+ * refresh paths check so they don't issue evaluations that gdb
+ * would just reject with "No registers." */
+gboolean       moo_gdb_session_inferior_alive (MooGdbSession *session);
+
 /* Most-recent `-gdb-version` reply, or NULL until populated. */
 const char    *moo_gdb_session_get_version (MooGdbSession *session);
 
