@@ -84,6 +84,12 @@ struct _MooFontSelection
 
   guint monospace : 1;
   guint filter_visible : 1;
+  /* Re-entry guard for moo_font_selection_set_size.  set_size calls
+   * show_available_sizes(FALSE) which calls set_cursor_to_iter, whose
+   * GtkTreeSelection "changed" emission re-enters select_size → set_size.
+   * Without this guard the chain recurses until fontsel->size converges,
+   * triggering stamp-mismatch warnings on iters held by outer frames. */
+  guint in_size_change : 1;
 };
 
 struct _MooFontSelectionClass

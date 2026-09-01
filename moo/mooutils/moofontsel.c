@@ -974,12 +974,17 @@ static void
 moo_font_selection_set_size (MooFontSelection *fontsel,
 			     gint              new_size)
 {
+  if (fontsel->in_size_change)
+    return;
+
   if (fontsel->size != new_size)
     {
+      fontsel->in_size_change = TRUE;
       fontsel->size = new_size;
 
       moo_font_selection_show_available_sizes (fontsel, FALSE);
       moo_font_selection_load_font (fontsel);
+      fontsel->in_size_change = FALSE;
     }
 }
 
