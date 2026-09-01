@@ -114,6 +114,22 @@ page_general_init_ui (MooPrefsPage *page)
     BIND_SETTING (tab_width, MOO_EDIT_PREFS_TAB_WIDTH);
     BIND_SETTING (indent_width, MOO_EDIT_PREFS_INDENT_WIDTH);
     BIND_SETTING (fontbutton, MOO_EDIT_PREFS_FONT);
+    BIND_SETTING (spell_enabled, MOO_EDIT_PREFS_SPELL_ENABLED);
+    /* The three spell_scope_* radios are wired manually in page_general_init
+     * + page_general_apply because the moo_prefs_page_bind_setting helper
+     * only handles bools/strings/ints, not radio groups. */
+
+#ifdef MOO_BUILD_SPELL
+    /* gspell is built in; nothing to hide. */
+#else
+    /* Without gspell the controls do nothing; grey them out so users
+     * aren't confused.  (Hiding them shifts the layout — disabling is
+     * less surprising.) */
+    gtk_widget_set_sensitive (GTK_WIDGET (gxml->spell_enabled),     FALSE);
+    gtk_widget_set_sensitive (GTK_WIDGET (gxml->spell_scope_auto),  FALSE);
+    gtk_widget_set_sensitive (GTK_WIDGET (gxml->spell_scope_all),   FALSE);
+    gtk_widget_set_sensitive (GTK_WIDGET (gxml->spell_scope_code),  FALSE);
+#endif
 
 #ifdef MOO_ENABLE_HELP
     moo_help_set_id (GTK_WIDGET (page), HELP_SECTION_PREFS_GENERAL);
@@ -148,6 +164,22 @@ page_general_init (MooPrefsPage *page)
         scheme_combo_init (gxml->color_scheme_combo);
         scheme_combo_set_scheme (gxml->color_scheme_combo, scheme);
     }
+
+    /* Restore the saved scope radio from the pref string. */
+    {
+        const char *scope = moo_prefs_get_string (
+                moo_edit_setting (MOO_EDIT_PREFS_SPELL_SCOPE));
+        GtkToggleButton *pick;
+
+        if (scope && g_str_equal (scope, "all"))
+            pick = GTK_TOGGLE_BUTTON (gxml->spell_scope_all);
+        else if (scope && g_str_equal (scope, "code"))
+            pick = GTK_TOGGLE_BUTTON (gxml->spell_scope_code);
+        else
+            pick = GTK_TOGGLE_BUTTON (gxml->spell_scope_auto);
+
+        gtk_toggle_button_set_active (pick, TRUE);
+    }
 }
 
 static void
@@ -161,6 +193,16 @@ page_general_apply (MooPrefsPage *page)
         moo_prefs_set_string (moo_edit_setting (MOO_EDIT_PREFS_COLOR_SCHEME),
                               moo_text_style_scheme_get_id (scheme));
         g_object_unref (scheme);
+    }
+
+    /* Spell-check scope (radio group → string pref). */
+    {
+        const char *scope = "auto";
+        if (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (gxml->spell_scope_all)))
+            scope = "all";
+        else if (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (gxml->spell_scope_code)))
+            scope = "code";
+        moo_prefs_set_string (moo_edit_setting (MOO_EDIT_PREFS_SPELL_SCOPE), scope);
     }
 }
 

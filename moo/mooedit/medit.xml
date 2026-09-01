@@ -52,6 +52,9 @@
       <item action="Comment"/>
       <item action="Uncomment"/>
       <separator/>
+      <item action="SpellAddToDict"/>
+      <item action="SpellIgnoreWord"/>
+      <separator/>
       <placeholder name="UserMenu"/>
       <separator/>
       <item action="ConfigureShortcuts"/>

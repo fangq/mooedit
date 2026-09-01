@@ -575,8 +575,11 @@ moo_icon_view_dispose (GObject *object)
 
     _moo_icon_view_set_model (view, NULL);
 
-    g_object_unref (view->priv->adjustment);
-    view->priv->adjustment = NULL;
+    if (view->priv->adjustment)
+    {
+        g_object_unref (view->priv->adjustment);
+        view->priv->adjustment = NULL;
+    }
 
     if (view->priv->update_idle)
     {
@@ -605,8 +608,11 @@ moo_icon_view_dispose (GObject *object)
     destroy_layout (view);
     free_selection (view);
 
-    dnd_info_free (view->priv->dnd_info);
-    view->priv->dnd_info = NULL;
+    if (view->priv->dnd_info)
+    {
+        dnd_info_free (view->priv->dnd_info);
+        view->priv->dnd_info = NULL;
+    }
 
     G_OBJECT_CLASS (_moo_icon_view_parent_class)->dispose (object);
 }
@@ -1122,6 +1128,9 @@ static void
 destroy_layout (MooIconView *view)
 {
     GSList *l;
+
+    if (!view->priv->layout)
+        return;
 
     for (l = view->priv->layout->columns; l != NULL; l = l->next)
     {
@@ -2997,6 +3006,8 @@ init_selection (MooIconView *view)
 static void
 free_selection (MooIconView *view)
 {
+    if (!view->priv->selection)
+        return;
     g_slist_free_full (view->priv->selection->selected, (GDestroyNotify) gtk_tree_row_reference_free);
     g_free (view->priv->selection);
     view->priv->selection = NULL;

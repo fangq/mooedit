@@ -188,55 +188,75 @@ combo_changed (GtkComboBox   *combo,
 }
 
 
-static void moo_tree_helper_destroy (GtkWidget *object)
+static void moo_tree_helper_destroy (GObject *object)
 {
     MooTreeHelper *helper = MOO_TREE_HELPER (object);
 
-    if (helper->widget)
+    /* helper->widget can be a dangling pointer at app-shutdown time:
+     * GTK's top-level destroy chain frees the prefs dialog (and the
+     * tree-view inside it) before MooTreeHelper's dispose runs.  Guard
+     * each access with the appropriate GTK_IS_* / G_IS_OBJECT check so
+     * we don't deref freed memory or trip GLib assertions. */
+    if (helper->widget && G_IS_OBJECT (helper->widget))
     {
-        GtkTreeSelection *selection;
-
-        g_signal_handlers_disconnect_by_func (helper->widget,
-                                              (gpointer) gtk_widget_destroy,
-                                              helper);
+        if (GTK_IS_WIDGET (helper->widget))
+            g_signal_handlers_disconnect_by_func (helper->widget,
+                                                  (gpointer) gtk_widget_destroy,
+                                                  helper);
 
         switch (helper->type)
         {
             case TREE_VIEW:
-                selection = gtk_tree_view_get_selection (helper->widget);
-                g_signal_handlers_disconnect_by_func (selection,
-                                                      (gpointer) tree_selection_changed,
-                                                      helper);
+                if (GTK_IS_TREE_VIEW (helper->widget))
+                {
+                    GtkTreeSelection *selection =
+                        gtk_tree_view_get_selection (helper->widget);
+                    if (G_IS_OBJECT (selection))
+                        g_signal_handlers_disconnect_by_func (
+                            selection,
+                            (gpointer) tree_selection_changed,
+                            helper);
+                }
                 break;
 
             case COMBO_BOX:
-                g_signal_handlers_disconnect_by_func (helper->widget,
-                                                      (gpointer) combo_changed,
-                                                      helper);
+                if (GTK_IS_COMBO_BOX (helper->widget))
+                    g_signal_handlers_disconnect_by_func (helper->widget,
+                                                          (gpointer) combo_changed,
+                                                          helper);
                 break;
         }
 
-        if (helper->new_btn)
+        if (helper->new_btn && G_IS_OBJECT (helper->new_btn))
             g_signal_handlers_disconnect_by_func (helper->new_btn,
                                                   (gpointer) moo_tree_helper_new_row,
                                                   helper);
-        if (helper->delete_btn)
+        if (helper->delete_btn && G_IS_OBJECT (helper->delete_btn))
             g_signal_handlers_disconnect_by_func (helper->delete_btn,
                                                   (gpointer) moo_tree_helper_delete_row,
                                                   helper);
-        if (helper->up_btn)
+        if (helper->up_btn && G_IS_OBJECT (helper->up_btn))
             g_signal_handlers_disconnect_by_func (helper->up_btn,
                                                   (gpointer) moo_tree_helper_row_up,
                                                   helper);
-        if (helper->down_btn)
+        if (helper->down_btn && G_IS_OBJECT (helper->down_btn))
             g_signal_handlers_disconnect_by_func (helper->down_btn,
                                                   (gpointer) moo_tree_helper_row_down,
                                                   helper);
-
-        helper->widget = NULL;
     }
 
-    GTK_WIDGET_CLASS(_moo_tree_helper_parent_class)->destroy (object);
+    helper->widget     = NULL;
+    helper->new_btn    = NULL;
+    helper->delete_btn = NULL;
+    helper->up_btn     = NULL;
+    helper->down_btn   = NULL;
+
+    /* MooTreeHelper inherits from GInitiallyUnowned, NOT GtkWidget,
+     * so chain up through GObject's dispose, not GtkWidget's destroy.
+     * The previous GTK_WIDGET_CLASS cast read the ->destroy slot off
+     * a GInitiallyUnownedClass struct, which on older GTK landed on
+     * a NULL/garbage pointer and segfaulted at app close. */
+    G_OBJECT_CLASS (_moo_tree_helper_parent_class)->dispose (object);
 }
 
 
@@ -311,7 +331,7 @@ tree_helper_move_row_default (G_GNUC_UNUSED MooTreeHelper *helper,
 static void
 _moo_tree_helper_class_init (MooTreeHelperClass *klass)
 {
-    G_OBJECT_CLASS(klass)->dispose = (GObjectFinalizeFunc) moo_tree_helper_destroy;
+    G_OBJECT_CLASS(klass)->dispose = moo_tree_helper_destroy;
 
     klass->move_row = tree_helper_move_row_default;
     klass->new_row = tree_helper_new_row_default;

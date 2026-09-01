@@ -63,6 +63,8 @@ moo_sources +=				\
 	mooedit/moofold.h		\
 	mooedit/mooindenter.cpp		\
 	mooedit/mooindenter.h		\
+	mooedit/moospellcheck.cpp	\
+	mooedit/moospellcheck.h		\
 	mooedit/moolang.cpp		\
 	mooedit/moolang.h		\
 	mooedit/moolangmgr.cpp		\

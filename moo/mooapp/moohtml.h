@@ -90,6 +90,19 @@ gboolean        _moo_html_load_file         (GtkTextView    *view,
 void            moo_text_view_set_markup    (GtkTextView    *view,
                                              const char     *markup);
 
+/* Element-type predicates for tags created by the MooHtml renderer.
+ * Used by consumers (e.g. the Markdown preview pane) that want to
+ * restyle the result after _moo_html_load_memory() returns.
+ *
+ * Each accepts a GtkTextTag* (returns FALSE/0 for non-MooHtmlTag input).
+ * Heading returns the level 1..6 (0 for non-heading). */
+gboolean        _moo_html_tag_is_link        (GtkTextTag *tag);
+gboolean        _moo_html_tag_is_monospace   (GtkTextTag *tag);  /* <code> + <pre> both */
+gboolean        _moo_html_tag_is_pre         (GtkTextTag *tag);  /* <pre> only */
+int             _moo_html_tag_get_heading    (GtkTextTag *tag);
+gboolean        _moo_html_tag_is_blockquote  (GtkTextTag *tag);
+gboolean        _moo_html_tag_is_table       (GtkTextTag *tag);
+
 
 G_END_DECLS
 

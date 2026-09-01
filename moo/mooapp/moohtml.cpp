@@ -54,6 +54,8 @@ struct _MooHtmlData {
     gboolean new_line;
     gboolean space;
 
+    int list_depth;   /* current depth of <ul>/<ol> nesting (0 outside) */
+
     gboolean button_pressed;
     gboolean in_drag;
 
@@ -82,7 +84,13 @@ typedef enum {
     MOO_HTML_HEADING            = 1 << 14,
     MOO_HTML_FONT_SIZE          = 1 << 15,
     MOO_HTML_FONT_PT_SIZE       = 1 << 16,
-    MOO_HTML_FONT_FACE          = 1 << 17
+    MOO_HTML_FONT_FACE          = 1 << 17,
+
+    /* Marker flags — they don't set any text property by themselves but
+     * let consumers like the Markdown preview plugin recognise the
+     * element kind via the tag predicates exposed in moohtml.h. */
+    MOO_HTML_BLOCKQUOTE         = 1 << 18,
+    MOO_HTML_TABLE              = 1 << 19
 } MooHtmlAttrMask;
 
 MOO_DEFINE_FLAGS(MooHtmlAttrMask)
@@ -372,6 +380,19 @@ moo_html_data_new (void)
     data->heading_sizes[3] = PANGO_SCALE_LARGE;
     data->heading_sizes[4] = PANGO_SCALE_MEDIUM;
     data->heading_sizes[5] = PANGO_SCALE_SMALL;
+
+    /* Per-heading extra "pixels below" the line — added to
+     * DEFAULT_PAR_SPACING (6 px) when the heading tag is built.  Used to
+     * be all-zero by default, which made headings nearly flush with the
+     * following paragraph.  Larger headings get more breathing room. */
+    /* Less below than above — GitHub-style headings attach to their
+     * section.  H1/H2 are larger so they keep a bit more breathing room. */
+    data->heading_spacing[0] = 10;   /* H1 */
+    data->heading_spacing[1] =  8;   /* H2 */
+    data->heading_spacing[2] =  6;   /* H3 */
+    data->heading_spacing[3] =  4;   /* H4 */
+    data->heading_spacing[4] =  3;   /* H5 */
+    data->heading_spacing[5] =  2;   /* H6 */
 
     data->monospace = g_strdup ("Monospace");
     data->font_faces = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
@@ -736,7 +757,8 @@ attr_compose (MooHtmlAttr       *dest,
     static MooHtmlAttrMask simple =
             MOO_HTML_BOLD | MOO_HTML_ITALIC | MOO_HTML_UNDERLINE |
             MOO_HTML_STRIKETHROUGH | MOO_HTML_MONOSPACE | MOO_HTML_SUB |
-            MOO_HTML_SUP | MOO_HTML_PRE;
+            MOO_HTML_SUP | MOO_HTML_PRE |
+            MOO_HTML_BLOCKQUOTE | MOO_HTML_TABLE;
     static MooHtmlAttrMask font_size_mask =
             MOO_HTML_LARGER | MOO_HTML_SMALLER | MOO_HTML_HEADING |
             MOO_HTML_FONT_SIZE | MOO_HTML_FONT_PT_SIZE;
@@ -954,9 +976,16 @@ moo_html_make_heading_tag (GtkTextView    *view,
 
     g_assert (1 <= heading && heading <= 6);
 
+    /* Also reserve space ABOVE the heading so it doesn't crowd the
+     * preceding paragraph.  Slightly less than the below-spacing so
+     * the heading visually attaches to the section it introduces. */
+    /* Above-spacing is bigger than below-spacing so the heading sits
+     * closer to its own section than to the preceding paragraph. */
     g_object_set (tag,
-                  "pixels-below-lines",
+                  "pixels-above-lines",
                   DEFAULT_PAR_SPACING + data->heading_spacing[heading - 1],
+                  "pixels-below-lines",
+                  data->heading_spacing[heading - 1] / 2,
                   "scale", data->heading_sizes[heading - 1],
                   "weight", PANGO_WEIGHT_BOLD, nullptr);
 
@@ -1679,6 +1708,8 @@ static void process_table_elm   (GtkTextView *view, GtkTextBuffer *buffer, xmlNo
                                  MooHtmlTag *parent, GtkTextIter *iter);
 static void process_tr_elm      (GtkTextView *view, GtkTextBuffer *buffer, xmlNode *elm,
                                  MooHtmlTag *parent, GtkTextIter *iter);
+static GtkCssProvider *table_css_provider (void);
+static void            xml_cell_to_pango   (xmlNode *elm, GString *out);
 
 
 static void
@@ -1840,10 +1871,66 @@ process_elm_body (GtkTextView    *view,
 
         else if (IS_NAMED_ELM_ (child, "td") ||
                  IS_NAMED_ELM_ (child, "th") ||
+                 IS_NAMED_ELM_ (child, "thead") ||
                  IS_NAMED_ELM_ (child, "tbody") ||
-                 IS_NAMED_ELM_ (child, "col"))
+                 IS_NAMED_ELM_ (child, "tfoot") ||
+                 IS_NAMED_ELM_ (child, "col") ||
+                 IS_NAMED_ELM_ (child, "colgroup"))
         {
             process_elm_body (view, buffer, child, current, iter);
+        }
+        else if (IS_NAMED_ELM_ (child, "blockquote"))
+        {
+            /* Render <blockquote> as a widget anchor: a single GtkLabel
+             * with Pango markup, wrapped in a CSS-styled container that
+             * draws a continuous left border across all wrapped lines.
+             * The "▎" character trick only painted the bar on the first
+             * line of each paragraph — a widget with border-left gets
+             * it right.  Rich content inside blockquotes (links, code)
+             * survives via the same Pango-markup pass used for table
+             * cells. */
+            GString            *m   = g_string_new (NULL);
+            GtkWidget          *box = gtk_event_box_new ();
+            GtkWidget          *lbl = gtk_label_new (NULL);
+            GtkTextChildAnchor *bq_anchor;
+            MooHtmlData        *bq_data = moo_html_get_data (view);
+
+            xml_cell_to_pango (child, m);
+            /* Trim any leading/trailing whitespace from the markup so
+             * the widget doesn't show stray blank lines. */
+            g_strstrip (m->str);
+
+            gtk_label_set_markup (GTK_LABEL (lbl), m->str);
+            gtk_label_set_xalign (GTK_LABEL (lbl), 0.0);
+            gtk_label_set_yalign (GTK_LABEL (lbl), 0.0);
+            gtk_label_set_line_wrap (GTK_LABEL (lbl), TRUE);
+            gtk_label_set_line_wrap_mode (GTK_LABEL (lbl), PANGO_WRAP_WORD_CHAR);
+            gtk_label_set_selectable (GTK_LABEL (lbl), TRUE);
+            gtk_widget_set_halign (lbl, GTK_ALIGN_FILL);
+            gtk_widget_set_valign (lbl, GTK_ALIGN_START);
+            gtk_widget_show (lbl);
+
+            gtk_container_add (GTK_CONTAINER (box), lbl);
+            gtk_style_context_add_class (gtk_widget_get_style_context (box),
+                                         "moo-md-blockquote");
+            gtk_style_context_add_provider (
+                gtk_widget_get_style_context (box),
+                GTK_STYLE_PROVIDER (table_css_provider ()),
+                GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+            gtk_widget_set_halign (box, GTK_ALIGN_FILL);
+            gtk_widget_set_valign (box, GTK_ALIGN_START);
+            gtk_widget_set_hexpand (box, TRUE);
+            gtk_widget_set_vexpand (box, FALSE);
+            gtk_widget_set_can_focus (box, FALSE);
+            gtk_widget_show (box);
+
+            moo_html_new_line (view, buffer, iter, current, FALSE);
+            bq_anchor = gtk_text_buffer_create_child_anchor (buffer, iter);
+            gtk_text_view_add_child_at_anchor (view, box, bq_anchor);
+            bq_data->rulers = g_slist_prepend (bq_data->rulers, box);
+            moo_html_new_line (view, buffer, iter, current, TRUE);
+
+            g_string_free (m, TRUE);
         }
 
         else if (IS_ELEMENT (child))
@@ -1870,11 +1957,65 @@ process_p_elm (GtkTextView    *view,
                MooHtmlTag     *current,
                GtkTextIter    *iter)
 {
-    moo_html_new_line (view, buffer, iter, current, FALSE);
-    process_elm_body (view, buffer, elm, current, iter);
-    moo_html_new_line (view, buffer, iter, current, FALSE);
+    /* Force-create a per-paragraph tag carrying pixels-above-lines /
+     * pixels-below-lines.  GTK applies those only to the first/last
+     * line of a paragraph, so they show up as the visible gap
+     * BETWEEN paragraphs — without inflating spacing of every list
+     * item / heading / code line which all use the view-level
+     * default.  Created with mask=0 + force=TRUE so the tag inherits
+     * the parent's style without adding any extra mask attributes. */
+    MooHtmlAttr p_attr;
+    MooHtmlTag *p_tag;
+    memset (&p_attr, 0, sizeof p_attr);
+    p_tag = moo_html_create_tag (view, &p_attr, current, TRUE);
+    g_object_set (G_OBJECT (p_tag),
+                  "pixels-above-lines", 8,
+                  "pixels-below-lines", 8,
+                  NULL);
+
+    moo_html_new_line (view, buffer, iter, p_tag, FALSE);
+    process_elm_body (view, buffer, elm, p_tag, iter);
+    moo_html_new_line (view, buffer, iter, p_tag, FALSE);
 }
 
+
+/* GitHub-style header slug: lowercase, runs of non-alphanum become a
+ * single dash, leading/trailing dashes stripped.  Returned string is
+ * owned by caller; NULL if the input has no slug-worthy characters. */
+static char *
+heading_slugify (const char *text)
+{
+    GString *s;
+    gboolean prev_dash = TRUE;   /* suppress leading dashes */
+
+    if (!text)
+        return NULL;
+
+    s = g_string_new (NULL);
+    for (const char *p = text; *p; p = g_utf8_next_char (p))
+    {
+        gunichar ch = g_utf8_get_char (p);
+        if (g_unichar_isalnum (ch))
+        {
+            g_string_append_unichar (s, g_unichar_tolower (ch));
+            prev_dash = FALSE;
+        }
+        else if (!prev_dash)
+        {
+            g_string_append_c (s, '-');
+            prev_dash = TRUE;
+        }
+    }
+    /* Strip trailing dash. */
+    while (s->len > 0 && s->str[s->len - 1] == '-')
+        g_string_truncate (s, s->len - 1);
+    if (s->len == 0)
+    {
+        g_string_free (s, TRUE);
+        return NULL;
+    }
+    return g_string_free (s, FALSE);
+}
 
 static void
 process_heading_elm (GtkTextView    *view,
@@ -1885,6 +2026,7 @@ process_heading_elm (GtkTextView    *view,
 {
     static MooHtmlAttr attr;
     MooHtmlTag *current;
+    xmlChar    *id_attr;
     int n;
 
     g_return_if_fail (elm->name[0] && elm->name[1]);
@@ -1897,8 +2039,51 @@ process_heading_elm (GtkTextView    *view,
     current = moo_html_create_tag (view, &attr, parent, FALSE);
 
     moo_html_new_line (view, buffer, iter, current, FALSE);
+
+    /* Register anchor(s) at the heading's position so [text](#slug)
+     * links can resolve.  Two sources, in priority order:
+     *   1. An explicit id="..." attribute on the heading element.
+     *   2. A GitHub-style slug derived from the heading text.
+     * md4c-html doesn't emit ids by default, so the slug path is the
+     * one that actually matches Markdown autolinks. */
+    id_attr = xmlGetProp (elm, (const xmlChar *) "id");
+    if (id_attr)
+    {
+        moo_html_create_anchor (view, buffer, iter, (const char *) id_attr);
+        xmlFree (id_attr);
+    }
+    {
+        xmlChar *txt = xmlNodeGetContent (elm);
+        if (txt)
+        {
+            char *slug = heading_slugify ((const char *) txt);
+            if (slug)
+            {
+                moo_html_create_anchor (view, buffer, iter, slug);
+                g_free (slug);
+            }
+            xmlFree (txt);
+        }
+    }
+
     process_elm_body (view, buffer, elm, current, iter);
     moo_html_new_line (view, buffer, iter, current, FALSE);
+
+    /* GitHub renders an <hr>-style rule beneath H1 and H2.  We embed a
+     * real GtkSeparator at a child anchor — same trick used by
+     * process_hr_elm — so the line is a single full-width pixel rule
+     * rather than wrapped text characters. */
+    if (n <= 2)
+    {
+        GtkTextChildAnchor *anchor;
+        GtkWidget *sep = gtk_separator_new (GTK_ORIENTATION_HORIZONTAL);
+        MooHtmlData *data = moo_html_get_data (view);
+        gtk_widget_show (sep);
+        anchor = gtk_text_buffer_create_child_anchor (buffer, iter);
+        gtk_text_view_add_child_at_anchor (view, sep, anchor);
+        data->rulers = g_slist_prepend (data->rulers, sep);
+        moo_html_new_line (view, buffer, iter, parent, TRUE);
+    }
 }
 
 
@@ -2000,13 +2185,13 @@ make_li_number (int     count,
         case OL_LOWER_ROMAN:
             g_warning ("implement me");
         case OL_NUM:
-            return g_strdup_printf (" %d. ", count);
+            return g_strdup_printf ("%d. ", count);
         case OL_LOWER_ALPHA:
             g_return_val_if_fail (count <= 26, nullptr);
-            return g_strdup_printf (" %c. ", count - 1 + 'a');
+            return g_strdup_printf ("%c. ", count - 1 + 'a');
         case OL_UPPER_ALPHA:
             g_return_val_if_fail (count <= 26, nullptr);
-            return g_strdup_printf (" %c. ", count - 1 + 'A');
+            return g_strdup_printf ("%c. ", count - 1 + 'A');
     }
 
     g_return_val_if_reached (nullptr);
@@ -2050,35 +2235,50 @@ process_ol_elm (GtkTextView    *view,
 
     moo_html_new_line (view, buffer, iter, current, FALSE);
 
+    data->list_depth++;
     for (child = elm->children; child != nullptr; child = child->next)
     {
         if (IS_LI_ELEMENT (child))
         {
             char *number;
+            char *prefix;
             gboolean had_new_line;
             xmlChar *value;
+            int indent;
 
             value = GET_PROP (child, "value");
             parse_int ((char*) value, &count);
 
             number = make_li_number (count, list_type);
+            /* Four-space base indent + four more per nesting level
+             * (so top-level items sit at column 4 — gives the bullet
+             * room to breathe against the left margin and matches
+             * the visual offset users expect from a list block). */
+            indent = data->list_depth * 4;
+            prefix = g_strdup_printf ("%*s%s", indent, "", number);
             had_new_line = data->new_line;
 
-            moo_html_insert_verbatim (view, buffer, iter, current, number);
+            moo_html_insert_verbatim (view, buffer, iter, current, prefix);
             data->new_line = had_new_line;
             process_elm_body (view, buffer, child, current, iter);
             moo_html_new_line (view, buffer, iter, current, FALSE);
             count++;
 
+            g_free (prefix);
             g_free (number);
             STR_FREE (value);
         }
-        else
+        else if (IS_TEXT (child) || IS_COMMENT (child))
+        {
+            /* Whitespace and comments between <li> tags — ignore silently. */
+        }
+        else if (IS_ELEMENT (child))
         {
             g_message ("unknown node '%s'", child->name);
             process_elm_body (view, buffer, child, current, iter);
         }
     }
+    data->list_depth--;
 
     STR_FREE (start);
     STR_FREE (type);
@@ -2093,8 +2293,21 @@ process_ul_elm (GtkTextView    *view,
                 GtkTextIter    *iter)
 {
     xmlNode *child;
+    MooHtmlData *data = moo_html_get_data (view);
+
+    /* Open the list on its own line, the way <ol> already does.
+     * Without this the first bullet runs into the preceding paragraph. */
+    moo_html_new_line (view, buffer, iter, current, FALSE);
+
+    /* Each nested <ul>/<ol> bumps list_depth so the corresponding
+     * <li> gets a deeper indent + different bullet glyph. */
+    data->list_depth++;
     for (child = elm->children; child != nullptr; child = child->next)
-        process_elm_body (view, buffer, child, current, iter);
+    {
+        if (IS_LI_ELEMENT (child))
+            process_li_elm (view, buffer, child, current, iter);
+    }
+    data->list_depth--;
 }
 
 
@@ -2105,14 +2318,27 @@ process_li_elm (GtkTextView    *view,
                 MooHtmlTag     *current,
                 GtkTextIter    *iter)
 {
+    static const char *bullets[] = { "\xe2\x80\xa2", "\xe2\x97\xa6",
+                                     "\xe2\x96\xaa", "\xe2\x80\xa3" };
     gboolean had_new_line;
     MooHtmlData *data = moo_html_get_data (view);
+    int depth, indent;
+    char *prefix;
 
     moo_html_new_line (view, buffer, iter, current, FALSE);
 
+    /* list_depth==0 means this <li> was processed outside a <ul>/<ol>
+     * (malformed HTML); fall back to a sane default rather than crash. */
+    depth = data->list_depth > 0 ? data->list_depth : 1;
+    indent = depth * 4;
+    prefix = g_strdup_printf ("%*s%s ", indent, "",
+                              bullets[(depth - 1) % G_N_ELEMENTS (bullets)]);
+
     had_new_line = data->new_line;
-    moo_html_insert_verbatim (view, buffer, iter, current, " * ");
+    moo_html_insert_verbatim (view, buffer, iter, current, prefix);
     data->new_line = had_new_line;
+
+    g_free (prefix);
 
     process_elm_body (view, buffer, elm, current, iter);
     moo_html_new_line (view, buffer, iter, current, FALSE);
@@ -2315,10 +2541,41 @@ process_span_elm (GtkTextView *view, GtkTextBuffer *buffer, xmlNode *elm,
 }
 
 
+/* CSS provider for the horizontal-rule widget.  The default GTK
+ * theme-supplied separator is a single faint pixel, easy to miss in
+ * a long document; force a more visible thickness here.  The
+ * "wikiline-thick" class is used by the wiki preview for 6+-dash
+ * rules so they read as a heavier divider.
+ *
+ * No CSS `margin` here — GtkTextView allocates the widget by its
+ * natural size and any extra margin triggers "Negative content
+ * height" warnings during size-allocate.  We get visual breathing
+ * room around the rule from the surrounding paragraph spacing in
+ * the text view instead. */
+static GtkCssProvider *
+moo_hr_css_provider (void)
+{
+    static GtkCssProvider *provider = NULL;
+    if (provider == NULL)
+    {
+        provider = gtk_css_provider_new ();
+        gtk_css_provider_load_from_data (provider,
+            "separator.moo-hr { "
+            "  min-height: 2px; "
+            "  background-color: alpha(currentColor, 0.45); "
+            "}\n"
+            "separator.moo-hr.wikiline-thick { "
+            "  min-height: 4px; "
+            "  background-color: alpha(currentColor, 0.7); "
+            "}\n", -1, NULL);
+    }
+    return provider;
+}
+
 static void
 process_hr_elm (GtkTextView *view,
                 GtkTextBuffer *buffer,
-                G_GNUC_UNUSED xmlNode *elm,
+                xmlNode *elm,
                 MooHtmlTag *parent,
                 GtkTextIter *iter)
 {
@@ -2326,7 +2583,24 @@ process_hr_elm (GtkTextView *view,
     GtkWidget *line;
     MooHtmlData *data = moo_html_get_data (view);
 
-    line = gtk_hseparator_new ();
+    line = gtk_separator_new (GTK_ORIENTATION_HORIZONTAL);
+    gtk_style_context_add_class (gtk_widget_get_style_context (line),
+                                 "moo-hr");
+    /* Wiki preview sets class="wikiline-thick" for "------" (6+
+     * dashes).  Carry that class through so CSS can paint the
+     * thicker variant. */
+    xmlChar *cls = xmlGetProp (elm, (const xmlChar *) "class");
+    if (cls)
+    {
+        if (strstr ((const char *) cls, "wikiline-thick"))
+            gtk_style_context_add_class (
+                gtk_widget_get_style_context (line), "wikiline-thick");
+        xmlFree (cls);
+    }
+    gtk_style_context_add_provider (
+        gtk_widget_get_style_context (line),
+        GTK_STYLE_PROVIDER (moo_hr_css_provider ()),
+        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
     gtk_widget_show (line);
 
     moo_html_new_line (view, buffer, iter, parent, FALSE);
@@ -2400,6 +2674,232 @@ out:
 }
 
 
+/* ─────────────── Table rendering (2-pass column-aligned) ───────────────
+ *
+ * GtkTextView can't draw a real grid, so we approximate one with
+ * monospace text and Unicode box-drawing characters.  First pass walks
+ * the table tree, collects each <tr>'s text-content cells, and computes
+ * the max char-width per column.  Second pass emits each row with
+ * cells padded to the column width and a header separator after the
+ * <thead> row.  The whole block is wrapped in a MOO_HTML_TABLE tag so
+ * the Markdown preview plugin can apply monospace font + soft
+ * background.
+ */
+
+typedef struct {
+    char *text;       /* pango markup; g_free-owned */
+    int   colspan;    /* >= 1 */
+    int   rowspan;    /* >= 1 */
+    gboolean is_header;
+} TableCell;
+
+typedef struct {
+    GPtrArray *cells;     /* TableCell* per cell */
+    gboolean   is_header; /* came from <thead> or had any <th> */
+} TableRow;
+
+static void
+table_cell_free (gpointer p)
+{
+    TableCell *c = (TableCell *) p;
+    if (!c) return;
+    g_free (c->text);
+    g_free (c);
+}
+
+static void
+table_row_free (gpointer p)
+{
+    TableRow *r = (TableRow *) p;
+    if (r->cells)
+        g_ptr_array_free (r->cells, TRUE);
+    g_free (r);
+}
+
+/* Walk a cell node's children and emit Pango markup so that simple
+ * inline HTML (<code>, <strong>, <em>, <a>) survives into the
+ * GtkLabel.  Anything we don't recognise falls through as plain text.
+ * The result is owned by caller (g_free). */
+static void
+xml_cell_to_pango (xmlNode *elm, GString *out)
+{
+    for (xmlNode *c = elm->children; c != nullptr; c = c->next)
+    {
+        if (IS_TEXT (c))
+        {
+            char *esc = g_markup_escape_text ((const char *) c->content, -1);
+            g_string_append (out, esc);
+            g_free (esc);
+        }
+        else if (!IS_ELEMENT (c))
+        {
+            continue;
+        }
+        else if (IS_NAMED_ELM_ (c, "code") || IS_NAMED_ELM_ (c, "tt"))
+        {
+            g_string_append (out, "<tt>");
+            xml_cell_to_pango (c, out);
+            g_string_append (out, "</tt>");
+        }
+        else if (IS_NAMED_ELM_ (c, "strong") || IS_NAMED_ELM_ (c, "b"))
+        {
+            g_string_append (out, "<b>");
+            xml_cell_to_pango (c, out);
+            g_string_append (out, "</b>");
+        }
+        else if (IS_NAMED_ELM_ (c, "em") || IS_NAMED_ELM_ (c, "i"))
+        {
+            g_string_append (out, "<i>");
+            xml_cell_to_pango (c, out);
+            g_string_append (out, "</i>");
+        }
+        else if (IS_NAMED_ELM_ (c, "u"))
+        {
+            g_string_append (out, "<u>");
+            xml_cell_to_pango (c, out);
+            g_string_append (out, "</u>");
+        }
+        else if (IS_NAMED_ELM_ (c, "a"))
+        {
+            xmlChar *href = xmlGetProp (c, (const xmlChar *) "href");
+            if (href)
+            {
+                char *esc = g_markup_escape_text ((const char *) href, -1);
+                g_string_append_printf (out,
+                    "<span foreground=\"#1a73e8\" underline=\"single\">");
+                xml_cell_to_pango (c, out);
+                g_string_append (out, "</span>");
+                g_free (esc);
+                xmlFree (href);
+            }
+            else
+            {
+                xml_cell_to_pango (c, out);
+            }
+        }
+        else
+        {
+            /* Unknown inline element — emit its text content verbatim. */
+            xml_cell_to_pango (c, out);
+        }
+    }
+}
+
+/* Collect <tr> rows under `elm`, recursing through <thead>/<tbody>/<tfoot>.
+ * inside_thead tracks whether we're descended from a <thead>. */
+static void
+table_collect_rows (xmlNode *elm, GPtrArray *rows, gboolean inside_thead)
+{
+    xmlNode *child;
+    for (child = elm->children; child != nullptr; child = child->next)
+    {
+        if (!IS_ELEMENT (child))
+            continue;
+        if (IS_NAMED_ELM_ (child, "tr"))
+        {
+            TableRow *row = g_new0 (TableRow, 1);
+            row->cells     = g_ptr_array_new_with_free_func (table_cell_free);
+            row->is_header = inside_thead;
+
+            for (xmlNode *c = child->children; c != nullptr; c = c->next)
+            {
+                if (!IS_ELEMENT (c))
+                    continue;
+                if (IS_NAMED_ELM_ (c, "th"))
+                    row->is_header = TRUE;
+                if (IS_NAMED_ELM_ (c, "td") || IS_NAMED_ELM_ (c, "th"))
+                {
+                    GString *m = g_string_new (NULL);
+                    xml_cell_to_pango (c, m);
+                    g_strstrip (m->str);
+
+                    TableCell *cell = g_new0 (TableCell, 1);
+                    cell->text      = g_string_free (m, FALSE);
+                    cell->colspan   = 1;
+                    cell->rowspan   = 1;
+                    cell->is_header = IS_NAMED_ELM_ (c, "th") || inside_thead;
+
+                    xmlChar *cs = xmlGetProp (c, (const xmlChar *) "colspan");
+                    if (cs)
+                    {
+                        int v = atoi ((const char *) cs);
+                        if (v > 1) cell->colspan = v;
+                        xmlFree (cs);
+                    }
+                    xmlChar *rs = xmlGetProp (c, (const xmlChar *) "rowspan");
+                    if (rs)
+                    {
+                        int v = atoi ((const char *) rs);
+                        if (v > 1) cell->rowspan = v;
+                        xmlFree (rs);
+                    }
+
+                    g_ptr_array_add (row->cells, cell);
+                }
+            }
+            g_ptr_array_add (rows, row);
+        }
+        else if (IS_NAMED_ELM_ (child, "thead"))
+            table_collect_rows (child, rows, TRUE);
+        else if (IS_NAMED_ELM_ (child, "tbody")
+                 || IS_NAMED_ELM_ (child, "tfoot"))
+            table_collect_rows (child, rows, FALSE);
+    }
+}
+
+/* CSS applied to every embedded table widget.  Cell borders collapse
+ * by giving each cell border-top + border-left and the table itself
+ * border-right + border-bottom, but GTK's CSS doesn't do collapsing
+ * properly across grid children, so we just put a full 1 px border on
+ * every cell and accept the 2-px-thick interior lines.  Header cells
+ * get a slightly darker background. */
+static const char TABLE_CSS[] =
+    /* min-height on the grid + cells prevents GTK from running a
+     * size-allocate pass where allocation < (border+padding), which
+     * produces "Negative content height" warnings during early
+     * layout in GtkTextView. */
+    "grid.moo-md-table { padding: 0; margin: 4px 0; min-height: 24px; }\n"
+    "grid.moo-md-table > label { "
+    "  padding: 4px 10px; "
+    "  min-height: 16px; "
+    "  min-width: 8px; "
+    "  border: 1px solid alpha(currentColor, 0.35); "
+    "}\n"
+    "grid.moo-md-table > label.moo-md-th { "
+    "  font-weight: bold; "
+    "  background: alpha(currentColor, 0.08); "
+    "}\n"
+    /* Blockquote: continuous left bar across all wrapped lines via
+     * border-left on the container.  font-style on the inner label
+     * gives the italic look. */
+    ".moo-md-blockquote { "
+    "  border-left: 4px solid alpha(currentColor, 0.35); "
+    "  background: alpha(currentColor, 0.06); "
+    /* 8 pt left gap between the border and the text (≈ 11 px),
+     * matching the user-visible "padding: 8pt" Habitat ships with.
+     * Vertical padding stays smaller so the block doesn't grow tall
+     * for short single-paragraph quotes. */
+    "  padding: 8px 8pt 8px 8pt; "
+    "  margin: 6px 0; "
+    "  min-height: 24px; "
+    "}\n"
+    ".moo-md-blockquote label { "
+    "  font-style: italic; "
+    "  color: alpha(currentColor, 0.75); "
+    "}\n";
+
+static GtkCssProvider *
+table_css_provider (void)
+{
+    static GtkCssProvider *provider = NULL;
+    if (provider == NULL)
+    {
+        provider = gtk_css_provider_new ();
+        gtk_css_provider_load_from_data (provider, TABLE_CSS, -1, NULL);
+    }
+    return provider;
+}
+
 static void
 process_table_elm (GtkTextView *view,
                    GtkTextBuffer *buffer,
@@ -2407,14 +2907,201 @@ process_table_elm (GtkTextView *view,
                    MooHtmlTag *parent,
                    GtkTextIter *iter)
 {
-    process_elm_body (view, buffer, elm, parent, iter);
+    GPtrArray          *rows;
+    GtkWidget          *grid;
+    GtkTextChildAnchor *anchor;
+    MooHtmlData        *data;
+    guint               ncols = 0;
+
+    rows = g_ptr_array_new_with_free_func (table_row_free);
+    table_collect_rows (elm, rows, FALSE);
+
+    if (rows->len == 0)
+    {
+        g_ptr_array_free (rows, TRUE);
+        return;
+    }
+
+    /* Column count = max of (sum of colspans in row) across rows. */
+    for (guint r = 0; r < rows->len; r++)
+    {
+        TableRow *row = (TableRow *) rows->pdata[r];
+        guint sum = 0;
+        for (guint i = 0; i < row->cells->len; i++)
+        {
+            TableCell *cell = (TableCell *) row->cells->pdata[i];
+            sum += cell->colspan;
+        }
+        if (sum > ncols)
+            ncols = sum;
+    }
+    if (ncols == 0)
+    {
+        g_ptr_array_free (rows, TRUE);
+        return;
+    }
+
+    /* Build the grid: one GtkLabel per cell, attached at (col, row)
+     * with width/height taken from colspan/rowspan.  A `covered` map
+     * tracks (col, row) positions already claimed by a rowspan from
+     * an earlier row so the next cell skips over them. */
+    grid = gtk_grid_new ();
+    gtk_style_context_add_class (gtk_widget_get_style_context (grid),
+                                 "moo-md-table");
+    gtk_style_context_add_provider (gtk_widget_get_style_context (grid),
+                                    GTK_STYLE_PROVIDER (table_css_provider ()),
+                                    GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    gtk_grid_set_row_spacing (GTK_GRID (grid), 0);
+    gtk_grid_set_column_spacing (GTK_GRID (grid), 0);
+    gtk_widget_set_halign (grid, GTK_ALIGN_START);
+    gtk_widget_set_valign (grid, GTK_ALIGN_START);
+    gtk_widget_set_hexpand (grid, FALSE);
+    gtk_widget_set_vexpand (grid, FALSE);
+    gtk_widget_set_can_focus (grid, FALSE);
+
+    /* covered[row * ncols + col] — TRUE iff that slot is claimed by
+     * a rowspan from an earlier row.  We never need to mark slots in
+     * the *current* row from cells in the same row, since cells in a
+     * row are emitted left-to-right and the colspan just bumps the
+     * next-cell column counter. */
+    gboolean *covered = g_new0 (gboolean, rows->len * ncols);
+
+    for (guint r = 0; r < rows->len; r++)
+    {
+        TableRow *row = (TableRow *) rows->pdata[r];
+        guint     col = 0;
+        for (guint i = 0; i < row->cells->len; i++)
+        {
+            TableCell *cell = (TableCell *) row->cells->pdata[i];
+
+            /* Skip slots already taken by an earlier row's rowspan. */
+            while (col < ncols && covered[r * ncols + col])
+                col++;
+            if (col >= ncols)
+                break;
+
+            int width  = cell->colspan;
+            int height = cell->rowspan;
+            if (col + width > ncols)
+                width = ncols - col;
+            if (r + height > rows->len)
+                height = rows->len - r;
+
+            GtkWidget *label = gtk_label_new (NULL);
+            gtk_label_set_markup (GTK_LABEL (label),
+                                  cell->text ? cell->text : "");
+            gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+            gtk_label_set_yalign (GTK_LABEL (label), 0.5);
+            gtk_widget_set_halign (label, GTK_ALIGN_FILL);
+            gtk_widget_set_valign (label, GTK_ALIGN_FILL);
+            gtk_widget_set_hexpand (label, TRUE);
+            gtk_widget_set_vexpand (label, FALSE);
+            gtk_label_set_selectable (GTK_LABEL (label), TRUE);
+            if (cell->is_header || row->is_header)
+                gtk_style_context_add_class (
+                    gtk_widget_get_style_context (label), "moo-md-th");
+            gtk_style_context_add_provider (
+                gtk_widget_get_style_context (label),
+                GTK_STYLE_PROVIDER (table_css_provider ()),
+                GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+            gtk_widget_show (label);
+            gtk_grid_attach (GTK_GRID (grid), label,
+                             col, r, width, height);
+
+            /* Mark every (row, col) slot the cell spans as covered. */
+            for (int dr = 0; dr < height; dr++)
+                for (int dc = 0; dc < width; dc++)
+                    covered[(r + dr) * ncols + (col + dc)] = TRUE;
+
+            col += width;
+        }
+    }
+    g_free (covered);
+    gtk_widget_show (grid);
+
+    /* Embed the grid into the text view at a child anchor.  Tracked via
+     * data->rulers so the buffer cleanup tears it down. */
+    data = moo_html_get_data (view);
+    moo_html_new_line (view, buffer, iter, parent, FALSE);
+    anchor = gtk_text_buffer_create_child_anchor (buffer, iter);
+    gtk_text_view_add_child_at_anchor (view, grid, anchor);
+    data->rulers = g_slist_prepend (data->rulers, grid);
+    moo_html_new_line (view, buffer, iter, parent, TRUE);
+
+    g_ptr_array_free (rows, TRUE);
 }
 
 static void
 process_tr_elm (GtkTextView *view, GtkTextBuffer *buffer, xmlNode *elm,
                 MooHtmlTag *parent, GtkTextIter *iter)
 {
-    moo_html_new_line (view, buffer, iter, parent, FALSE);
-    process_elm_body (view, buffer, elm, parent, iter);
-    moo_html_new_line (view, buffer, iter, parent, FALSE);
+    /* No-op: process_table_elm fully owns the table render, so a stray
+     * <tr> outside a <table> is silently dropped.  Real rows are walked
+     * by table_collect_rows, not via this dispatch path. */
+    (void) view; (void) buffer; (void) elm; (void) parent; (void) iter;
+}
+
+
+/* ───────────── Tag-kind predicates (public via moohtml.h) ────────────
+ *
+ * Consumers like the Markdown preview pane need to restyle tags after
+ * _moo_html_load_memory() returns.  The bitmask lives in the private
+ * MooHtmlAttr struct (definition inside this TU), so expose narrow
+ * accessors instead of leaking the struct shape.
+ */
+
+gboolean
+_moo_html_tag_is_link (GtkTextTag *tag)
+{
+    if (!MOO_IS_HTML_TAG (tag))
+        return FALSE;
+    MooHtmlTag *t = MOO_HTML_TAG (tag);
+    return t->attr && (t->attr->mask & MOO_HTML_LINK) != 0;
+}
+
+gboolean
+_moo_html_tag_is_monospace (GtkTextTag *tag)
+{
+    if (!MOO_IS_HTML_TAG (tag))
+        return FALSE;
+    MooHtmlTag *t = MOO_HTML_TAG (tag);
+    return t->attr && (t->attr->mask & MOO_HTML_MONOSPACE) != 0;
+}
+
+gboolean
+_moo_html_tag_is_pre (GtkTextTag *tag)
+{
+    if (!MOO_IS_HTML_TAG (tag))
+        return FALSE;
+    MooHtmlTag *t = MOO_HTML_TAG (tag);
+    return t->attr && (t->attr->mask & MOO_HTML_PRE) != 0;
+}
+
+int
+_moo_html_tag_get_heading (GtkTextTag *tag)
+{
+    if (!MOO_IS_HTML_TAG (tag))
+        return 0;
+    MooHtmlTag *t = MOO_HTML_TAG (tag);
+    if (!t->attr || !(t->attr->mask & MOO_HTML_HEADING))
+        return 0;
+    return (int) t->attr->heading;   /* 1..6 */
+}
+
+gboolean
+_moo_html_tag_is_blockquote (GtkTextTag *tag)
+{
+    if (!MOO_IS_HTML_TAG (tag))
+        return FALSE;
+    MooHtmlTag *t = MOO_HTML_TAG (tag);
+    return t->attr && (t->attr->mask & MOO_HTML_BLOCKQUOTE) != 0;
+}
+
+gboolean
+_moo_html_tag_is_table (GtkTextTag *tag)
+{
+    if (!MOO_IS_HTML_TAG (tag))
+        return FALSE;
+    MooHtmlTag *t = MOO_HTML_TAG (tag);
+    return t->attr && (t->attr->mask & MOO_HTML_TABLE) != 0;
 }

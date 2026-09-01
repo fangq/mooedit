@@ -26,6 +26,7 @@
 #include "mooedit/mooeditwindow-impl.h"
 #include "mooedit/mooedit-accels.h"
 #include "mooedit/mootextiter.h"
+#include "mooedit/moospellcheck.h"
 #include "mooedit/mooeditor-impl.h"
 #include "mooedit/mooeditview-impl.h"
 #include "mooedit/mooedittab-impl.h"
@@ -104,6 +105,7 @@ struct MooEditWindowPrivate {
     GtkLabel *cursor_label;
     GtkLabel *chars_label;
     GtkLabel *insert_label;
+    GtkLabel *spell_label;
     GtkWidget *info;
 
     GtkWidget *doc_paned;
@@ -267,6 +269,8 @@ static gboolean      notebook_drag_motion               (GtkWidget          *wid
 
 /* actions */
 static void action_new_doc                      (MooEditWindow      *window);
+static void action_spell_add_to_dict             (MooEditWindow      *window);
+static void action_spell_ignore_word             (MooEditWindow      *window);
 static void action_open                         (MooEditWindow      *window);
 static void action_reload                       (MooEditWindow      *window);
 static GtkAction *create_reopen_with_encoding_action (MooEditWindow *window);
@@ -585,6 +589,27 @@ moo_edit_window_class_init (MooEditWindowClass *klass)
                                  "default-accel", MOO_EDIT_ACCEL_FIND_PREV,
                                  "closure-signal", "find-prev-interactive",
                                  "closure-proxy-func", moo_edit_window_get_active_view,
+                                 "condition::sensitive", "has-open-document",
+                                 nullptr);
+
+    /* Spell-check menubar entry points — duplicate the right-click
+     * submenu items so they're reachable from the keyboard via the
+     * Edit menu.  Sensible-when "has-open-document" is true; the
+     * callback no-ops if there's no word at the cursor or no checker
+     * attached (e.g. MOO_BUILD_SPELL=off, or pref disabled). */
+    moo_window_class_new_action (window_class, "SpellAddToDict", nullptr,
+                                 "display-name", "Add to Dictionary",
+                                 "label", _("Add Word to _Dictionary"),
+                                 "tooltip", _("Add the word at the cursor to the personal spell-check dictionary"),
+                                 "closure-callback", action_spell_add_to_dict,
+                                 "condition::sensitive", "has-open-document",
+                                 nullptr);
+
+    moo_window_class_new_action (window_class, "SpellIgnoreWord", nullptr,
+                                 "display-name", "Ignore Word",
+                                 "label", _("_Ignore Word"),
+                                 "tooltip", _("Ignore the word at the cursor for this session"),
+                                 "closure-callback", action_spell_ignore_word,
                                  "condition::sensitive", "has-open-document",
                                  nullptr);
 
@@ -1344,6 +1369,22 @@ static void
 action_new_doc (MooEditWindow *window)
 {
     moo_editor_new_doc (window->priv->editor, window);
+}
+
+static void
+action_spell_add_to_dict (MooEditWindow *window)
+{
+    MooEditView *view = moo_edit_window_get_active_view (window);
+    if (view)
+        _moo_spell_check_add_word_at_cursor (view);
+}
+
+static void
+action_spell_ignore_word (MooEditWindow *window)
+{
+    MooEditView *view = moo_edit_window_get_active_view (window);
+    if (view)
+        _moo_spell_check_ignore_word_at_cursor (view);
 }
 
 
@@ -4077,6 +4118,24 @@ do_update_statusbar (MooEditWindow *window)
     ovr = gtk_text_view_get_overwrite (GTK_TEXT_VIEW (view));
     /* Label in the editor window statusbar - Overwrite or Insert mode */
     gtk_label_set_text (window->priv->insert_label, ovr ? _("OVR") : _("INS"));
+
+    /* Spell-check status (e.g. "Spell: en_US" / "Spell: off").  No-op
+     * string return when MOO_BUILD_SPELL is off, in which case we keep
+     * the label hidden. */
+    if (window->priv->spell_label)
+    {
+        char *spell = _moo_spell_check_status_text (view);
+        if (spell != NULL && spell[0] != '\0')
+        {
+            gtk_label_set_text (window->priv->spell_label, spell);
+            gtk_widget_show (GTK_WIDGET (window->priv->spell_label));
+        }
+        else
+        {
+            gtk_widget_hide (GTK_WIDGET (window->priv->spell_label));
+        }
+        g_free (spell);
+    }
 }
 
 static gboolean
@@ -4116,6 +4175,17 @@ create_statusbar (MooEditWindow *window)
     window->priv->chars_label = xml->chars;
     window->priv->insert_label = xml->insert;
     window->priv->info = GTK_WIDGET (xml->info);
+
+    /* Programmatically add a spell-check indicator to the same HBox.
+     * Doing it here (rather than via the glade XML) avoids regenerating
+     * the static C-string header moostatusbar-gxml.h whenever we adjust
+     * the status-bar layout.  Hidden by default; populated by
+     * update_spell_statusbar() once a doc/view is active. */
+    window->priv->spell_label = GTK_LABEL (gtk_label_new (""));
+    gtk_widget_set_no_show_all (GTK_WIDGET (window->priv->spell_label), TRUE);
+    gtk_box_pack_start (GTK_BOX (xml->info),
+                        GTK_WIDGET (window->priv->spell_label),
+                        FALSE, FALSE, 0);
 }
 
 

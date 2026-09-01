@@ -9,6 +9,7 @@
 #include "mooedit/mooeditor-impl.h"
 #include "mooedit/mooeditbookmark.h"
 #include "mooedit/mooeditprefs.h"
+#include "mooedit/moospellcheck.h"
 #include "mooutils/mooutils.h"
 #include "mooutils/moocompat.h"
 
@@ -79,6 +80,11 @@ moo_edit_view_dispose (GObject *object)
 {
     MooEditView *view = MOO_EDIT_VIEW (object);
 
+    /* No-op when MOO_BUILD_SPELL is off.  gspell weakly references the
+     * view so it cleans up its per-view state automatically too — this
+     * call is mostly here so re-disposing or re-attaching is safe. */
+    _moo_spell_check_detach (view);
+
     if (view->priv->fake_cursor_mark)
     {
         GtkTextBuffer *buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (view));
@@ -116,6 +122,11 @@ _moo_edit_view_new (MooEdit *doc)
     g_object_unref (indent);
 
     _moo_edit_add_view (doc, view);
+
+    /* gspell wrapper — installs the en_US checker on the buffer and
+     * enables inline highlighting + suggestion popover on this view.
+     * No-op when MOO_BUILD_SPELL is off. */
+    _moo_spell_check_attach (view);
 
     return view;
 }
@@ -408,6 +419,15 @@ _moo_edit_view_do_popup (MooEditView    *view,
                                                 window ? MOO_WINDOW(window)->accel_group : NULL);
     g_return_if_fail (menu != NULL);
     g_object_ref_sink (menu);
+
+    /* Append spell-check items (Suggestions submenu + Add to Dictionary +
+     * Ignore All) when the right-click landed on a misspelled word.
+     * No-op when MOO_BUILD_SPELL is off. */
+    if (event)
+        _moo_spell_check_populate_popup (view, menu,
+                                         (int) event->x, (int) event->y);
+    else
+        _moo_spell_check_populate_popup (view, menu, -1, -1);
 
     if (event)
     {

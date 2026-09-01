@@ -355,7 +355,12 @@ child_new (MooTreeView  *view,
 static void
 child_free (Child *child)
 {
-    if (child->widget)
+    /* During app shutdown the widget may already have been finalized
+     * through some other ownership path before MooTreeView's finalize
+     * gets a chance to drop its own reference.  Skip the disconnect/
+     * unref in that case to avoid g_signal_handlers_disconnect_matched
+     * complaining about an instance with a NULL class pointer. */
+    if (child->widget && G_IS_OBJECT (child->widget))
     {
         g_signal_handlers_disconnect_by_func (child->widget,
                                               (gpointer) child_row_activated,
@@ -369,7 +374,8 @@ child_free (Child *child)
         /* child_selection_changed was connected to the selection object
          * (tree-view) or to the widget itself (icon-view), not always to
          * child->widget directly. */
-        if (child->type == MOO_TREE_VIEW_TREE && child->u.tree.selection)
+        if (child->type == MOO_TREE_VIEW_TREE && child->u.tree.selection
+            && G_IS_OBJECT (child->u.tree.selection))
             g_signal_handlers_disconnect_by_func (child->u.tree.selection,
                                                   (gpointer) child_selection_changed,
                                                   child);
