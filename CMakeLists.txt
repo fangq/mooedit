@@ -145,6 +145,12 @@ set(MOO_WITH_WIKI "auto" CACHE STRING
 set_property(CACHE MOO_WITH_WIKI PROPERTY STRINGS auto yes no)
 include(MooWiki)   # sets MOO_BUILD_WIKI (always TRUE unless explicitly disabled)
 
+# ── GDB-based C/C++ debugger (drives `gdb --interpreter=mi3` at runtime) ─────
+set(MOO_WITH_GDB "auto" CACHE STRING
+    "Build with the GDB-driven debugger plugin: yes, no, or auto")
+set_property(CACHE MOO_WITH_GDB PROPERTY STRINGS auto yes no)
+include(MooGdb)   # sets MOO_BUILD_GDB (TRUE unless explicitly disabled)
+
 # ── Build-target options ──────────────────────────────────────────────────────
 option(MOO_BUILD_MODULE "Build standalone Python module instead of medit app" OFF)
 
@@ -275,6 +281,7 @@ target_compile_definitions(moo_build_settings INTERFACE
     $<$<BOOL:${MOO_BUILD_SPELL}>:MOO_BUILD_SPELL=1>
     $<$<BOOL:${MOO_BUILD_MARKDOWN}>:MOO_BUILD_MARKDOWN=1>
     $<$<BOOL:${MOO_BUILD_WIKI}>:MOO_BUILD_WIKI=1>
+    $<$<BOOL:${MOO_BUILD_GDB}>:MOO_BUILD_GDB=1>
     $<$<BOOL:${MOO_ENABLE_COVERAGE}>:MOO_ENABLE_COVERAGE=1>
     $<$<BOOL:${MOO_BROKEN_GTK_THEME}>:MOO_BROKEN_GTK_THEME=1>
 )
